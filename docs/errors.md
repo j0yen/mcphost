@@ -145,7 +145,8 @@ Generated from the error registry's `data_keys`; do not hand-edit. Keys a code's
 | `import_schema_mismatch` | `expected`, `unknown_columns`, `rows_skipped`, `skip_reasons` |
 | `import_too_large` | `bytes`, `host` |
 | `import_url_forbidden` | `host`, `reason` |
-| `invalid_spec` | `kind`, `field`, `reason`, `fields`, `minimal_specs`, `docs_url`, `fix`, `known_secret_names` |
+| `invalid_spec` | `kind`, `field`, `reason`, `fields`, `minimal_specs`, `docs_url`, `fix`, `known_secret_names`, `received_type` |
 | `quota_syncs_max` | `limit`, `used` |
+| `request_body_too_large` | `limit_bytes`, `content_length`, `hint` |
 | `schedule_too_frequent` | `min_seconds` |
 

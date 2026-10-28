@@ -9994,7 +9994,7 @@ impl McpHostHandler {
         // same `validate` a real `host.tool_publish` would run, so a spec
         // that would be rejected at publish time fails identically here,
         // before any request is attempted.
-        if let Err(e) = kind.validate(&spec) {
+        if let Err(e) = KindRegistry::validate_checked(kind.as_ref(), &spec) {
             let err = crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), AppError::from(e));
             return Err(crate::hooks::enrich_own_hook_refusal(&self.state, tenant, &spec, err).await);
         }
@@ -10315,7 +10315,7 @@ impl McpHostHandler {
             return Err(AppError::sandbox_unavailable(&status, retry_after_s));
         }
 
-        if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
+        if let Some(err) = AppError::from_kind_violations(KindRegistry::validate_all_checked(kind.as_ref(), &spec)) {
             return Err(crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), err));
         }
         kind.validate_async(&spec)
@@ -13591,6 +13591,19 @@ impl McpHostHandler {
         let outcome = outcome.map_err(|e| match &ran_tool {
             Some(tool) => e.with_tool(tool),
             None => e,
+        });
+        // PRD-mcphost-refusals-name-their-cause R4: a published-tool call that
+        // finds nothing, on a connection whose own tenant implicit sign-up made
+        // moments ago, says so. Reads the bound tenant row only.
+        let outcome = outcome.map_err(|e| match &auth {
+            Auth::Tenant(tenant, _)
+                if !body_name.starts_with("host.")
+                    && !body_name.starts_with("billing.")
+                    && !body_name.starts_with("admin.") =>
+            {
+                e.on_implicit_tenant(&tenant.namespace, tenant.signup_source.as_deref(), tenant.created_unix, now_unix())
+            }
+            _ => e,
         });
         // PRD-mcphost-usage-in-every-response R2: `_meta.usage` is built BEFORE
         // the idempotency store captures the response, so a replay returns the

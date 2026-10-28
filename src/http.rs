@@ -1119,6 +1119,193 @@ async fn status_json_route(
     response
 }
 
+/// What [`refuse_unimplemented_methods`] learned from a `/mcp` POST body, handed
+/// outward in a response extension for [`protocol_version_and_log`]
+/// (PRD-mcphost-refusals-name-their-cause R3). No task-local and no process-wide
+/// map carries it.
+#[derive(Debug, Clone, Default)]
+pub struct RequestLabels {
+    /// The JSON-RPC `method`, `batch` for an array body, "" when the body was
+    /// not parsed or has no method.
+    pub rpc: String,
+    /// The `tools/call` name, "" for every other method.
+    pub tool: String,
+    /// Set by the 413 builder: the refused request's `Content-Length` (`None`
+    /// when chunked) and the limit.
+    pub body_limit: Option<BodyLimit>,
+}
+
+/// The size fields of a body-limit refusal's access line.
+#[derive(Debug, Clone, Copy)]
+pub struct BodyLimit {
+    pub content_length: Option<u64>,
+    pub limit: usize,
+}
+
+impl RequestLabels {
+    /// `rpc=` and `tool=` of a parsed POST body.
+    fn from_doc(doc: &Value) -> Self {
+        let clip = |s: &str| s.chars().take(128).collect::<String>();
+        match doc {
+            Value::Array(_) => Self { rpc: "batch".to_string(), ..Self::default() },
+            Value::Object(_) => {
+                let method = doc.get("method").and_then(Value::as_str).unwrap_or("");
+                let tool = if method == "tools/call" {
+                    doc.pointer("/params/name").and_then(Value::as_str).unwrap_or("")
+                } else {
+                    ""
+                };
+                Self { rpc: clip(method), tool: clip(tool), body_limit: None }
+            }
+            _ => Self::default(),
+        }
+    }
+}
+
+/// How much of a reply body the access line reads to classify it.
+const REPLY_WINDOW_BYTES: usize = 4096;
+
+/// `jsonrpc_error:<code>` when `doc` is a JSON-RPC error object, `ok` for any
+/// other JSON document; `None` when `doc` carries neither `result` nor `error`.
+fn reply_of_message(doc: &Value) -> Option<String> {
+    if let Some(error) = doc.get("error") {
+        return Some(match error.get("code").and_then(Value::as_i64) {
+            Some(code) => format!("jsonrpc_error:{code}"),
+            None => "ok".to_string(),
+        });
+    }
+    doc.get("result").map(|_| "ok".to_string())
+}
+
+/// The reply class of a 200 non-batch reply from the first
+/// [`REPLY_WINDOW_BYTES`] of its body: one JSON document, or for
+/// `text/event-stream` the first `data:` frame carrying `result` or `error`.
+/// A body longer than the window is `ok` without parsing.
+fn classify_reply_body(window: &[u8], total: usize, sse: bool) -> String {
+    if total > REPLY_WINDOW_BYTES {
+        return "ok".to_string();
+    }
+    let text = String::from_utf8_lossy(window);
+    if sse {
+        for line in text.lines() {
+            if let Some(data) = line.strip_prefix("data:")
+                && let Ok(doc) = serde_json::from_str::<Value>(data.trim())
+                && let Some(reply) = reply_of_message(&doc)
+            {
+                return reply;
+            }
+        }
+        return "ok".to_string();
+    }
+    serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|doc| reply_of_message(&doc).or(Some("ok".to_string())))
+        .unwrap_or_else(|| "ok".to_string())
+}
+
+/// One `http request` line, emitted once: when the reply body ends, or when it
+/// is dropped before ending.
+struct AccessLine {
+    start: Instant,
+    method: String,
+    path: String,
+    mcp_name: String,
+    status: u16,
+    incident: Option<i64>,
+    labels: RequestLabels,
+    sse: bool,
+    window: Vec<u8>,
+    total: usize,
+    emitted: bool,
+}
+
+impl AccessLine {
+    fn observe(&mut self, chunk: &[u8]) {
+        self.total += chunk.len();
+        let room = REPLY_WINDOW_BYTES.saturating_sub(self.window.len());
+        self.window.extend_from_slice(&chunk[..chunk.len().min(room)]);
+    }
+
+    fn reply(&self) -> String {
+        if self.status != 200 {
+            format!("http:{}", self.status)
+        } else if self.labels.rpc == "batch" {
+            "batch".to_string()
+        } else if self.labels.rpc.is_empty() && self.total == 0 {
+            "ok".to_string()
+        } else {
+            classify_reply_body(&self.window, self.total, self.sse)
+        }
+    }
+
+    fn emit(&mut self) {
+        if std::mem::replace(&mut self.emitted, true) {
+            return;
+        }
+        let duration_ms = self.start.elapsed().as_millis();
+        let reply = self.reply();
+        let labels = &self.labels;
+        if let Some(limit) = labels.body_limit {
+            tracing::info!(
+                method = %self.method,
+                path = %self.path,
+                mcp_name = %self.mcp_name,
+                rpc = %labels.rpc,
+                tool = %labels.tool,
+                reply = %reply,
+                content_length = limit.content_length,
+                limit = limit.limit as u64,
+                duration_ms,
+                status = self.status,
+                incident = self.incident,
+                "http request"
+            );
+        } else {
+            tracing::info!(
+                method = %self.method,
+                path = %self.path,
+                mcp_name = %self.mcp_name,
+                rpc = %labels.rpc,
+                tool = %labels.tool,
+                reply = %reply,
+                duration_ms,
+                status = self.status,
+                incident = self.incident,
+                "http request"
+            );
+        }
+    }
+}
+
+/// A reply body that passes its bytes through untouched while keeping the
+/// first [`REPLY_WINDOW_BYTES`] for the access line, which it emits when the
+/// body ends or is dropped.
+struct LoggedBody {
+    inner: axum::body::BodyDataStream,
+    line: AccessLine,
+}
+
+impl futures_util::Stream for LoggedBody {
+    type Item = Result<Bytes, axum::Error>;
+
+    fn poll_next(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+        use std::task::Poll;
+        let polled = std::pin::Pin::new(&mut self.inner).poll_next(cx);
+        match &polled {
+            Poll::Ready(Some(Ok(chunk))) => self.line.observe(chunk),
+            Poll::Ready(None) | Poll::Ready(Some(Err(_))) => self.line.emit(),
+            Poll::Pending => {}
+        }
+        polled
+    }
+}
+
+impl Drop for LoggedBody {
+    fn drop(&mut self) {
+        self.line.emit();
+    }
+}
+
 /// Ensures every response carries `MCP-Protocol-Version` (AC1), and emits
 /// one structured request-line log entry. This layer is attached to the
 /// whole router (see `build_router` below), not just `/mcp` -- `/healthz`
@@ -1126,6 +1313,12 @@ async fn status_json_route(
 /// too. That is deliberate: it keeps one middleware as the single source
 /// of the request log, and an unauthenticated health/discovery endpoint
 /// carrying an accurate protocol-version header is harmless.
+///
+/// PRD-mcphost-refusals-name-their-cause R3: the line also carries `rpc=`,
+/// `tool=` and `reply=` (`ok`, `jsonrpc_error:<code>`, `http:<status>` or
+/// `batch`). The labels arrive in the response's [`RequestLabels`] extension;
+/// the reply class is read from the first 4 KiB of the body as it passes, and
+/// the line is emitted when the body ends, so `duration_ms` spans the body.
 pub async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Response {
     let start = Instant::now();
     let method = req.method().clone();
@@ -1154,18 +1347,41 @@ pub async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Respons
             .insert("MCP-Protocol-Version", value.clone());
     }
 
-    let duration_ms = start.elapsed().as_millis();
-    tracing::info!(
-        method = %method,
-        path = %path,
-        mcp_name = mcp_name.as_deref().unwrap_or(""),
-        duration_ms,
-        status = response.status().as_u16(),
-        incident = attached,
-        "http request"
-    );
-
-    response
+    let labelled = response.extensions().get::<RequestLabels>().cloned();
+    let sse = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.starts_with("text/event-stream"));
+    let mut line = AccessLine {
+        start,
+        method: method.to_string(),
+        path,
+        mcp_name: mcp_name.unwrap_or_default(),
+        status: response.status().as_u16(),
+        incident: attached,
+        labels: labelled.clone().unwrap_or_default(),
+        sse,
+        window: Vec::new(),
+        total: 0,
+        emitted: false,
+    };
+    // Only a `/mcp` POST reply (labelled by `refuse_unimplemented_methods`) is
+    // read at its body's end; every other response is logged now, as before.
+    use axum::body::HttpBody as _;
+    let exact = response.body().size_hint().exact();
+    if labelled.is_none() || exact == Some(0) {
+        line.emit();
+        return response;
+    }
+    let (mut parts, body) = response.into_parts();
+    if let Some(n) = exact
+        && !parts.headers.contains_key(http::header::CONTENT_LENGTH)
+    {
+        parts.headers.insert(http::header::CONTENT_LENGTH, HeaderValue::from(n));
+    }
+    let logged = LoggedBody { inner: body.into_data_stream(), line };
+    Response::from_parts(parts, Body::from_stream(logged))
 }
 
 /// Which `/mcp` route a response came from, for [`upgrade_for`].
@@ -1861,26 +2077,79 @@ fn message_version<'a>(msg: &'a Value, header: Option<&'a str>) -> Option<&'a st
     header.or_else(|| msg.pointer("/params/_meta")?.get(crate::capabilities::META_PROTOCOL_VERSION_KEY)?.as_str())
 }
 
+/// The request's declared `Content-Length`, `None` for a chunked request.
+fn declared_content_length(headers: &http::HeaderMap) -> Option<u64> {
+    headers
+        .get(http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse().ok())
+}
+
+/// The § 413 body of PRD-mcphost-refusals-name-their-cause, as a JSON-RPC
+/// error object (`id` null: the body was never parsed) built through the
+/// error registry, so it carries `class`, `family`, `remedy`, `help_url`,
+/// `request_id` and `feedback_hint` like every registered error.
+pub fn request_body_too_large_body(base_url: &str, content_length: Option<u64>) -> Value {
+    let limit = MAX_REQUEST_BODY_BYTES;
+    let message = match content_length {
+        Some(n) => format!("request body too large: {n} bytes, limit {limit}"),
+        None => format!("request body too large: over {limit} bytes"),
+    };
+    let err = crate::errors::AppError::Structured {
+        code: crate::errors::REQUEST_BODY_TOO_LARGE,
+        message,
+        data: json!({
+            "limit_bytes": limit,
+            "content_length": content_length,
+            "hint": "send less than 1 MiB per call; store a large payload with host.blob_put and pass its blob id",
+        }),
+    }
+    .into_error_data_at(Some(base_url));
+    json!({"jsonrpc": "2.0", "id": null, "error": err})
+}
+
+/// The one writer of the body-limit refusal, shared by
+/// [`refuse_unimplemented_methods`] and [`deliver_client_response`]: HTTP 413,
+/// `application/json` (python `mcp` only parses an error body then).
+pub fn request_body_too_large(base_url: &str, content_length: Option<u64>) -> Response {
+    let mut response = (
+        StatusCode::PAYLOAD_TOO_LARGE,
+        Json(request_body_too_large_body(base_url, content_length)),
+    )
+        .into_response();
+    // The body was never parsed: no `rpc=`/`tool=`, but the access line says
+    // how large it was and what the limit is.
+    response.extensions_mut().insert(RequestLabels {
+        body_limit: Some(BodyLimit { content_length, limit: MAX_REQUEST_BODY_BYTES }),
+        ..RequestLabels::default()
+    });
+    response
+}
+
 /// PRD-mcphost-capabilities-generated-from-dispatch R1: the one pre-dispatch
 /// refusal site. Reads the JSON-RPC `method` of a POST body (each element of a
 /// batch) and, when [`crate::capabilities::refusal`] names a refusal for it,
 /// answers that `-32601` itself, before `rmcp` parses the params -- so the
 /// labelled reply never depends on a header only some clients send. Anything
 /// else (no body, not JSON, no `method`, a notification, a mixed batch) is
-/// passed through with its body restored.
+/// passed through with its body restored. The body read and its 1 MiB limit
+/// ([`request_body_too_large`]) apply to every POST; `enabled` only gates the
+/// `-32601` refusal.
 async fn refuse_unimplemented_methods(
     State((state, enabled)): State<(Arc<AppState>, bool)>,
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    if !enabled || req.method() != Method::POST {
+    if req.method() != Method::POST {
         return next.run(req).await;
     }
     let (parts, body) = req.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, MAX_REQUEST_BODY_BYTES).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+        return request_body_too_large(&state.public_url, declared_content_length(&parts.headers));
     };
-    if let Ok(doc) = serde_json::from_slice::<Value>(&bytes) {
+    let doc = serde_json::from_slice::<Value>(&bytes).ok();
+    let labels = doc.as_ref().map(RequestLabels::from_doc).unwrap_or_default();
+    if enabled && let Some(doc) = &doc {
         let header_version = parts
             .headers
             .get("mcp-protocol-version")
@@ -1892,18 +2161,23 @@ async fn refuse_unimplemented_methods(
             let err = crate::capabilities::gate_error(method, message_version(msg, header_version.as_deref()), Some(&state.public_url))?;
             Some(json!({"jsonrpc": "2.0", "id": id, "error": err}))
         };
-        let reply = match &doc {
+        let reply = match doc {
             Value::Array(items) if !items.is_empty() => {
                 items.iter().map(refuse).collect::<Option<Vec<Value>>>().map(Value::Array)
             }
             single => refuse(single),
         };
         if let Some(reply) = reply {
-            let first = doc.as_array().and_then(|a| a.first()).unwrap_or(&doc);
-            return (crate::capabilities::refusal_status(message_version(first, header_version.as_deref())), Json(reply)).into_response();
+            let first = doc.as_array().and_then(|a| a.first()).unwrap_or(doc);
+            let mut response =
+                (crate::capabilities::refusal_status(message_version(first, header_version.as_deref())), Json(reply)).into_response();
+            response.extensions_mut().insert(labels);
+            return response;
         }
     }
-    next.run(Request::from_parts(parts, Body::from(bytes))).await
+    let mut response = next.run(Request::from_parts(parts, Body::from(bytes))).await;
+    response.extensions_mut().insert(labels);
+    response
 }
 
 /// PRD-mcphost-session-bound-tenant-after-signup requirement 1: the session
@@ -1989,7 +2263,7 @@ async fn deliver_client_response(State(state): State<Arc<AppState>>, req: Reques
     };
     let (parts, body) = req.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, MAX_REQUEST_BODY_BYTES).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+        return request_body_too_large(&state.public_url, declared_content_length(&parts.headers));
     };
     if let Some((id, answer)) = crate::inband::client_response(&bytes) {
         stores.deliver(&session, &id, answer);
@@ -2550,5 +2824,47 @@ mod anon_healthz_tests {
         body.insert("extra".into(), json!(1));
         let err = check_anon_healthz_keys(&body).unwrap_err();
         assert!(err.contains("ANON_HEALTHZ_KEYS"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod reply_class_tests {
+    use super::*;
+
+    fn classify(text: &str, sse: bool) -> String {
+        classify_reply_body(text.as_bytes(), text.len(), sse)
+    }
+
+    #[test]
+    fn a_json_document_is_ok_or_names_its_error_code() {
+        assert_eq!(classify(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#, false), "ok");
+        assert_eq!(classify(r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32002,"message":"x"}}"#, false), "jsonrpc_error:-32002");
+        assert_eq!(classify("not json", false), "ok");
+    }
+
+    #[test]
+    fn an_sse_reply_takes_the_first_data_frame_with_a_result_or_error() {
+        let list_changed_then_result = "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}\n\n\
+                                        data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n\n";
+        assert_eq!(classify(list_changed_then_result, true), "ok");
+        let then_error = "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}\n\n\
+                          data: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"x\"}}\n\n";
+        assert_eq!(classify(then_error, true), "jsonrpc_error:-32602");
+    }
+
+    #[test]
+    fn a_body_over_the_window_is_ok_without_parsing() {
+        let err = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32002,"message":"x"}}"#;
+        assert_eq!(classify_reply_body(err.as_bytes(), REPLY_WINDOW_BYTES + 1, false), "ok");
+    }
+
+    #[test]
+    fn labels_come_from_the_method_and_the_tools_call_name_only() {
+        let call = RequestLabels::from_doc(&json!({"method": "tools/call", "params": {"name": "t"}}));
+        assert_eq!((call.rpc.as_str(), call.tool.as_str()), ("tools/call", "t"));
+        let list = RequestLabels::from_doc(&json!({"method": "tools/list", "params": {"name": "t"}}));
+        assert_eq!((list.rpc.as_str(), list.tool.as_str()), ("tools/list", ""));
+        assert_eq!(RequestLabels::from_doc(&json!([{"method": "tools/list"}])).rpc, "batch");
+        assert_eq!(RequestLabels::from_doc(&json!("x")).rpc, "");
     }
 }

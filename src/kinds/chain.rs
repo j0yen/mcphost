@@ -45,7 +45,7 @@ use super::contract::{
 };
 use super::{
     CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, OutputDecl, Path, ToolDescriptor,
-    apply_output_decls, compose_call_ref, spec_declared_outputs,
+    apply_output_decls, compose_call_ref, not_a_json_object, spec_declared_outputs, wrong_json_type,
 };
 use crate::errors::AppError;
 
@@ -961,9 +961,7 @@ fn validate_retry_on(i: usize, retry: &Value) -> Result<(), KindError> {
 /// at publish time, since publish has no `context` to resolve against yet
 /// either way.
 fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
-    let obj = spec
-        .as_object()
-        .ok_or_else(|| invalid_spec("spec: must be a JSON object"))?;
+    let obj = spec.as_object().ok_or_else(|| not_a_json_object("spec", spec))?;
     let steps_raw = obj
         .get(CONTEXT_KEYS.steps)
         .ok_or_else(|| invalid_spec("spec.steps: is required"))?
@@ -977,7 +975,7 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
     for (i, raw) in steps_raw.iter().enumerate() {
         let step_obj = raw
             .as_object()
-            .ok_or_else(|| invalid_spec(format!("spec.steps[{i}]: must be a JSON object")))?;
+            .ok_or_else(|| not_a_json_object(&format!("spec.steps[{i}]"), raw))?;
         let tool = step_obj
             .get("tool")
             .and_then(Value::as_str)
@@ -991,10 +989,12 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
                 prev_whole = true;
                 Map::new()
             }
-            Some(_) => {
-                return Err(invalid_spec(format!(
-                    "spec.steps[{i}].args: must be a JSON object, or the string \"$.prev\" on a step after the first"
-                )));
+            Some(other) => {
+                return Err(wrong_json_type(
+                    &format!("spec.steps[{i}].args"),
+                    "must be a JSON object, or the string \"$.prev\" on a step after the first",
+                    other,
+                ));
             }
         };
         let continue_on_error = match step_obj.get("on_error") {

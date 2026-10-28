@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-external-class-positive-evidence.md",
-  "intent_slug": "mcphost-external-class-positive-evidence",
-  "root_motivation": "WHO: Joe (PM) and the controller reading the PMF line; the chain's traffic gate. WHAT: they need a count of real external users they can act on. WHY NOT TODAY: `classify_source_class` returns `External` by elimination (state.rs:1066-1083) and `derive_origin` maps every non-synthetic class to `(\"external\", detail or \"external-unverified\")` (state.rs:1093-1108; sole caller control.rs:454). The allowlist of what is \"ours\" (fleet IPs, synthetic header, loopback) was assumed complete; it was not, and it never can be, because fleet hosts move networks (carbon on public xfinitywifi since 10-20) and new scripts appear faster than the allowlist. CONSEQUENCE: 16 of the prod `external` signups on 10-20 are fleet traffic (G2 inventory: carbon + orch journals record no POST in that window; callers `~/.local/bin/fleet-post:23,:29`, `js_kind_live_probe.py:10,12`, `premise-sandbox.sh:18,:38`, orch `mcphost-js-kind-probe.py`); the PMF line is pinned to \"0 confirmed real users\" until the class is hon...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-refusals-name-their-cause.md",
+  "intent_slug": "mcphost-refusals-name-their-cause",
+  "root_motivation": "WHO: any MCP client of mcphost.dev (python `mcp` 2.1.1, the TS SDK 1.31.0, curl) and rb, the operator who reads `journalctl -u mcphost` on mcphost-1. WHAT: a client needs a refusal body it can branch on, and an operator needs one journal line per call that says which tool was called and how it ended. WHY NOT TODAY, from mcphost@7d38fd13: (1) the two body-limit sites, `refuse_unimplemented_methods` (`src/http.rs:1871-1882`) and `deliver_client_response` (`src/http.rs:1981-1998`), return `StatusCode::PAYLOAD_TOO_LARGE.into_response()`, a bare status with no body and no content-type, and python `mcp` 2.1.1 only parses an error body on a 4xx when `Content-Type` starts with `application/json` (`mcp/client/streamable_http.py:342-360`), so the client substitutes a stand-in that names no limit; (2) `protocol_version_and_log` (`src/http.rs:1128-1166`) logs `mcp_name` from the optional `Mcp-Name` header and the HTTP status, so a JSON-RPC refusal rides a `status=200` line and the tool name nev...",
   "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,44 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a signup from a non-loopback, non-fleet IP with no `X-Mcphost-Synthetic` header, When the tenant row is written, Then `origin='unattributed'` and `origin_detail='no-positive-evidence'` and `tenants_by_origin.unattributed` in healthz rises by one.",
-      "test": "tests/mcphost-external-class-positive-evidence_ac01_unattributed_default.rs"
+      "description": "Given the test server and no tenant key, When a tools/call of host.whoami padded inside params._meta to 1,048,577 bytes is POSTed to /mcp, Then the reply is HTTP 413, Content-Type application/json and the \u00a7 413 body, never 401 or tenant_key_missing, and the tenants row count is unchanged; the same shape at exactly 1,048,576 bytes is answered 200 and mints one tenant (row count +1); a same-size non-JSON body gets the same 413.",
+      "test": "tests/refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an `unattributed` tenant, When its claim e-mail is verified (`owner_verified_at` set), Then `origin='external'`, `origin_detail='claimed-email'`, and exactly one `admin_audit` row `origin_promoted` (from, to, detail) exists even when two verifications race, because promotion is a single-row `UPDATE \u2026 WHERE origin='unattributed'` and the audit row is written only when it changed one row.",
-      "test": "tests/mcphost-external-class-positive-evidence_ac02_claim_promotes.rs"
+      "description": "Given tenant A published t_ac2 and keyless B became an implicit tenant under 600 s ago, When B calls tools/call t_ac2 and a name no tenant owns, Then both -32002 bodies carry data.reason tool_not_found_on_implicit_tenant, data.tenant = B and the \u00a7 Hint fields, keys a subset of the listed set, no byte of A's distinctive namespace or any key; with A's tenant_key t_ac2 succeeds; B older than 600 s gets no data.reason.",
+      "test": "tests/refusals_ac02_tool_not_found_names_the_implicit_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an `unattributed` tenant created at `created_unix` on UTC date D with no fleet-IP or header-stamped call in its history, When it makes an authenticated non-loopback, non-fleet, header-less call on UTC date D+1 or later and at least 21,600 s after `created_unix`, Then `origin='external'` with detail `returned:<days>` and the audit detail carries the source IP hash; a call 15 s after creation across UTC midnight, a fleet-IP call, a header-stamped call, or any tenant whose history holds on...",
-      "test": "tests/mcphost-external-class-positive-evidence_ac03_later_day_return_promotes.rs"
+      "description": "Given both body-limit sites (refuse_unimplemented_methods, deliver_client_response in src/http.rs), When either refuses, Then one shared builder writes the \u00a7 413 body: a unit test covers Some(content_length) and None, HTTP tests at refuse_unimplemented_methods cover 1,048,577 bytes with Content-Length and a chunked body (content_length null), deliver_client_response calls that builder, and drain_gate keeps its 503 JSON.",
+      "test": "tests/refusals_ac03_one_builder_for_both_body_limit_sites.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a `synthetic` tenant, When a claim is verified or a qualifying later-day call arrives, Then `origin` stays `synthetic`, no `origin_promoted` audit row is written, and `synthetic_promotion_refused` increments and is readable in healthz.",
-      "test": "tests/mcphost-external-class-positive-evidence_ac04_synthetic_never_promoted.rs"
+      "description": "Given the error registry (src/error_registry.rs, the ERROR_CODES generator behind /errors.json and host.errors), When request_body_too_large is added, Then it is declared through err_code! with class, family and remedy so /errors.json lists it, the 413 body's data carries those fields plus request_id like every registered error, and README's request-body line names the body contract.",
+      "test": "tests/refusals_ac04_request_body_too_large_is_a_registered_error.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given one seeded tenant per case (external+verified, external+later-day call only, external+same-day only, unclassified, synthetic+verified), When the migration runs, Then the verified row is `external`/`claimed-email`, both unverified external rows are `unattributed`/`legacy-external-unverified`, the unclassified row is `unattributed`/`legacy-unclassified`, the synthetic row is unchanged, no row is NULL, and the journaled before and after counts sum to the same total.",
-      "test": "tests/mcphost-external-class-positive-evidence_ac05_migration_backfill.rs"
+      "description": "Given the http request line, When any /mcp POST completes, Then the line carries rpc=<method|batch|\"\">, tool=<tools/call name|\"\">, reply=ok|jsonrpc_error:<code>|http:<status>|batch by the \u00a7 Reply class mechanism (response extension, line at body end), a 413 adds content_length= and limit=, and a test with one global buffered subscriber runs two concurrent calls of different reply classes and asserts each line by tool=.",
+      "test": "tests/refusals_ac05_access_line_names_rpc_tool_and_reply.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the deployed binary on an empty DB and on the seeded DB, When `/healthz`, `mcphost funnel --json`, admin `by_origin` and `scripts/ops/origin-counts.py` are read, Then all four report `tenants_by_origin`, `external_by_evidence`, `tenants_real`, `tenants_confirmed` and `origin_unknown` with identical keys (every key 0 on the empty DB), `tenants_real == tenants_by_origin.external`, `tenants_confirmed == external_by_evidence.claimed`, `origin_unknown == 0`, and the script's counts equal hea...",
-      "test": "tests/mcphost-external-class-positive-evidence_ac06_four_surfaces_agree.rs"
+      "description": "Given the seven registered kinds (kinds::names()) and chain spec.steps[i], When spec or a step is not a JSON object, Then the -32602 message keeps each site's current prefix and ends with \", received <string|array|number|boolean|null>\", data.received_type carries the same word, the object check runs once in the registry before any kind's validate, and one test iterates kinds::names() so a kind added later cannot skip it.",
+      "test": "tests/refusals_ac06_non_object_spec_names_the_received_type.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the single `Origin` enum, When the generated-contract test runs, Then the backfill value list, healthz keys and funnel keys are derived from `Origin::as_str` at compile time and the test fails if any surface lists a value the enum lacks or lacks one it has, while each migration's SQL remains a static string.",
-      "test": "tests/mcphost-external-class-positive-evidence_ac07_origin_set_generated.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given prod after deploy, When the operator runs `scripts/ops/origin-counts.py` on mcphost-1 as a counts-only ro read, Then it prints `external=<n> claimed=<a> returned=<b> unattributed=<u> synthetic=<s> unknown=0` with `n == a + b` and `n + u + s` equal to the pre-deploy tenant count in the run note (Live; evidence: the script run on mcphost-1 sourcing /etc/mcphost/env prints the six counts, pasted into the run note)",
-      "test": "deferred: Live (prod; evidence: the script run on mcphost-1 sourcing /etc/mcphost/env prints the six counts, pasted into the run note)"
+      "description": "Given prod after this PRD's deploy, When the AC 7 command in \u00a7 Live evidence commands runs from the build host with no credential, Then its curl line begins 413 application/json with a byte count above 0, the last line is jq_rc=0 on error_code request_body_too_large and limit_bytes 1048576, and no temp file remains (Live; evidence: AC 7 command in \u00a7 Live evidence commands showing 413 application/json and jq_rc=0)",
+      "test": "deferred: Live (prod; evidence: AC 7 command in \u00a7 Live evidence commands showing 413 application/json and jq_rc=0)"
     }
   ],
   "scope": [

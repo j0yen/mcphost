@@ -152,7 +152,7 @@ impl WasmSpec {
 
 fn parse_spec(spec: &Value) -> Result<WasmSpec, KindError> {
     if !spec.is_object() {
-        return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
+        return Err(super::not_a_json_object("spec", spec));
     }
     let b64 = spec.get("component").and_then(Value::as_str).ok_or_else(|| {
         KindError::InvalidSpec(

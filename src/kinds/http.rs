@@ -387,7 +387,7 @@ fn http_field_hint(field: &str) -> Option<(&'static str, Value)> {
 
 fn parse_spec(spec: &Value) -> Result<HttpSpec, KindError> {
     if !spec.is_object() {
-        return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
+        return Err(super::not_a_json_object("spec", spec));
     }
     let raw: HttpSpecRaw = serde_path_to_error::deserialize(spec.clone())
         .map_err(|e| super::spec_parse_error(spec, e, http_field_hint))?;

@@ -289,6 +289,26 @@ pub fn connection_hint(namespace: &str) -> String {
     format!("this connection authenticated as {namespace}; pass its tenant_key on every host.* call")
 }
 
+/// `data.reason` of a `tool_not_found` raised on a young implicit tenant.
+pub const TOOL_NOT_FOUND_ON_IMPLICIT_TENANT: &str = "tool_not_found_on_implicit_tenant";
+
+/// How long after implicit sign-up a `tool_not_found` carries the hint.
+pub const IMPLICIT_TENANT_HINT_WINDOW_S: i64 = 600;
+
+/// The `tool_not_found_on_implicit_tenant` hint text.
+pub fn implicit_tenant_hint(created_unix: i64) -> String {
+    format!(
+        "this connection is a new tenant made by implicit sign-up at {created_unix}; if you published this tool \
+         under another tenant, pass that tenant's tenant_key (or Authorization: Bearer) on this call"
+    )
+}
+
+/// Every key a serialized `tool_not_found` refusal's `data` may carry.
+pub const TOOL_NOT_FOUND_FIELDS: &[&str] = &[
+    "error_code", "reason", "tenant", "signup_source", "created_unix", "hint", "anchor", "docs", "request_id",
+    "next_call", "class", "family", "feedback_hint", "help_url", "remedy", "retry",
+];
+
 /// Every key a serialized `tenant_key_missing` refusal's `data` may carry.
 pub const REFUSAL_FIELDS: &[&str] = &[
     "error_code", "reason", "tenant", "hint", GET_A_KEY, "anchor", "field", "expected", "docs", "example", "request_id",
@@ -340,6 +360,13 @@ pub enum AppError {
     RateLimited,
     #[error("tool not found: {0}")]
     ToolNotFound(String),
+    /// PRD-mcphost-refusals-name-their-cause R4: a [`AppError::ToolNotFound`]
+    /// raised for a connection whose own tenant was made by implicit sign-up
+    /// under [`IMPLICIT_TENANT_HINT_WINDOW_S`] ago. Same code, JSON-RPC code and
+    /// message as `ToolNotFound`; `data` adds the connection's OWN tenant and
+    /// the hint, never anything about a tenant that owns the name.
+    #[error("tool not found: {name}")]
+    ToolNotFoundOnImplicitTenant { name: String, tenant: String, created_unix: i64 },
     /// PRD-mcphost-tenant-delete AC7: distinct from [`AppError::ToolNotFound`]
     /// so `admin.tenant_delete` on an unknown tenant reads as
     /// `tenant_not_found`, not `tool_not_found`.
@@ -545,6 +572,7 @@ pub fn all_variants_for_test() -> Vec<AppError> {
             | AppError::TenantDisabled { .. }
             | AppError::RateLimited
             | AppError::ToolNotFound(_)
+            | AppError::ToolNotFoundOnImplicitTenant { .. }
             | AppError::TenantNotFound(_)
             | AppError::InvalidParams(_)
             | AppError::UnknownKind { .. }
@@ -588,6 +616,7 @@ pub fn all_variants_for_test() -> Vec<AppError> {
         AppError::TenantDisabled { disabled_reason: None, claim_url: None },
         AppError::RateLimited,
         AppError::ToolNotFound("t.no_such".into()),
+        AppError::ToolNotFoundOnImplicitTenant { name: s(), tenant: s(), created_unix: 1 },
         AppError::TenantNotFound(s()),
         AppError::InvalidParams(s()),
         AppError::UnknownKind { requested: s(), registered: vec!["http"], aliases: vec![] },
@@ -701,7 +730,7 @@ impl AppError {
             AppError::Forbidden => FORBIDDEN,
             AppError::TenantDisabled { .. } => TENANT_DISABLED,
             AppError::RateLimited => RATE_LIMITED,
-            AppError::ToolNotFound(_) => TOOL_NOT_FOUND,
+            AppError::ToolNotFound(_) | AppError::ToolNotFoundOnImplicitTenant { .. } => TOOL_NOT_FOUND,
             AppError::TenantNotFound(_) => TENANT_NOT_FOUND,
             AppError::InvalidParams(_) => INVALID_PARAMS,
             AppError::UnknownKind { .. } => UNKNOWN_KIND,
@@ -940,6 +969,13 @@ crate::err_code! {
 }
 
 crate::err_code! {
+    pub REQUEST_BODY_TOO_LARGE => "request_body_too_large",
+    Call, AgentFault, false,
+    "Send less than data.limit_bytes per call; store a large payload with host.blob_put and pass its blob id.",
+    data_keys: &["limit_bytes", "content_length", "hint"],
+}
+
+crate::err_code! {
     pub TOO_MANY_TOOLS => "too_many_tools",
     Plan, PlanLimit, false,
     "Remove a tool or move to a plan with a higher tool limit.",
@@ -966,7 +1002,10 @@ crate::err_code! {
 impl AppError {
     fn jsonrpc_code(&self) -> ErrorCode {
         match self {
-            AppError::ToolNotFound(_) | AppError::TenantNotFound(_) | AppError::GroupNotFound(_) => {
+            AppError::ToolNotFound(_)
+            | AppError::ToolNotFoundOnImplicitTenant { .. }
+            | AppError::TenantNotFound(_)
+            | AppError::GroupNotFound(_) => {
                 ErrorCode::RESOURCE_NOT_FOUND
             }
             AppError::UnknownKind { .. }
@@ -1034,7 +1073,9 @@ impl AppError {
                 // PRD-mcphost-implicit-signup requirement 3: the implicit-
                 // signup path's own rate-limit refusal is the same
                 // caller-state gate as `rate_limited` right above it.
-                "rate_limited" | "signup_rate_limited" | "signup_paused" | "banned"
+                // PRD-mcphost-refusals-name-their-cause R1: the body-limit
+                // refusal is JSON-RPC Invalid Request, the `rate_limited` bucket.
+                "rate_limited" | "signup_rate_limited" | "signup_paused" | "banned" | "request_body_too_large"
                 // PRD-mcphost-key-scoped-to-tools R3: a sub-key calling
                 // outside its allowlist is the same caller-credential
                 // problem as `insufficient_scope`.
@@ -1382,6 +1423,24 @@ impl AppError {
         }
     }
 
+    /// PRD-mcphost-refusals-name-their-cause R4: a [`AppError::ToolNotFound`]
+    /// for a tenant made by implicit sign-up at most
+    /// [`IMPLICIT_TENANT_HINT_WINDOW_S`] before `now` becomes
+    /// [`AppError::ToolNotFoundOnImplicitTenant`]; everything else (an older or
+    /// explicit tenant, any other error) is returned unchanged. The caller
+    /// passes the connection's own tenant row fields, so no tool-name lookup
+    /// across tenants exists.
+    pub fn on_implicit_tenant(self, namespace: &str, signup_source: Option<&str>, created_unix: Option<i64>, now: i64) -> Self {
+        match (self, signup_source, created_unix) {
+            (AppError::ToolNotFound(name), Some("implicit"), Some(created))
+                if now.saturating_sub(created) <= IMPLICIT_TENANT_HINT_WINDOW_S =>
+            {
+                AppError::ToolNotFoundOnImplicitTenant { name, tenant: namespace.to_string(), created_unix: created }
+            }
+            (other, _, _) => other,
+        }
+    }
+
     /// Zero-arg convenience for the many call sites with no request-scoped
     /// base URL in hand (hermetic unit tests, `kinds::conformance`'s shape
     /// checks, the free function [`crate::handler::get_parts`]'s own
@@ -1503,6 +1562,15 @@ impl AppError {
                 }
             }
         }
+        // PRD-mcphost-refusals-name-their-cause R4: the connection's own new
+        // tenant, from the bound tenant row only.
+        if let AppError::ToolNotFoundOnImplicitTenant { tenant, created_unix, .. } = &self {
+            obj.insert("reason".to_string(), json!(TOOL_NOT_FOUND_ON_IMPLICIT_TENANT));
+            obj.insert("tenant".to_string(), json!(tenant));
+            obj.insert("signup_source".to_string(), json!("implicit"));
+            obj.insert("created_unix".to_string(), json!(created_unix));
+            obj.insert("hint".to_string(), json!(implicit_tenant_hint(*created_unix)));
+        }
         // R6 (PRD-mcphost-self-offboard-success-envelope): a disabled tenant
         // error carries its reason so callers can distinguish self_offboard
         // from admin_disable.
@@ -1588,7 +1656,7 @@ impl AppError {
         // tool is the one the error names (`ToolNotFound`) or `data.tool`.
         if !obj.contains_key("feedback_hint") {
             let tool = match &self {
-                AppError::ToolNotFound(name) => Some(name.clone()),
+                AppError::ToolNotFound(name) | AppError::ToolNotFoundOnImplicitTenant { name, .. } => Some(name.clone()),
                 _ => obj.get("tool").and_then(Value::as_str).map(str::to_string),
             };
             let id = matches!(
