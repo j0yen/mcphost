@@ -49,6 +49,7 @@ fn params_for(method: &str) -> Value {
     match method {
         "tools/call" => json!({"name": "x"}),
         "resources/read" | "resources/subscribe" | "resources/unsubscribe" => json!({"uri": "mcphost://x"}),
+        "subscriptions/listen" => json!({"notifications": {"toolsListChanged": true}}),
         "prompts/get" => json!({"name": "x"}),
         "completion/complete" => {
             let body: Value = serde_json::from_str(include_str!("fixtures/clive_complete_keyless.json")).expect("fixture is JSON");

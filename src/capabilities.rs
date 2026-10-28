@@ -24,10 +24,14 @@ pub const META_PROTOCOL_VERSION_KEY: &str = "io.modelcontextprotocol/protocolVer
 /// the two resource subscription methods, and `ping` is gone).
 pub const LEGACY_ONLY_METHODS: &[&str] = &["ping", "resources/subscribe", "resources/unsubscribe"];
 
+/// Methods rmcp dispatches only from [`NOT_FOUND_STATUS_FROM`] on: on an older
+/// revision (or with no revision at all) it answers `-32601` for them.
+pub const NEW_ONLY_METHODS: &[&str] = &["subscriptions/listen"];
+
 /// The [`CORE_METHODS`] rmcp routes but this host's handler leaves at rmcp's
 /// default method-not-found, so the allowlist omits them (the R9c drift test
 /// fails when one starts answering, or when a listed one stops).
-pub const CORE_NOT_HANDLED: &[&str] = &["subscriptions/listen", "tasks/get", "tasks/update", "tasks/cancel"];
+pub const CORE_NOT_HANDLED: &[&str] = &["tasks/get", "tasks/update", "tasks/cancel"];
 
 crate::err_code! {
     pub METHOD_UNKNOWN,
@@ -259,9 +263,13 @@ pub fn refusal_status(protocol_version: Option<&str>) -> http::StatusCode {
 
 /// True when the host dispatches `method` on `protocol_version`: the generated
 /// allowlist, [`CORE_METHODS`] plus the client-to-server methods of implemented
-/// rows, minus [`LEGACY_ONLY_METHODS`] from [`NOT_FOUND_STATUS_FROM`] on.
+/// rows, minus [`LEGACY_ONLY_METHODS`] from [`NOT_FOUND_STATUS_FROM`] on and
+/// [`NEW_ONLY_METHODS`] before it.
 pub fn dispatches(method: &str, protocol_version: Option<&str>) -> bool {
     if refusal_status(protocol_version) == http::StatusCode::NOT_FOUND && LEGACY_ONLY_METHODS.contains(&method) {
+        return false;
+    }
+    if NEW_ONLY_METHODS.contains(&method) && !protocol_version.is_some_and(|v| v >= NOT_FOUND_STATUS_FROM) {
         return false;
     }
     (CORE_METHODS.contains(&method) && !CORE_NOT_HANDLED.contains(&method))
