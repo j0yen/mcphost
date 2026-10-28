@@ -101,7 +101,7 @@ impl Kind for EchoKind {
         // (and, via the field-name lookup table, `example`) without any
         // special-casing here -- PRD-mcphost-publish-first-try requirement 2.
         if !spec.is_object() {
-            return vec![KindError::InvalidSpec("spec: must be a JSON object".into())];
+            return vec![super::not_a_json_object("spec", spec)];
         }
         let mut errors = match spec.get("schema") {
             None => vec![KindError::InvalidSpec("spec.schema: is required".into())],

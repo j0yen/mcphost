@@ -18,6 +18,24 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "vaultst_ac01_status_lists_connected_and_unconnected_providers.rs"]
+mod vaultst_ac01_status_lists_connected_and_unconnected_providers;
+#[path = "vaultst_ac02_status_end_user_resolution_matches_connect_link.rs"]
+mod vaultst_ac02_status_end_user_resolution_matches_connect_link;
+#[path = "vaultst_ac03_status_shows_revoked_after_refresh_401.rs"]
+mod vaultst_ac03_status_shows_revoked_after_refresh_401;
+#[path = "vaultst_ac04_admin_vault_stats_per_tenant_per_provider.rs"]
+mod vaultst_ac04_admin_vault_stats_per_tenant_per_provider;
+#[path = "vaultst_ac05_admin_vault_stats_rejects_tenant_key.rs"]
+mod vaultst_ac05_admin_vault_stats_rejects_tenant_key;
+#[path = "vaultst_ac06_provider_remove_revokes_all_tokens.rs"]
+mod vaultst_ac06_provider_remove_revokes_all_tokens;
+#[path = "vaultst_ac07_provider_set_presets_fill_urls.rs"]
+mod vaultst_ac07_provider_set_presets_fill_urls;
+#[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
+mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
+#[path = "vaultst_ac09_live_vault_status_trailer.rs"]
+mod vaultst_ac09_live_vault_status_trailer;
 #[path = "vbd_ac02_three_unvalidated_verbs_now_refuse.rs"]
 mod vbd_ac02_three_unvalidated_verbs_now_refuse;
 #[path = "vbd_ac04_owner_registry_cross_contract.rs"]

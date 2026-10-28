@@ -288,6 +288,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `ARG_OWNERS` in `src/errors.rs`
 - `HOST_FAULT_CODES` in `src/errors.rs`
 - `REFUSAL_FIELDS` in `src/errors.rs`
+- `TOOL_NOT_FOUND_FIELDS` in `src/errors.rs`
 - `CLIENT_TAGS` in `src/examples.rs`
 - `EXAMPLE_USE_CASES` in `src/examples.rs`
 - `NON_RECIPE_DIRS` in `src/examples.rs`

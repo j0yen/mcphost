@@ -2150,7 +2150,7 @@ pub async fn tool_publish(
 
     // Requirement 3 / AC2: every simultaneously-failing field is reported
     // at once, not just the first -- see `AppError::from_kind_violations`.
-    if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
+    if let Some(err) = AppError::from_kind_violations(KindRegistry::validate_all_checked(kind.as_ref(), &spec)) {
         let err = crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), err);
         return Err(crate::hooks::enrich_own_hook_refusal(state, tenant, &spec, err).await);
     }

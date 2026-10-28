@@ -728,7 +728,12 @@ same constants `host.quickstart`'s `limits` object reads.
 - **Request body**: at most 1 MiB (HTTP 413 over that -- see
   `tests/ac16_request_body_too_large.rs`; the "2 MiB" in that AC's own
   description is the oversized test payload used to *prove* the 1 MiB cap,
-  not the cap itself).
+  not the cap itself). The 413 is `Content-Type: application/json` and a
+  JSON-RPC error (`code` -32600, `id` null) whose `data.error_code` is
+  `request_body_too_large`, with `limit_bytes`, `content_length` (the
+  request's own, `null` when chunked) and a `hint` naming `host.blob_put`,
+  plus the registry's `class`, `family`, `remedy`, `help_url` and
+  `request_id` like every error in `/errors.json`.
 - **Concurrency**: 20 concurrent calls host-wide; per tenant, 4 per tenant on the free plan
   (10 on pro). A refusal past your own tenant's cap is `concurrency_exceeded` with `in_flight`, `limit`,
   `scope: "tenant"` and a `retry_after_ms`; past the host-wide cap it's

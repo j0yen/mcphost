@@ -440,7 +440,7 @@ impl PythonSpec {
 
 fn parse_spec(spec: &Value) -> Result<PythonSpec, KindError> {
     if !spec.is_object() {
-        return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
+        return Err(super::not_a_json_object("spec", spec));
     }
     let raw: PythonSpecRaw = serde_path_to_error::deserialize(spec.clone())
         .map_err(|e| super::spec_parse_error(spec, e, python_field_hint))?;

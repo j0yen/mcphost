@@ -2,7 +2,7 @@
   "_provisional": {
     "suite_core_13": {
       "pending": true,
-      "derived_s": 26.0,
+      "derived_s": 33.0,
       "since": "7d38fd133c885b9c8ed885939c4139087e583edf"
     }
   },
@@ -21,9 +21,9 @@
   "suite_core_08": 367.62,
   "suite_core_09": 225.16,
   "suite_core_10": 288.38,
-  "suite_core_11": 374.43,
-  "suite_core_12": 6.62,
-  "suite_core_13": 26.0,
+  "suite_core_11": 373.43,
+  "suite_core_12": 351.81,
+  "suite_core_13": 33.0,
   "suite_env_core_01": 56.09,
   "suite_env_sandbox_01": 12.26,
   "suite_sandbox_01": 1.41,

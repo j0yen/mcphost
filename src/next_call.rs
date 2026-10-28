@@ -73,7 +73,7 @@ impl ErrorCtx {
     /// no call-site help.
     pub fn from_error(err: &AppError) -> Self {
         let mut ctx = Self::default();
-        if let AppError::ToolNotFound(name) = err {
+        if let AppError::ToolNotFound(name) | AppError::ToolNotFoundOnImplicitTenant { name, .. } = err {
             ctx.tool = Some(name.clone());
         }
         if let AppError::UnknownKind { registered, .. } = err {
@@ -222,7 +222,7 @@ impl AppError {
             | AppError::InsufficientScope
             | AppError::AuthConflict => NextCall::new("host.whoami", json!({})),
             AppError::RateLimited => NextCall::wait("host.whoami", ctx.retry_after_s.unwrap_or(5)),
-            AppError::ToolNotFound(_) | AppError::TooManyTools(_) => {
+            AppError::ToolNotFound(_) | AppError::ToolNotFoundOnImplicitTenant { .. } | AppError::TooManyTools(_) => {
                 NextCall::new("host.tool.list", json!({}))
             }
             AppError::InvalidSpec(_) | AppError::CallTimeout(_) | AppError::RegistryRejected(_) => {
