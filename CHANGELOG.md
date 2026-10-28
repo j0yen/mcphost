@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.119.0 — 2026-10-28
+
+Released by wm-build land: loop: mcphost-synthetic-tenant-purge.
+
 ## v0.118.0 — 2026-10-25
 
 Released by wm-build land: loop: mcphost-resource-listing-shape-in-contract.
