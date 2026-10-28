@@ -48,6 +48,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/cron.rs` (<1k) PRD-mcphost-schedules P0 requirement 2: a hand-rolled five-field cron parser and its `next_after` occurrenc...
 - `src/db.rs` (~26k) SQLite storage.
   - sections: consent (PRD-mcphost-agent-consent) | messaging (PRD-mcphost-agent-inbox) | connection factory and startup pragma audit | contention counters | PRD-mcphost-drift-review row types | PRD-mcphost-hosted-authorization-server row types | PRD-mcphost-federated-end-user-login row types | invites (PRD-mcphost-invite-links) | row policy (PRD-mcphost-row-policy)
+- `src/db/tenant_purge.rs` (<1k) Synthetic tenant expire and purge stages (PRD-mcphost-synthetic-tenant-purge): the idle-clock disable, the...
 - `src/deadletters.rs` (<1k) PRD-mcphost-event-trigger-from-webhook: every refused `POST /hooks/...` delivery and every event-fired run...
 - `src/delegation.rs` (<1k) PRD-mcphost-key-delegate-child-keys R2: the subset rule.
 - `src/delegation_recipe.rs` (<1k) PRD-mcphost-delegation-recipes-and-quickstart R1: the "sub-agent key" recipe, generated from the scope regi...
@@ -185,7 +186,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/registry_manifest.rs` (<1k) `mcphost registry-manifest` (PRD-mcphost-registry-listing P0 requirements 1/2): generates the public MCP re...
 - `src/resources.rs` (<1k) PRD-mcphost-resources-for-tenant-data: a tenant's tables, docs, run logs and tool specs as MCP resources at...
 - `src/resume.rs` (<1k) PRD-mcphost-resume-tool: `host.resume {}` -- one call that answers "what was I doing?" for a returning agen...
-- `src/retention.rs` (<1k) PRD-mcphost-data-retention: per-table retention windows, the nightly prune, and the disk-floor write guard.
+- `src/retention.rs` (~1k) PRD-mcphost-data-retention: per-table retention windows, the nightly prune, and the disk-floor write guard.
 - `src/retry_policy.rs` (<1k) PRD-mcphost-retry-policy-table-generated: the one table that answers "is this error worth retrying, how soo...
 - `src/returns.rs` (<1k) PRD-mcphost-second-session-nudge: the daily sweep that gives a one-and-done tenant one message back.
 - `src/rowpolicy/audit.rs` (<1k) The hash-chained audit record -- requirement 6/7 (AC7/AC8).
@@ -274,6 +275,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `STATUSES` in `src/consent.rs`
 - `SIGNUP_ARGS` in `src/control.rs`
 - `USAGE_BY` in `src/control.rs`
+- `CROSS_REFS` in `src/db/tenant_purge.rs`
 - `DEAD_LETTER_REASONS` in `src/deadletters.rs`
 - `DISPATCH_TABLE` in `src/dispatch_table.rs`
 - `ALLOWED_MIMES` in `src/docs.rs`
@@ -357,6 +359,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `RESUME_NEXT` in `src/resume.rs`
 - `LIFECYCLE_STAGES` in `src/retention.rs`
 - `POLICY_TABLES` in `src/retention.rs`
+- `PURGE_DISABLED_REASONS` in `src/retention.rs`
 - `RETRY_POLICY` in `src/retry_policy.rs`
 - `SAMPLING_ERROR_CODES` in `src/sampling.rs`
 - `OVERRIDES` in `src/sdk_python.rs`

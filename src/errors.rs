@@ -2471,6 +2471,46 @@ crate::err_code! {
 }
 
 crate::err_code! {
+    pub NAMESPACE_RESERVED,
+    code: "namespace_reserved", family: Storage, class: AgentFault, retryable: false,
+    remedy: "A deleted tenant held this namespace and it is never issued again; mint with another namespace (a sign-up draws a new one itself).",
+}
+
+/// PRD-mcphost-synthetic-tenant-purge R6: a `tenants` insert named a namespace in
+/// `namespace_tombstones`. The `table_row_conflict` shape (`constraint`, `table`,
+/// `column`), so a caller that already handles a taken namespace handles this too.
+pub fn namespace_reserved() -> AppError {
+    AppError::Structured {
+        code: NAMESPACE_RESERVED,
+        message: "row conflicts on namespace (reserved)".to_string(),
+        data: serde_json::json!({"constraint": "reserved", "table": "namespace_tombstones", "column": "namespace"}),
+    }
+}
+
+/// Whether `e` says the drawn namespace cannot be used: reserved by a tombstone or taken by a
+/// live tenant (the `UNIQUE` conflict on `tenants.namespace`). Any other conflict, e.g. on the
+/// key hash, is not fixed by a new draw.
+pub fn is_namespace_conflict(e: &AppError) -> bool {
+    match e {
+        AppError::Structured { code, .. } if *code == NAMESPACE_RESERVED => true,
+        AppError::Structured { code, data, .. } if *code == crate::tables::TABLE_ROW_CONFLICT => {
+            data["table"] == "tenants" && data["column"] == "namespace"
+        }
+        _ => false,
+    }
+}
+
+/// The error a mint returns after `NAMESPACE_DRAW_LIMIT` draws all failed: `table_row_conflict`
+/// on `tenants.namespace`, as a taken namespace has always been.
+pub fn namespace_draws_exhausted() -> AppError {
+    AppError::Structured {
+        code: crate::tables::TABLE_ROW_CONFLICT,
+        message: "row conflicts on namespace (unique)".to_string(),
+        data: serde_json::json!({"constraint": "unique", "table": "tenants", "column": "namespace"}),
+    }
+}
+
+crate::err_code! {
     pub AGENT_NOT_FOUND,
     code: "agent_not_found", family: Share, class: AgentFault, retryable: false,
     remedy: "Check the address with host.agent.lookup, then re-send to a handle that exists.",

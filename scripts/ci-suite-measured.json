@@ -4,6 +4,11 @@
       "pending": true,
       "derived_s": 26.0,
       "since": "7d38fd133c885b9c8ed885939c4139087e583edf"
+    },
+    "suite_env_core_02": {
+      "pending": true,
+      "derived_s": 16.0,
+      "since": "ff8e2b68232c90676be052dceb3703d73fa5e0d8"
     }
   },
   "lib": 8.49,
@@ -25,6 +30,7 @@
   "suite_core_12": 6.62,
   "suite_core_13": 26.0,
   "suite_env_core_01": 56.09,
+  "suite_env_core_02": 16.0,
   "suite_env_sandbox_01": 12.26,
   "suite_sandbox_01": 1.41,
   "suite_sandbox_02": 118.06,

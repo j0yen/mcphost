@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 pub mod sypul;
+pub mod tenp;
 pub mod tenx;
 pub mod texp;
 pub mod testoauth;
@@ -2489,6 +2490,15 @@ impl EnvGuard {
             std::env::set_var(key, value);
         }
         Self { key, prev, _permit: permit }
+    }
+
+    /// Gives the guarded variable a new value while the guard is held (a test that walks a
+    /// variable through several values); `drop` still restores what it was before the guard.
+    pub fn replace(&self, value: &str) {
+        // SAFETY: see `set` above -- `_permit` is held for the guard's whole life.
+        unsafe {
+            std::env::set_var(self.key, value);
+        }
     }
 
     /// Like [`set`](Self::set), but ensures `key` is absent rather than

@@ -36,6 +36,32 @@ pub fn generate_namespace() -> String {
     format!("t_{}", to_hex(&bytes))
 }
 
+/// The namespace seam's env var: a comma-separated list [`draw_namespace`] hands out in order
+/// before falling back to [`generate_namespace`]. Read only by a `test-support` build.
+pub const NAMESPACE_CANDIDATES_ENV: &str = "MCPHOST_TEST_ONLY_NAMESPACE_CANDIDATES";
+
+/// The next namespace a mint offers (PRD-mcphost-synthetic-tenant-purge R6): the next entry of
+/// [`NAMESPACE_CANDIDATES_ENV`] while the list lasts (`test-support` builds only; a release
+/// build never reads it), then a random one. The list restarts when the variable is unset or
+/// changes, so each test sees its own list from the first entry.
+pub fn draw_namespace() -> String {
+    #[cfg(feature = "test-support")]
+    {
+        use std::sync::Mutex;
+        static CURSOR: Mutex<(String, usize)> = Mutex::new((String::new(), 0));
+        let raw = std::env::var(NAMESPACE_CANDIDATES_ENV).unwrap_or_default();
+        let mut cursor = CURSOR.lock().unwrap_or_else(|e| e.into_inner());
+        if cursor.0 != raw {
+            *cursor = (raw.clone(), 0);
+        }
+        if let Some(next) = raw.split(',').filter(|c| !c.is_empty()).nth(cursor.1) {
+            cursor.1 += 1;
+            return next.to_string();
+        }
+    }
+    generate_namespace()
+}
+
 /// PRD-mcphost-handoff-token requirement 1: a single-use handoff token
 /// `signup(handoff: true)` returns in place of the raw tenant key. Same
 /// entropy as [`generate_key`] (32 random bytes, hex) with a `ho_` prefix
