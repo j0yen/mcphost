@@ -268,6 +268,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `CORE_METHODS` in `src/capabilities.rs`
 - `CORE_NOT_HANDLED` in `src/capabilities.rs`
 - `LEGACY_ONLY_METHODS` in `src/capabilities.rs`
+- `NEW_ONLY_METHODS` in `src/capabilities.rs`
 - `EXIT_CODE_TABLE` in `src/client.rs`
 - `REFUSAL_TABLE` in `src/compat_report.rs`
 - `STATUSES` in `src/consent.rs`
