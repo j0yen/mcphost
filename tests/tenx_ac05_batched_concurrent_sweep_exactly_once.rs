@@ -107,7 +107,11 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
     add("paid", &|f| f.paid_unix = Some(now - DAY));
     add("synthetic-null", &|f| f.synthetic = None);
     add("billing-ref", &|f| f.billing_ref = Some("cus_test"));
-    add("before-floor", &|f| f.created_unix = now - 11 * DAY);
+    // A pre-floor row last seen under the window is not idle (the floor starts the clock, R2): with the touched victim and idle-1h, three rows are not yet due.
+    add("before-floor-recent", &|f| {
+        f.created_unix = now - 11 * DAY;
+        f.last_seen_unix = Some(now - 3600);
+    });
     add("explicit", &|f| f.signup_source = Some("explicit"));
     add("unclassified", &|f| f.origin = "unclassified");
     add("source-null", &|f| f.signup_source = None);
@@ -137,15 +141,16 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
     let rows = log_rows(&conn);
     assert_eq!(rows.len(), 2, "one prune_log row per run");
     let key = |k: &str| format!("synthetic_implicit_tenants.{k}");
-    let expired: i64 = rows.iter().map(|(_, d)| d[&key("expired")].as_i64().unwrap()).sum();
-    assert_eq!(expired as usize, SUBJECTS - 1, "two runs split the work, each row claimed once");
+    // PRD-mcphost-synthetic-tenant-purge R1: the two runs share one sweep mutex, so one does all the
+    // work and the other writes a `busy` row and changes nothing.
+    let (worked, busy): (Vec<_>, Vec<_>) = rows.iter().partition(|(_, d)| d.contains_key(&key("expired")));
+    assert_eq!((worked.len(), busy.len()), (1, 1), "{rows:?}");
+    assert_eq!(busy[0].1["synthetic_implicit_tenants"]["busy"], true, "{rows:?}");
+    let expired = worked[0].1[&key("expired")].as_i64().unwrap();
+    assert_eq!(expired as usize, SUBJECTS - 1, "the sweep that ran claimed every subject once");
     assert!(
-        rows.iter().all(|(ok, d)| *ok && d[&key("skipped_billing")] == 1 && d[&key("would_expire")] == 1),
+        rows.iter().all(|(ok, _)| *ok) && worked[0].1[&key("skipped_billing")] == 1 && worked[0].1[&key("would_expire")] == 3,
         "{rows:?}"
-    );
-    assert!(
-        rows.iter().all(|(_, d)| d[&key("expired")].as_i64().unwrap() <= SUBJECTS as i64),
-        "bounded"
     );
 
     // An empty set: nothing left to claim, no backlog.

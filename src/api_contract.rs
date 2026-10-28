@@ -49,15 +49,35 @@ pub fn tenant_lifecycle() -> Value {
             "origin": crate::retention::SELECTOR_ORIGIN,
             "synthetic": "not_null",
             "claimed": false,
+            "owner_verified": false,
             "paid": false,
             "billing_ref": null,
-            "minted_at_or_after_policy_floor": true,
+            "minted_at_or_after_policy_floor": false,
         },
         "env_var": crate::retention::SYNTHETIC_IMPLICIT_ENV,
         "default_days": crate::retention::contract_default_days(),
-        "zero_disables": true,
+        "zero_disables": false,
         "disabled_reason": crate::auth_shape::IDLE_EXPIRED_REASON,
+        "floor_rule": "idle_from_floor",
+        "purge": synthetic_purge(),
         "external_unclaimed": external_unclaimed(),
+    })
+}
+
+/// PRD-mcphost-synthetic-tenant-purge R5: the purge stage nested under [`tenant_lifecycle`], built from
+/// the constants the stage reads. `budget_secs` is the constant; the test-only wall-budget override
+/// is never published.
+pub fn synthetic_purge() -> Value {
+    json!({
+        "grace_days": crate::retention::contract_purge_grace_days(),
+        "grace_env": crate::retention::SYNTHETIC_PURGE_GRACE_ENV,
+        "batch": crate::retention::PURGE_BATCH,
+        "budget_secs": crate::retention::PURGE_BUDGET_SECS,
+        "vacuum_pages": crate::retention::PURGE_VACUUM_PAGES,
+        "disabled_reasons": crate::retention::PURGE_DISABLED_REASONS,
+        "signup_source": "any",
+        "admin_event": crate::retention::SYNTHETIC_PURGE_ACTION,
+        "first_sweep_reports_only": true,
     })
 }
 

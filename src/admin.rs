@@ -611,13 +611,22 @@ pub async fn dependency_reaudit(state: &AppState) -> Result<Value, AppError> {
 /// P2 requirement 7 (AC10): run one retention-prune cycle on demand and
 /// return its per-table deleted counts -- the same [`crate::db::Db::prune_once`]
 /// the nightly scheduler calls.
-pub async fn prune_now(state: &AppState) -> Result<Value, AppError> {
+pub async fn prune_now(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    if args.get("dry_run").and_then(Value::as_bool).unwrap_or(false) {
+        // PRD-mcphost-synthetic-tenant-purge R4: the numbers the sweep would log, nothing written.
+        return Ok(json!({ crate::retention::SYNTHETIC_IMPLICIT_POLICY: state.db.synthetic_dry_run().await? }));
+    }
     let report = state.db.prune_once().await?;
-    Ok(json!({
+    let mut out = json!({
         "started_unix": report.started_unix,
         "finished_unix": report.finished_unix,
         "deleted": report.deleted,
-    }))
+        "busy": report.busy,
+    });
+    if let (Some(block), Some(obj)) = (report.synthetic, out.as_object_mut()) {
+        obj.insert(crate::retention::SYNTHETIC_IMPLICIT_POLICY.to_string(), block);
+    }
+    Ok(out)
 }
 
 /// PRD-mcphost-sandbox-ready requirement 4 (AC5): re-runs the sandbox
@@ -2137,6 +2146,7 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         "signups_human": signups_human,
         "implicit_second_signup_blocked": implicit_second_signup_blocked,
         "tenants_idle_expired": state.db.count_tenants_idle_expired().await?,
+        "tenants_synthetic_purged": state.db.count_tenants_synthetic_purged().await?,
         "implicit_zero_ok_calls": implicit_zero_ok_calls,
         "implicit_signup_rolled_back": implicit_signup_rolled_back,
         "implicit_peer_refused": {"fleet": refused_fleet, "external": refused_external},

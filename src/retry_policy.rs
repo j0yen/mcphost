@@ -106,6 +106,7 @@ pub const RETRY_POLICY: &[RetryRow] = &[
     yes("storage", exp(500, 8000), 2, BACKOFF),
     yes("internal", exp(500, 8000), 2, BACKOFF),
     no("registry_disabled", NO),
+    no(crate::errors::NAMESPACE_RESERVED, FIX),
     no("namespace_unverified", NO),
     no("registry_rejected", NO),
     no("share_quota_exceeded", NO),

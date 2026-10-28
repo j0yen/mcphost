@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-refusals-name-their-cause.md (test_prefix: refusals)",
+  "ac_test_map_prd": "PRD-mcphost-synthetic-tenant-purge.md (test_prefix: tenp)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs",
-    "AC2": "tests/refusals_ac02_tool_not_found_names_the_implicit_tenant.rs",
-    "AC3": "tests/refusals_ac03_one_builder_for_both_body_limit_sites.rs",
-    "AC4": "tests/refusals_ac04_request_body_too_large_is_a_registered_error.rs",
-    "AC5": "tests/refusals_ac05_access_line_names_rpc_tool_and_reply.rs",
-    "AC6": "tests/refusals_ac06_non_object_spec_names_the_received_type.rs",
-    "AC7": "deferred: Live (prod; evidence: AC 7 command in § Live evidence commands showing 413 application/json and jq_rc=0)"
+    "AC1": "tests/tenp_ac01_fixture_purge_batches_exactly_once_under_load.rs",
+    "AC2": "tests/tenp_ac02_cascade_complete_and_entangled_subject_held.rs",
+    "AC3": "tests/tenp_ac03_every_tenant_foreign_key_is_indexed_and_namespaces_are_reserved.rs",
+    "AC4": "tests/tenp_ac04_pre_floor_rows_expire_from_the_floor_within_a_wall_budget.rs",
+    "AC5": "tests/tenp_ac05_purge_waits_for_grace_reports_first_and_reclaims_pages_in_bounds.rs",
+    "AC6": "tests/tenp_ac06_dry_run_writes_nothing_funnel_counts_purges_and_contract_publishes_the_policy.rs",
+    "AC7": "tests/tenp_ac07_only_the_both_markers_unclaimed_row_is_disabled_or_deleted_and_namespaces_are_not_reissued.rs",
+    "AC8": "deferred: Live (prod; evidence: AC 8 command in the PRD Live evidence commands)"
   },
   "ac_test_map_by_prefix": {
     "mcphost-resource-listing-shape-in-contract": {
@@ -2552,6 +2553,16 @@
       "AC6": "tests/sublis_ac06_listen_scale_and_shutdown.rs",
       "AC7": "deferred: Live (prod; evidence: AC 7 command in the PRD Live evidence commands)",
       "AC8": "tests/sublis_ac08_initialize_advertises_list_changes_with_proof.rs"
+    },
+    "refusals": {
+      "_prd": "PRD-mcphost-refusals-name-their-cause.md (test_prefix: refusals)",
+      "AC1": "tests/refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs",
+      "AC2": "tests/refusals_ac02_tool_not_found_names_the_implicit_tenant.rs",
+      "AC3": "tests/refusals_ac03_one_builder_for_both_body_limit_sites.rs",
+      "AC4": "tests/refusals_ac04_request_body_too_large_is_a_registered_error.rs",
+      "AC5": "tests/refusals_ac05_access_line_names_rpc_tool_and_reply.rs",
+      "AC6": "tests/refusals_ac06_non_object_spec_names_the_received_type.rs",
+      "AC7": "deferred: Live (prod; evidence: AC 7 command in § Live evidence commands showing 413 application/json and jq_rc=0)"
     }
   }
 }

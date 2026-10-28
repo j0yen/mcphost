@@ -28,6 +28,12 @@ mod syreg_ac02_source_kinds_render_once_everywhere;
 mod tblurlp_ac03_driver_on_loopback;
 #[path = "tcse_ac07_registry_is_the_only_spelling.rs"]
 mod tcse_ac07_registry_is_the_only_spelling;
+#[path = "tenp_ac02_same_tenant_children_writers_copy_the_parents_tenant.rs"]
+mod tenp_ac02_same_tenant_children_writers_copy_the_parents_tenant;
+#[path = "tenp_ac03_every_tenant_foreign_key_is_indexed_and_namespaces_are_reserved.rs"]
+mod tenp_ac03_every_tenant_foreign_key_is_indexed_and_namespaces_are_reserved;
+#[path = "tenp_ac05_no_sweep_source_runs_a_full_vacuum.rs"]
+mod tenp_ac05_no_sweep_source_runs_a_full_vacuum;
 #[path = "thand_ac02_status_enum_source_of_truth.rs"]
 mod thand_ac02_status_enum_source_of_truth;
 #[path = "toolname_ac03_tools_list_alias_entries.rs"]

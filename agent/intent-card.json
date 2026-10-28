@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-refusals-name-their-cause.md",
-  "intent_slug": "mcphost-refusals-name-their-cause",
-  "root_motivation": "WHO: any MCP client of mcphost.dev (python `mcp` 2.1.1, the TS SDK 1.31.0, curl) and rb, the operator who reads `journalctl -u mcphost` on mcphost-1. WHAT: a client needs a refusal body it can branch on, and an operator needs one journal line per call that says which tool was called and how it ended. WHY NOT TODAY, from mcphost@7d38fd13: (1) the two body-limit sites, `refuse_unimplemented_methods` (`src/http.rs:1871-1882`) and `deliver_client_response` (`src/http.rs:1981-1998`), return `StatusCode::PAYLOAD_TOO_LARGE.into_response()`, a bare status with no body and no content-type, and python `mcp` 2.1.1 only parses an error body on a 4xx when `Content-Type` starts with `application/json` (`mcp/client/streamable_http.py:342-360`), so the client substitutes a stand-in that names no limit; (2) `protocol_version_and_log` (`src/http.rs:1128-1166`) logs `mcp_name` from the optional `Mcp-Name` header and the HTTP status, so a JSON-RPC refusal rides a `status=200` line and the tool name nev...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-synthetic-tenant-purge.md",
+  "intent_slug": "mcphost-synthetic-tenant-purge",
+  "root_motivation": "**Who.** Joe as operator of mcphost-1 (one 1.9 GB SQLite file in WAL mode serving every tenant), rb who reads its `prune_log` and the live judge that reads `/contract.json`.",
   "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the test server and no tenant key, When a tools/call of host.whoami padded inside params._meta to 1,048,577 bytes is POSTed to /mcp, Then the reply is HTTP 413, Content-Type application/json and the \u00a7 413 body, never 401 or tenant_key_missing, and the tenants row count is unchanged; the same shape at exactly 1,048,576 bytes is answered 200 and mints one tenant (row count +1); a same-size non-JSON body gets the same 413.",
-      "test": "tests/refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs"
+      "description": "Given the \u00a7 Fixture (6,000 due subjects, 20 heavy) and a host.tool_call loop on a live tenant, When the scheduled sweep and admin.prune_now start together with a budget one sweep cannot finish, Then one reports busy, every subject is deleted exactly once over two or more batches, held_over equals the remainder, loop p95 stays under 250 ms and under max(2\u00d7 the idle baseline, 50 ms), and per-batch wall time in the PR body.",
+      "test": "tests/tenp_ac01_fixture_purge_batches_exactly_once_under_load.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given tenant A published t_ac2 and keyless B became an implicit tenant under 600 s ago, When B calls tools/call t_ac2 and a name no tenant owns, Then both -32002 bodies carry data.reason tool_not_found_on_implicit_tenant, data.tenant = B and the \u00a7 Hint fields, keys a subset of the listed set, no byte of A's distinctive namespace or any key; with A's tenant_key t_ac2 succeeds; B older than 600 s gets no data.reason.",
-      "test": "tests/refusals_ac02_tool_not_found_names_the_implicit_tenant.rs"
+      "description": "Given a subject with a row in every table naming tenants by key or name (enumerated at test time; two-sided set = \u00a7 Cascade) and, per two-sided column, a synthetic and a claimed two-marker tenant's row naming it, When sweeps run, Then it is held, held_entangled names each claimed-owned column, no row of either tenant changes; claimed rows gone, it is purged, synthetic rows get their \u00a7 Cascade outcome and no row names it.",
+      "test": "tests/tenp_ac02_cascade_complete_and_entangled_subject_held.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given both body-limit sites (refuse_unimplemented_methods, deliver_client_response in src/http.rs), When either refuses, Then one shared builder writes the \u00a7 413 body: a unit test covers Some(content_length) and None, HTTP tests at refuse_unimplemented_methods cover 1,048,577 bytes with Content-Length and a chunked body (content_length null), deliver_client_response calls that builder, and drain_gate keeps its 503 JSON.",
-      "test": "tests/refusals_ac03_one_builder_for_both_body_limit_sites.rs"
+      "description": "Given the migrated schema, When a test lists every foreign-key column referencing tenants through pragma_foreign_key_list, Then each has an index whose first column it is, the migration adding the missing ones takes the next free number at land time and also creates namespace_tombstones holding each tenant-delete admin_events namespace, and dropping any one of those indexes inside the test fails it naming the table and column.",
+      "test": "tests/tenp_ac03_every_tenant_foreign_key_is_indexed_and_namespaces_are_reserved.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the error registry (src/error_registry.rs, the ERROR_CODES generator behind /errors.json and host.errors), When request_body_too_large is added, Then it is declared through err_code! with class, family and remedy so /errors.json lists it, the 413 body's data carries those fields plus request_id like every registered error, and README's request-body line names the body contract.",
-      "test": "tests/refusals_ac04_request_body_too_large_is_a_registered_error.rs"
+      "description": "Given implicit synthetic unclaimed rows minted before the floor, When the sweep runs with the window elapsed since the floor, Then each is disabled idle_expired with a lifecycle event, the expire stage stops at the wall budget reporting held_over, a row idle under the window is untouched, and the sweep with no prior prune_log row carrying purge_due_unix logs pre_floor with a \u2264 200-row pre_floor_sample, no key or address.",
+      "test": "tests/tenp_ac04_pre_floor_rows_expire_from_the_floor_within_a_wall_budget.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the http request line, When any /mcp POST completes, Then the line carries rpc=<method|batch|\"\">, tool=<tools/call name|\"\">, reply=ok|jsonrpc_error:<code>|http:<status>|batch by the \u00a7 Reply class mechanism (response extension, line at body end), a 413 adds content_length= and limit=, and a test with one global buffered subscriber runs two concurrent calls of different reply classes and asserts each line by tool=.",
-      "test": "tests/refusals_ac05_access_line_names_rpc_tool_and_reply.rs"
+      "description": "Given two-marker rows disabled idle_expired or self_offboard, When sweeps run on a mock clock, Then none is deleted before MAX(last_seen or created, last lifecycle event, floor) + grace, a sweep with no prior prune_log row carrying purge_due_unix only reports would_purge and cross_refs, later sweeps delete via delete_tenant_as logging tenant_purge_synthetic; each batch ends in incremental_vacuum(PURGE_VACUUM_PAGES), no VACUUM.",
+      "test": "tests/tenp_ac05_purge_waits_for_grace_reports_first_and_reclaims_pages_in_bounds.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the seven registered kinds (kinds::names()) and chain spec.steps[i], When spec or a step is not a JSON object, Then the -32602 message keeps each site's current prefix and ends with \", received <string|array|number|boolean|null>\", data.received_type carries the same word, the object check runs once in the registry before any kind's validate, and one test iterates kinds::names() so a kind added later cannot skip it.",
-      "test": "tests/refusals_ac06_non_object_spec_names_the_received_type.rs"
+      "description": "Given purge-due and pre-floor rows, When admin.prune_now is called with dry_run true, Then it returns would_expire, pre_floor, would_purge, purge_due_unix, cross_refs by column and class and held_entangled, writes no prune_log row and deletes nothing; admin.funnel carries tenants_synthetic_purged; contract dump shows the \u00a7 Contract keys and contract --check fails when a constant moves.",
+      "test": "tests/tenp_ac06_dry_run_writes_nothing_funnel_counts_purges_and_contract_publishes_the_policy.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 7 command in \u00a7 Live evidence commands runs from the build host with no credential, Then its curl line begins 413 application/json with a byte count above 0, the last line is jq_rc=0 on error_code request_body_too_large and limit_bytes 1048576, and no temp file remains (Live; evidence: AC 7 command in \u00a7 Live evidence commands showing 413 application/json and jq_rc=0)",
-      "test": "deferred: Live (prod; evidence: AC 7 command in \u00a7 Live evidence commands showing 413 application/json and jq_rc=0)"
+      "description": "Given the \u00a7 Classes rows, When sweeps pass the window and grace, Then only the both-markers unclaimed row gains event, flag and deletion, the other eight none, even if a class flips between mark and delete; grace env off purges nothing, idle-days env off disables or purges nothing; a disabled subject's old tenant_key gets tenant_key_invalid and moves no due date, and a keyless new peer still mints, never a purged namespace.",
+      "test": "tests/tenp_ac07_only_the_both_markers_unclaimed_row_is_disabled_or_deleted_and_namespaces_are_not_reissued.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after this PRD's deploy, When the AC 8 command in \u00a7 Live evidence commands runs from the build host with no credential, Then jq prints true on purge.grace_days 14, floor_rule idle_from_floor, zero_disables false and self_offboard among the purge reasons, and the last line is jq_rc=0 (Live; evidence: AC 8 command in \u00a7 Live evidence commands showing true and jq_rc=0)",
+      "test": "deferred: Live (prod; evidence: AC 8 command in the PRD Live evidence commands)"
     }
   ],
   "scope": [

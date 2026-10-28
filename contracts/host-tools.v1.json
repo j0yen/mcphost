@@ -377,17 +377,33 @@
       ],
       "warn_lead_days": 10
     },
+    "floor_rule": "idle_from_floor",
     "policy": "synthetic_implicit_tenants",
+    "purge": {
+      "admin_event": "tenant_purge_synthetic",
+      "batch": 500,
+      "budget_secs": 120,
+      "disabled_reasons": [
+        "idle_expired",
+        "self_offboard"
+      ],
+      "first_sweep_reports_only": true,
+      "grace_days": 14,
+      "grace_env": "MCPHOST_RETENTION_SYNTHETIC_PURGE_GRACE_DAYS",
+      "signup_source": "any",
+      "vacuum_pages": 2048
+    },
     "selector": {
       "billing_ref": null,
       "claimed": false,
-      "minted_at_or_after_policy_floor": true,
+      "minted_at_or_after_policy_floor": false,
       "origin": "synthetic",
+      "owner_verified": false,
       "paid": false,
       "signup_source": "implicit",
       "synthetic": "not_null"
     },
-    "zero_disables": true
+    "zero_disables": false
   },
   "tools": [
     {
