@@ -11999,6 +11999,9 @@
   },
   "host.table.query_diagnose": {
     "properties": {
+      "data": {
+        "type": "object"
+      },
       "diagnosis": {
         "properties": {
           "band": {
@@ -12965,16 +12968,41 @@
       "warnings": {
         "items": {
           "properties": {
-            "ceiling": {"type": "integer"},
-            "ceiling_field": {"type": "string"},
-            "code": {"type": "string"},
-            "effective": {"type": "integer"},
-            "field": {"type": "string"},
-            "message": {"type": "string"},
-            "plan": {"type": "string"},
-            "requested": {"type": "integer"}
+            "ceiling": {
+              "type": "integer"
+            },
+            "ceiling_field": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "effective": {
+              "type": "integer"
+            },
+            "field": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "plan": {
+              "type": "string"
+            },
+            "requested": {
+              "type": "integer"
+            }
           },
-          "required": ["ceiling", "ceiling_field", "code", "effective", "field", "message", "plan", "requested"],
+          "required": [
+            "ceiling",
+            "ceiling_field",
+            "code",
+            "effective",
+            "field",
+            "message",
+            "plan",
+            "requested"
+          ],
           "type": "object"
         },
         "type": "array"

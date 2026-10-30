@@ -32075,7 +32075,7 @@
       "unpaged_reason": "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies"
     },
     {
-      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit. handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool.",
+      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit. handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool. A table the tenant never declared answers table_not_found and an unknown column table_column_not_found (-32602), each with data.candidates and data.hint.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -32551,6 +32551,12 @@
           }
         },
         "properties": {
+          "data": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "diagnosis": {
             "properties": {
               "band": {
@@ -47706,7 +47712,7 @@
     },
     {
       "alias_of": "host.table.query",
-      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit. handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool.",
+      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit. handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool. A table the tenant never declared answers table_not_found and an unknown column table_column_not_found (-32602), each with data.candidates and data.hint.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

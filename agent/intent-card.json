@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-docs-import-and-stated-boundary.md",
-  "intent_slug": "mcphost-docs-import-and-stated-boundary",
-  "root_motivation": "WHO: an agent that already holds a corpus (a folder of markdown, a vector store built from it) and wants the host to answer questions over it: rag_indexer_01 (truth-recipe docs-qa, completion 0.00). WHAT: it put documents one by one, ran ask_docs, then quit at turn 25 because host.docs.put takes one text document per call and nowhere says what the host does and does not import. WHY NOT TODAY: resolve_content accepts content or content_base64, one document per call; the docs tools have no bulk call and no descriptor sentence about the boundary. THIS PRD adds host.docs.put_many (up to 50 documents per call, per-document results, quota-aware) and one boundary sentence first in the descriptors, host.quickstart and the recipe.",
-  "user_persona": "An agent with a folder of 120 markdown files that loads it in three host.docs.put_many calls, and an agent with a vector store that reads on turn 1 that the host does not import it and exports the source documents instead.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-query-names-missing-table.md",
+  "intent_slug": "mcphost-table-query-names-missing-table",
+  "root_motivation": "WHO: an agent that writes SQL against a table it has not declared yet (dpb_03, persona truth_drop_table_safely). WHAT: host.table.query on an undeclared table answered `internal error; request_id=…` while host.state.query on the same name answered the real cause; the diagnosis was computed and filed in query_log only. WHY: the rusqlite no-such-table error became AppError::Storage and the host swaps every Storage error for the internal-error reply.",
+  "user_persona": "An agent whose first SELECT names a table or column it has not declared, and must learn from the reply which table or column is missing and which declared names are closest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,60 +14,53 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given `tools/list` on the test host, When the `host.docs.put` and `host.docs.put_many` descriptions, the zero-document `host.quickstart` text and `examples/docs-qa/README.md` are read, Then each begins with the R3 boundary sentence byte-identical to the one constant the test imports.",
-      "test": "tests/dimp_ac01_boundary_sentence_first.rs"
+      "description": "Given a tenant with tables `orders` and `customers` declared, When `host.table.query` runs `SELECT * FROM staging_orders`, Then the JSON-RPC error code is `-32602`, `data.error_code` is `table_not_found`, `data.table` is `staging_orders`, `data.candidates[0]` is `orders`, `data.hint` is a non-empty string, and the message does not contain `internal error` or `request_id`.",
+      "test": "tests/tqnf_ac01_missing_table_names_the_table.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a tenant under quota, When `host.docs.put_many` is called with 50 documents mixing `content` and `content_base64`, Then `stored` is 50, `results` has 50 entries in input order with `status` `stored`, and `host.docs.list` returns 50 names.",
-      "test": "tests/dimp_ac02_fifty_documents_in_one_call.rs"
+      "description": "Given the same tenant, When `host.table.query` runs `SELECT totl FROM orders`, Then `data.error_code` is `table_column_not_found`, `data.column` is `totl`, `data.table` is `orders`, and `data.candidates[0]` is `total` (the declared column).",
+      "test": "tests/tqnf_ac02_missing_column_names_the_column.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tenant whose `docs_max` leaves room for 2 more documents, When `put_many` is called with 5, Then `stored` is 2, the other 3 carry `status` `refused` with `error_code` `quota_docs`, every stored document is readable through `host.docs.get`, and the call's JSON-RPC result is a success, not an error.",
-      "test": "tests/dimp_ac03_quota_refuses_the_overflow_per_document.rs"
+      "description": "Given a rusqlite error `parse_bind_error` does not recognise (a tenant database file overwritten with non-SQLite bytes, so `prepare` returns `file is not a database`; works as root too), When `host.table.query` runs a valid `SELECT` on a declared table, Then the reply is the internal-error swap with a `request_id` and no table-family `data.error_code` (R3 guardrail).",
+      "test": "tests/tqnf_ac03_unrecognised_sqlite_error_keeps_the_swap.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given 51 documents, When `put_many` is called, Then the reply is `-32602` and `host.docs.list` is unchanged (nothing written).",
-      "test": "tests/dimp_ac04_fifty_one_documents_write_nothing.rs"
+      "description": "Given `host.table.count`, `host.table.chart` and `host.table.query_diagnose` with `staging_orders`, When each runs, Then count and chart return the AC 1 error, and `query_diagnose` returns a success result whose `data` block equals AC 1's `data`.",
+      "test": "tests/tqnf_ac04_count_chart_and_diagnose_agree.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `put_many` with one document over `MCPHOST_DOC_MAX_BYTES` and one with invalid `content_base64` among three valid ones, When it runs, Then the two carry `status` `refused` with the same `error_code` and `message` a single `host.docs.put` of that document returns, the three are `stored`, and the call's JSON-RPC result is a success (R2).",
-      "test": "tests/dimp_ac05_per_document_refusals_match_single_put.rs"
+      "description": "Given `host.state.query {\"table\": \"staging_orders\"}` on the same tenant, When it runs, Then its `error_code` and numeric code equal AC 1's, and its message equals AC 1's message with everything from the first `;` onward removed (the two paths agree on the sentence; only the SQL path adds the `; closest:` suffix).",
+      "test": "tests/tqnf_ac05_state_query_and_sql_path_agree.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `put_many` with `on_conflict` `skip` and two documents whose names already exist, When it runs, Then those two report `skipped`, the rest `stored`, and the existing content is unchanged.",
-      "test": "tests/dimp_ac06_skip_leaves_existing_documents_alone.rs"
+      "description": "Given `errors.json`, When the test lists the INVALID_PARAMS arm, Then `table_column_not_found` is present with family Table, class AgentFault, `retryable: false`, and `ERROR_CODES` is regenerated from `error_registry` rather than hand-edited.",
+      "test": "tests/tqnf_ac06_column_code_is_a_registry_row.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given `host.docs.status`, When it is read, Then `import_paths` equals `[\"content\", \"content_base64\", \"put_many\"]`, `put_many_max` is 50 and `doc_max_bytes` equals the configured cap; and `examples/docs-qa/docs-qa.sh` against the test host loads its corpus in one `put_many` call with the receipt's `tool_calls` \u2264 4.",
-      "test": "tests/dimp_ac07_status_names_import_paths_and_recipe_uses_the_batch.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 8 command in \u00a7 Live evidence commands runs from the build host, Then it prints `dimp_ac08 stored=3 hits=1 offboarded rc=0` and exits 0 (Live; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)",
-      "test": "deferred: Live (prod; evidence: AC 8 command in the PRD Live evidence commands)"
+      "description": "Given `tools/list`, When the `host.table.query` descriptor is read, Then its description (from `host-tools.v1.json` via `gendocs`) names both codes once each, and the generated docs page shows the same sentence.",
+      "test": "tests/tqnf_ac07_descriptor_names_both_codes.rs"
     }
   ],
   "scope": [
-    "src/docs.rs: DOCS_BOUNDARY, PUT_MANY_MAX, doc_put_many (each entry through doc_put, one results row per input), and host.docs.status import_paths / put_many_max / doc_max_bytes.",
-    "src/handler.rs + src/handler/arms.rs + src/handler/preauth.rs + src/write_verbs.rs + src/dispatch_table.rs: the host.docs.put_many descriptor, arm and dry-run row; the boundary sentence leading the put and put_many descriptions and the zero-document host.quickstart docs text.",
-    "examples/docs-qa/: README.md leading with the boundary sentence; docs-qa.sh loading its corpus in one put_many call; docs/agent-quickstart.md (-> README.md, www/llms.txt) leading with the sentence.",
-    "Generated: contracts/host-tools.v1.json, host-output-schemas/variants, docs/tools.md, docs/host-tools.md, docs/openapi.json, sdk/, www/llms-full.txt, CODEMAP.md."
+    "src/tables.rs + src/query_diag.rs: classify a recognised rusqlite no-such-table / no-such-column error on the table SQL paths before the Storage conversion, with the diagnosis (table/column, candidates, hint, declared_tables_count) in the error data.",
+    "src/errors.rs + error registry + errors.json: new table_column_not_found code (family Table, AgentFault, non-retryable) in the INVALID_PARAMS arm; generated surfaces regenerated.",
+    "host-tools.v1.json descriptor for host.table.query and its generated docs, contract and SDKs."
   ],
   "non_goals": [
-    "Importing a vector index, embeddings or chunk tables from another system; archive (zip/tar) import; fetching a document by URL; changing quotas (docs_max, docs_bytes_max, MCPHOST_DOC_MAX_BYTES), chunking or the search ranking."
+    "Changing the diagnosis algorithm or its bands; SQL dialect help; touching host.state.* behaviour; any change to query_log rows."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,35 +69,31 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_schema_change": "Additive tool; existing host.docs.put calls are unchanged and there is no migration."
+      "no_schema_change": "Wire-only change; query_log schema unchanged and there is no migration."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did rag_indexer_01 quit at turn 25?",
-      "a": "It wanted to import an existing LlamaIndex vector store and the recipe only takes raw text via host.docs.put."
+      "q": "Why did dpb_03 get an internal error on its first SELECT?",
+      "a": "The no-such-table rusqlite error became AppError::Storage and every Storage error is swapped for the internal-error reply."
     },
     {
       "why": 2,
-      "q": "Why did it learn that only at turn 25?",
-      "a": "No descriptor, quickstart or recipe sentence states what the docs store imports and what it does not."
+      "q": "Why was the cause not on the wire?",
+      "a": "diagnose_sync computed candidates and a hint but filed them only in query_log."
     },
     {
       "why": 3,
-      "q": "Why was there no such sentence?",
-      "a": "The shipped docs-qa recipe ACs assert hit rates and quotas, never what the surface says it cannot do."
+      "q": "Why did it stay?",
+      "a": "The shipped query-diagnosis PRD had no AC on the error branch."
     }
   ],
-  "created_at": "2026-10-29T00:00:00Z",
+  "created_at": "2026-10-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "What does stored count in a put_many reply?",
-      "resolution": "Documents written: entries with status stored or replaced; refused and skipped entries are not counted."
-    },
-    {
-      "question": "Which receipt field is 'tool_calls <= 4' in AC7?",
-      "resolution": "The recipe receipt gains a top-level tool_calls = calls spent loading the corpus (one put_many); quota.tool_calls keeps counting the published tool's own calls (<= 10)."
+      "question": "Which tables does candidates draw from?",
+      "resolution": "The tenant's declared tables from list_table_names_sync, as today; other-namespace shared tables are not included."
     }
   ]
 }

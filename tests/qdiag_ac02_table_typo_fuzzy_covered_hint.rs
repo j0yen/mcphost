@@ -25,7 +25,7 @@ async fn table_typo_is_fuzzy_covered_and_hinted() {
         .tools_call("host.table.query", json!({"sql": "SELECT * FROM expense"}))
         .await
         .expect_err("expense (singular) is not declared");
-    assert_eq!(err.error_code.as_deref(), Some("storage"), "err: {err:?}");
+    assert_eq!(err.error_code.as_deref(), Some("table_not_found"), "err: {err:?}");
 
     let log = extract_structured(
         &client.tools_call("host.table.query_log", json!({"limit": 1})).await.expect("query_log"),
