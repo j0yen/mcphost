@@ -84,6 +84,21 @@ impl McpHostHandler {
                         {
                             limits.insert("quota".to_string(), quota);
                         }
+                        // PRD-mcphost-docs-import-and-stated-boundary R3: a
+                        // tenant with no documents yet reads what the docs
+                        // store imports, and what it does not, before any
+                        // instruction. Best-effort: a count failure leaves
+                        // the field out.
+                        if let Ok((0, _, _)) = self.state.db.documents_usage(tenant.id).await {
+                            result["docs"] = json!({
+                                "text": format!(
+                                    "{} Load a corpus with host.docs.put_many (up to {} documents per call), then ask it with host.docs.search.",
+                                    crate::docs::DOCS_BOUNDARY,
+                                    crate::docs::PUT_MANY_MAX
+                                ),
+                                "call": "host.docs.put_many",
+                            });
+                        }
                         Ok(result)
                     }
                     Err(e) => Err(e),

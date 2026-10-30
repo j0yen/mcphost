@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-chain-near-miss-mapping-refused.md (test_prefix: chainmap)",
+  "ac_test_map_prd": "PRD-mcphost-docs-import-and-stated-boundary.md (test_prefix: dimp)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/chainmap_ac01_object_mapping_refused_at_publish.rs",
-    "AC2": "tests/chainmap_ac02_reference_class_closed.rs",
-    "AC3": "tests/chainmap_ac03_reference_roots_parity.rs",
-    "AC4": "tests/chainmap_ac04_force_passes_the_object_through.rs",
-    "AC5": "tests/chainmap_ac05_dry_run_shares_the_verdict.rs",
-    "AC6": "tests/chainmap_ac06_step_failure_names_step_and_tool.rs",
-    "AC7": "tests/chainmap_ac07_docs_name_every_root.rs",
-    "AC8": "deferred: Live (prod; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)"
+    "AC1": "tests/dimp_ac01_boundary_sentence_first.rs",
+    "AC2": "tests/dimp_ac02_fifty_documents_in_one_call.rs",
+    "AC3": "tests/dimp_ac03_quota_refuses_the_overflow_per_document.rs",
+    "AC4": "tests/dimp_ac04_fifty_one_documents_write_nothing.rs",
+    "AC5": "tests/dimp_ac05_per_document_refusals_match_single_put.rs",
+    "AC6": "tests/dimp_ac06_skip_leaves_existing_documents_alone.rs",
+    "AC7": "tests/dimp_ac07_status_names_import_paths_and_recipe_uses_the_batch.rs",
+    "AC8": "deferred: Live (prod; evidence: AC 8 command in the PRD Live evidence commands)"
   },
   "ac_test_map_by_prefix": {
     "mcphost-resource-listing-shape-in-contract": {
@@ -2563,6 +2563,17 @@
       "AC5": "tests/refusals_ac05_access_line_names_rpc_tool_and_reply.rs",
       "AC6": "tests/refusals_ac06_non_object_spec_names_the_received_type.rs",
       "AC7": "deferred: Live (prod; evidence: AC 7 command in \u00a7 Live evidence commands showing 413 application/json and jq_rc=0)"
+    },
+    "chainmap": {
+      "_prd": "PRD-mcphost-chain-near-miss-mapping-refused.md (test_prefix: chainmap)",
+      "AC1": "tests/chainmap_ac01_object_mapping_refused_at_publish.rs",
+      "AC2": "tests/chainmap_ac02_reference_class_closed.rs",
+      "AC3": "tests/chainmap_ac03_reference_roots_parity.rs",
+      "AC4": "tests/chainmap_ac04_force_passes_the_object_through.rs",
+      "AC5": "tests/chainmap_ac05_dry_run_shares_the_verdict.rs",
+      "AC6": "tests/chainmap_ac06_step_failure_names_step_and_tool.rs",
+      "AC7": "tests/chainmap_ac07_docs_name_every_root.rs",
+      "AC8": "deferred: Live (prod; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)"
     }
   }
 }

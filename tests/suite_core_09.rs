@@ -20,6 +20,8 @@ mod child_proc_lint;
 mod codemap;
 #[path = "support/ctrace.rs"]
 mod ctrace;
+#[path = "support/dimp.rs"]
+mod dimp;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
 #[path = "support/dryspt_lint.rs"]
@@ -791,6 +793,16 @@ mod demu_ac05_host_verbs_unsupported;
 mod demu_ac06_lint_failure_exits_before_bind;
 #[path = "demu_ac07_file_watch.rs"]
 mod demu_ac07_file_watch;
+#[path = "dimp_ac01_boundary_sentence_first.rs"]
+mod dimp_ac01_boundary_sentence_first;
+#[path = "dimp_ac02_fifty_documents_in_one_call.rs"]
+mod dimp_ac02_fifty_documents_in_one_call;
+#[path = "dimp_ac03_quota_refuses_the_overflow_per_document.rs"]
+mod dimp_ac03_quota_refuses_the_overflow_per_document;
+#[path = "dimp_ac04_fifty_one_documents_write_nothing.rs"]
+mod dimp_ac04_fifty_one_documents_write_nothing;
+#[path = "dimp_ac06_skip_leaves_existing_documents_alone.rs"]
+mod dimp_ac06_skip_leaves_existing_documents_alone;
 #[path = "dkeyc_ac01_child_cannot_escalate_scope.rs"]
 mod dkeyc_ac01_child_cannot_escalate_scope;
 #[path = "dkeyc_ac02_chain_depth_and_can_delegate_gate.rs"]

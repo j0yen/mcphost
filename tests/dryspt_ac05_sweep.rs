@@ -90,6 +90,7 @@ fn fixtures() -> Vec<Fx> {
         fx("host.state.table_create", vec![], d(json!({"name": "st1", "schema": {"a": "text"}})), vec![("host.state.list", json!({}))]),
         fx("host.state.table_drop", st_rows(), d(json!({"name": "st1"})), st_reads()),
         fx("host.docs.put", vec![], d(json!({"name": "d1", "content": "one"})), vec![("host.docs.list", json!({}))]),
+        fx("host.docs.put_many", vec![], d(json!({"documents": [{"name": "d1", "content": "one"}, {"name": "d2", "content": "two"}]})), vec![("host.docs.list", json!({}))]),
         fx("host.docs.delete", vec![("host.docs.put", json!({"name": "d1", "content": "one"}))], d(json!({"name": "d1"})), vec![("host.docs.list", json!({})), ("host.docs.get", json!({"name": "d1"}))]),
         fx("host.docs.purge", docs2(), d(json!({"name": "d1", "older_than_versions": 1})), vec![("host.docs.list", json!({})), ("host.docs.get", json!({"name": "d1"}))]),
         fx("host.index.create", vec![], d(json!({"name": "ix1", "sources": [{"kind": "doc", "prefix": "d"}]})), vec![("host.index.list", json!({}))]),

@@ -31,7 +31,7 @@ fn dry_run_verbs() -> Vec<&'static mcphost::write_verbs::WriteVerb> {
 #[test]
 fn every_generic_dry_run_preview_validates_against_the_advertised_output_schema() {
     let verbs = dry_run_verbs();
-    assert_eq!(verbs.len(), 44, "45 `sv(` rows minus the Publish one");
+    assert_eq!(verbs.len(), 45, "46 `sv(` rows minus the Publish one");
     let tools = host_tool_descriptors(&KindRegistry::with_builtin());
     let mut problems = Vec::new();
     for verb in verbs {
