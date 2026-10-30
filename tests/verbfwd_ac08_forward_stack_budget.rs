@@ -173,6 +173,11 @@ fn args_for(tool: &rmcp::model::Tool) -> Value {
     if tool.name == "host.table.append" {
         return json!({"table": PLACEHOLDER, "rows": {}});
     }
+    // `host.docs.put_many`'s `documents` is an array of at least one: the generic
+    // sample for an array is `[]`, which its `minItems` refuses at validation.
+    if tool.name == "host.docs.put_many" {
+        return json!({"documents": [{"name": PLACEHOLDER, "content": PLACEHOLDER}]});
+    }
     required_args(&Value::Object((*tool.input_schema).clone()))
 }
 
