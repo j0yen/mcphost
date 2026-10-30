@@ -132,6 +132,9 @@ pub struct ErrorEntry {
     /// The keys this code's `data` carries beyond the shared envelope ones
     /// (`error_code`, `class`, `retry`, ...); empty for a code that adds none.
     pub data_keys: &'static [&'static str],
+    /// For a code with several `data.reason` values: one `{reason, hint}` row
+    /// each, generated from the raise site's own texts.
+    pub reasons: Option<fn() -> Value>,
     /// `file:line` of the `err_code!` declaration (or hand row); never serialized.
     pub site: &'static str,
 }
@@ -152,6 +155,9 @@ impl ErrorEntry {
         if !self.data_keys.is_empty() {
             row["data_keys"] = json!(self.data_keys);
         }
+        if let Some(reasons) = self.reasons {
+            row["reasons"] = reasons();
+        }
         row
     }
 }
@@ -166,7 +172,7 @@ pub const fn row(
     retryable: bool,
     remedy: &'static str,
 ) -> ErrorEntry {
-    ErrorEntry { code, family, class, remedy, docs_anchor: family.docs_anchor(), retryable, data_keys: &[], site: "src/error_registry.rs" }
+    ErrorEntry { code, family, class, remedy, docs_anchor: family.docs_anchor(), retryable, data_keys: &[], reasons: None, site: "src/error_registry.rs" }
 }
 
 #[doc(hidden)]
@@ -194,7 +200,7 @@ macro_rules! err_code {
         $(#[$meta:meta])*
         $vis:vis $name:ident,
         code: $code:literal, family: $family:ident, class: $class:ident,
-        retryable: $retryable:literal, remedy: $remedy:expr $(, data_keys: $dk:expr)? $(,)?
+        retryable: $retryable:literal, remedy: $remedy:expr $(, data_keys: $dk:expr)? $(, reasons: $rs:expr)? $(,)?
     ) => {
         $(#[$meta])*
         $vis const $name: &'static str = $code;
@@ -204,6 +210,7 @@ macro_rules! err_code {
             static ENTRY: $crate::error_registry::ErrorEntry = $crate::error_registry::ErrorEntry {
                 site: concat!(file!(), ":", line!()),
                 $(data_keys: $dk,)?
+                $(reasons: Some($rs),)?
                 ..$crate::error_registry::row(
                     $code,
                     $crate::error_registry::Family::$family,
@@ -219,13 +226,14 @@ macro_rules! err_code {
     (
         $(#[$meta:meta])*
         $vis:vis $name:ident => $code:literal,
-        $family:ident, $class:ident, $retryable:literal, $remedy:expr $(, data_keys: $dk:expr)? $(,)?
+        $family:ident, $class:ident, $retryable:literal, $remedy:expr $(, data_keys: $dk:expr)? $(, reasons: $rs:expr)? $(,)?
     ) => {
         $crate::err_code! {
             $(#[$meta])* $vis $name,
             code: $code, family: $family, class: $class,
             retryable: $retryable, remedy: $remedy,
             $(data_keys: $dk,)?
+            $(reasons: $rs,)?
         }
     };
 }
