@@ -47,6 +47,19 @@
 # SUITE list, and that every weights key (minus lib/bin:*) has an entry in
 # scripts/ci-suite-measured.json (a suite nobody measured is a weight nobody checked).
 #
+# `check --land` (spec b, 10-30; mcphost #540: a PR was green while main sat at age 3 and the merge made it 4):
+# the PR and merge-queue legs refuse exactly when main would refuse once the change is in. Which entries are
+# pending comes ONLY from HEAD's scripts/ci-suite-measured.json (the same `_provisional` loop `check` always
+# runs; an entry absent or no longer `_provisional` is skipped, and a `since` bump counts as a refresh, exactly
+# as main mode treats it). The mode is explicit, never sniffed from GITHUB_EVENT_NAME:
+#   --land-mode=pr (default)  age = first-parent commits `since..origin/<base>` + 1, <base> = $GITHUB_BASE_REF or
+#                             main. The anchor is the BASE TIP, never the merge-base (a stale PR branch would
+#                             undercount by main's lead); the +1 is the squash commit the land adds.
+#   --land-mode=merge_group   age = first-parent commits `since..HEAD`: the queue head's chain already includes
+#                             any batched PRs, so there is no merge-base and no +1.
+# It fails CLOSED (rc 1, never skips, never reads a failed count as 0) on a shallow repo, an unverifiable `since`
+# or base ref, or a count that fails or is not an integer: the leg needs fetch-depth 0.
+#
 # Doctests are NOT in either list: cargo rejects `--doc` combined with any
 # other target selector, so the workflow runs `cargo test --doc` as its own
 # step in the core job.
@@ -70,6 +83,9 @@
 #   ci-test-partition.sh classify-files <path>...  # the same, one line per path, one grep
 #   ci-test-partition.sh classify-agree  # exit 0 iff classify-files == classify-file over tests/*.rs
 #   ci-test-partition.sh check     # exit 0 iff total, disjoint, and unshadowed
+#   ci-test-partition.sh check --land [--land-mode=pr|merge_group]
+#                                  # also refuse a pending (derived) measured entry whose age
+#                                  # AFTER this change lands would exceed PENDING_MAX_AGE (see below)
 #
 # AC6 follow-up: even run as its own job, the sandbox partition alone measured
 # 313s (v0.13.3) against the 300s budget -- one job wasn't enough, so the
@@ -570,7 +586,17 @@ check() {
   # with time.
   if [ -f "$MEASURED_FILE" ] && jq -e . "$MEASURED_FILE" >/dev/null 2>&1; then
     local enforce=0 deepened=0 pname pval psince pshort pderived pmeasured pok page pend
-    { [ "${1:-}" = "--main" ] || [ "${GITHUB_REF_NAME:-}" = "${CI_DEFAULT_BRANCH:-main}" ]; } && enforce=1
+    local want_main=0 land=0 land_mode=pr arg lbase lend ladd lshallow lcount lrc lage
+    for arg in "$@"; do
+      case "$arg" in
+        --main) want_main=1 ;;
+        --land) land=1 ;;
+        --land-mode=pr|--land-mode=merge_group) land_mode="${arg#--land-mode=}" ;;
+        "") ;;
+        *) echo "ci-test-partition: check: unknown argument '$arg' (usage: check [--main] [--land [--land-mode=pr|merge_group]])" >&2; return 2 ;;
+      esac
+    done
+    { [ "$want_main" -eq 1 ] || [ "${GITHUB_REF_NAME:-}" = "${CI_DEFAULT_BRANCH:-main}" ]; } && enforce=1
     while IFS=$'\t' read -r pname pval; do
       [ -n "$pname" ] || continue
       psince="$(jq -r 'if type == "object" and .pending == true and (.since | type) == "string" and (.since | length) > 0 and (.derived_s | type) == "number" then .since else empty end' <<<"$pval")"
@@ -597,6 +623,39 @@ check() {
       if ! git -C "$REPO_ROOT" merge-base --is-ancestor "$psince" HEAD 2>/dev/null; then
         echo "ci-test-partition: pending entry $pname: since $pshort is not an ancestor of HEAD -- run scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs" >&2
         rc=1; continue
+      fi
+      if [ "$land" -eq 1 ]; then
+        # the age this entry WILL have once the change is on the default branch (see the `check --land` header)
+        if [ "$land_mode" = pr ]; then lbase="origin/${GITHUB_BASE_REF:-main}"; lend="$lbase"; ladd=1; else lbase=HEAD; lend=HEAD; ladd=0; fi
+        lshallow="$(git -C "$REPO_ROOT" rev-parse --is-shallow-repository 2>/dev/null)"; lrc=$?
+        if [ "$lrc" -ne 0 ] || [ "$lshallow" != false ]; then
+          echo "::error::--land needs the base branch history (fetch-depth 0): the repository is shallow or its depth is unknown (pending entry $pname)" >&2
+          rc=1; continue
+        fi
+        if ! git -C "$REPO_ROOT" rev-parse --verify --quiet "${psince}^{commit}" >/dev/null 2>&1; then
+          echo "::error::--land cannot verify since $pshort of pending entry $pname as a commit (fetch-depth 0 needed)" >&2
+          rc=1; continue
+        fi
+        if ! git -C "$REPO_ROOT" rev-parse --verify --quiet "${lend}^{commit}" >/dev/null 2>&1; then
+          echo "::error::--land needs the base branch history (fetch-depth 0): cannot verify $lend (pending entry $pname)" >&2
+          rc=1; continue
+        fi
+        if ! git -C "$REPO_ROOT" merge-base --is-ancestor "$psince" "$lend" 2>/dev/null; then
+          echo "::error::--land: since $pshort of pending entry $pname is not an ancestor of $lend, so its post-merge age cannot be counted" >&2
+          rc=1; continue
+        fi
+        lcount="$(git -C "$REPO_ROOT" rev-list --first-parent --count "${psince}..${lend}" 2>/dev/null)"; lrc=$?
+        case "$lcount" in ''|*[!0-9]*) lrc=1 ;; esac
+        if [ "$lrc" -ne 0 ]; then
+          echo "::error::--land could not count first-parent commits ${pshort}..${lend} for pending entry $pname (got '${lcount}'); failing closed" >&2
+          rc=1; continue
+        fi
+        lage=$((lcount + ladd))
+        if [ "$lage" -gt "$PENDING_MAX_AGE" ]; then
+          echo "ci-test-partition: pending entry $pname since $pshort is $lage first-parent commits behind HEAD (max $PENDING_MAX_AGE) and was never measured -- run scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs (post-merge age $lage, PR would turn main red)" >&2
+          rc=1; continue
+        fi
+        echo "ci-test-partition: --land ($land_mode): pending $pname since $pshort has post-merge age $lage (max $PENDING_MAX_AGE)" >&2
       fi
       # the age ends at merge-base(HEAD, default branch), never at the default branch's tip: on a branch (fresh or
       # stale) that is the commit the branch was cut from -- `since` itself, age 0 -- so main moving on, or the
@@ -638,6 +697,6 @@ case "${1:-}" in
                    core)    echo "$CORE_WARN_AT $CORE_FAIL_ABOVE" ;;
                    *) echo "usage: ci-test-partition.sh limits <sandbox|core>" >&2; exit 2 ;;
                  esac ;;
-  check)         check "${2:-}" ;;
-  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p|measured-required>|limits <p>|classify-file <path>|classify-files <path>...|classify-agree|check [--main]>" >&2; exit 2 ;;
+  check)         shift; check "$@" ;;
+  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p|measured-required>|limits <p>|classify-file <path>|classify-files <path>...|classify-agree|check [--main] [--land [--land-mode=pr|merge_group]]>" >&2; exit 2 ;;
 esac
