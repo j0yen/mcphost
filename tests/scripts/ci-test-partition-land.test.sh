@@ -18,7 +18,7 @@ ok()   { passes=$((passes + 1)); echo "ok   - $1"; }
 fail() { fails=$((fails + 1)); echo "FAIL - $1"; [ -n "${OUT:-}" ] && printf '%s\n' "$OUT" | sed 's/^/       | /' | tail -12; }
 g() { git -C "$FX" "$@"; }
 
-git clone -q --local --no-checkout "$ROOT" "$FX" || exit 2
+git clone -q --local --no-hardlinks --no-checkout "$ROOT" "$FX" || exit 2
 g checkout -q --detach "$(git -C "$ROOT" rev-parse HEAD)" || exit 2
 cp "$ROOT/scripts/ci-test-partition.sh" "$FX/scripts/ci-test-partition.sh"   # the working-tree script under test
 g add -A && { g diff --cached --quiet || g commit -q -m "fixture: script under test"; } || exit 2   # no commit when the clone already has the script
