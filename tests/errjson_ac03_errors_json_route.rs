@@ -56,8 +56,8 @@ async fn errjson_ac03_errors_json_is_sorted_complete_and_versioned() {
         for field in FIELDS {
             assert!(obj.contains_key(field), "{row} lacks {field}");
         }
-        // `data_keys` is the one optional eighth field (spkind AC5).
-        let extra = usize::from(obj.contains_key("data_keys"));
+        // `data_keys` (spkind AC5) and `reasons` (ipsess AC4) are the optional extra fields.
+        let extra = usize::from(obj.contains_key("data_keys")) + usize::from(obj.contains_key("reasons"));
         assert_eq!(obj.len(), FIELDS.len() + extra, "{row} has fields beyond the seven");
         assert!(listed.contains(&row["class"].as_str().unwrap().to_string()), "{row}");
         assert!(row["retryable"].is_boolean(), "{row}");

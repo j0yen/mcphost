@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.120.0 — 2026-10-30
+
+Released by wm-build land: loop: mcphost-implicit-signup-per-session-not-per-peer.
+
 ## v0.119.0 — 2026-10-30
 
 Released by wm-build land: loop: mcphost-chain-near-miss-mapping-refused.

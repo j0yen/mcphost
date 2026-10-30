@@ -652,6 +652,20 @@ mod invite_ac11_lineage_chain_lookup_and_usage_k;
 mod invite_ac12_shares_are_one_hop_across_a_depth_3_chain;
 #[path = "invite_ac13_meta_invite_url_hint_once_per_session.rs"]
 mod invite_ac13_meta_invite_url_hint_once_per_session;
+#[path = "ipsess_ac01_second_session_one_peer_gets_its_own_tenant.rs"]
+mod ipsess_ac01_second_session_one_peer_gets_its_own_tenant;
+#[path = "ipsess_ac02_redeeming_session_stays_its_own_tenant.rs"]
+mod ipsess_ac02_redeeming_session_stays_its_own_tenant;
+#[path = "ipsess_ac03_sessionless_refusal_names_a_session_not_the_key.rs"]
+mod ipsess_ac03_sessionless_refusal_names_a_session_not_the_key;
+#[path = "ipsess_ac04_no_key_dance_in_peer_recent_or_connection_bound.rs"]
+mod ipsess_ac04_no_key_dance_in_peer_recent_or_connection_bound;
+#[path = "ipsess_ac05_window_elapsed_implicit_signup_proceeds.rs"]
+mod ipsess_ac05_window_elapsed_implicit_signup_proceeds;
+#[path = "ipsess_ac06_journal_names_the_decision.rs"]
+mod ipsess_ac06_journal_names_the_decision;
+#[path = "ipsess_ac07_contract_states_the_rule.rs"]
+mod ipsess_ac07_contract_states_the_rule;
 #[path = "jqk_ac01_manual_examples.rs"]
 mod jqk_ac01_manual_examples;
 #[path = "jqk_ac02_parse_error_position.rs"]
