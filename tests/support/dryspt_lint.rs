@@ -153,7 +153,7 @@ fn is_word(c: char) -> bool {
 fn leading_keyword(s: &str) -> Option<&'static str> {
     let up = s.trim().to_uppercase();
     KEYWORDS.iter().copied().find(|k| {
-        up.starts_with(k) && up[k.len()..].chars().next().map_or(true, |c| !is_word(c))
+        up.starts_with(k) && up[k.len()..].chars().next().is_none_or(|c| !is_word(c))
     })
 }
 
@@ -204,8 +204,8 @@ fn enclosing_fns(code: &[char]) -> Vec<Option<String>> {
             if j > s {
                 pending = Some(code[s..j].iter().collect());
             }
-            for k in i..j {
-                out[k] = stack.last().map(|f| f.0.clone());
+            for slot in out.iter_mut().take(j).skip(i) {
+                *slot = stack.last().map(|f| f.0.clone());
             }
             i = j;
             continue;
@@ -218,7 +218,7 @@ fn enclosing_fns(code: &[char]) -> Vec<Option<String>> {
                 }
             }
             '}' => {
-                if stack.last().map_or(false, |f| f.1 == depth) {
+                if stack.last().is_some_and(|f| f.1 == depth) {
                     out[i] = stack.last().map(|f| f.0.clone());
                     stack.pop();
                     depth = depth.saturating_sub(1);
@@ -310,7 +310,7 @@ fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     for p in ents {
         if p.is_dir() {
             walk(&p, out);
-        } else if p.extension().map_or(false, |e| e == "rs") {
+        } else if p.extension().is_some_and(|e| e == "rs") {
             out.push(p);
         }
     }

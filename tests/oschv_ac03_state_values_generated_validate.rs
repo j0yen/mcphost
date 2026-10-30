@@ -44,11 +44,11 @@ async fn schema_of(client: &McpClient, tool: &str) -> Value {
         .clone()
 }
 
+#[allow(clippy::too_many_arguments)] // six distinct per-seed facts; a struct would only rename them
 fn check(problems: &mut Vec<String>, schema: &Value, tool: &str, seed_index: usize, value: &Value, got: &Value) {
     let validator = jsonschema::validator_for(schema).expect("outputSchema compiles");
-    for e in validator.iter_errors(got) {
+    if let Some(e) = validator.iter_errors(got).next() {
         problems.push(format!("#{seed_index} {tool} value={value}: {}: {e}", e.instance_path));
-        break;
     }
 }
 

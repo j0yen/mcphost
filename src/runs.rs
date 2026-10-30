@@ -1868,7 +1868,7 @@ mod tests {
         assert_eq!(slot.live_pid(), Some(first.id() as i32));
         slot.clear();
         assert!(!slot.request_cancel(), "between round trips: nothing live to kill");
-        assert!(slot.set_live(first.id() as i32) == false, "the next registration is killed");
+        assert!(!slot.set_live(first.id() as i32), "the next registration is killed");
         assert!(exits_within(&mut first, Duration::from_secs(2)));
     }
 

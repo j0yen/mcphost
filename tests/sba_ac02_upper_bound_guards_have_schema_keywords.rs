@@ -30,10 +30,10 @@ fn bound_values(node: &Value, out: &mut BTreeSet<u64>) {
     match node {
         Value::Object(m) => {
             for (k, v) in m {
-                if matches!(k.as_str(), "maxItems" | "maxLength" | "maximum") {
-                    if let Some(n) = v.as_u64() {
-                        out.insert(n);
-                    }
+                if matches!(k.as_str(), "maxItems" | "maxLength" | "maximum")
+                    && let Some(n) = v.as_u64()
+                {
+                    out.insert(n);
                 }
                 bound_values(v, out);
             }

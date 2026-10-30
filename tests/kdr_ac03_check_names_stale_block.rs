@@ -43,7 +43,7 @@ fn kdr_ac03_check_names_stale_block() {
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("docs/kinds/http.md") && stderr.contains("kind-errors"), "{stderr}");
-    assert_eq!(std::fs::read_to_string(&page).unwrap().contains("hand_edit"), true, "--check never writes");
+    assert!(std::fs::read_to_string(&page).unwrap().contains("hand_edit"), "--check never writes");
 
     assert!(mcphost(&tmp, &["--write"]).status.success());
     assert!(mcphost(&tmp, &["--check"]).status.success());

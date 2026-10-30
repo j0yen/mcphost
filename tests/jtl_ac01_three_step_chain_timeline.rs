@@ -1,8 +1,8 @@
 //! PRD-mcphost-job-timeline-tool AC1 (P0) -- Given a completed 3-step chain
 //! run, When `host.job_timeline(run_id)` is called, Then `steps` has 3 entries
-//! in step order, each with `started_unix` <= `finished_unix`, `duration_ms`
-//! >= 0, `status: done`, `bytes_out` > 0, and `totals.wall_ms` >= every
-//! step's `duration_ms`.
+//! in step order, each with `started_unix` <= `finished_unix`, `duration_ms` >=
+//! 0, `status: done`, `bytes_out` > 0, and `totals.wall_ms` >= every step's
+//! `duration_ms`.
 
 use crate::common;
 use common::{TestServer, chain_kind_registry, extract_structured, publish, signup};
@@ -73,5 +73,5 @@ async fn jtl_ac01() {
 
 async fn extract_structured_err(client: &common::McpClient, run_id: &str) -> String {
     let err = client.tools_call("host.job.timeline", json!({"run_id": run_id})).await.expect_err("unknown run");
-    format!("{err:?}").contains("run_not_found").then(|| "run_not_found".to_string()).unwrap_or_default()
+    if format!("{err:?}").contains("run_not_found") { "run_not_found".to_string() } else { String::new() }
 }
