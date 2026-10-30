@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-refusals-name-their-cause.md",
-  "intent_slug": "mcphost-refusals-name-their-cause",
-  "root_motivation": "WHO: any MCP client of mcphost.dev (python `mcp` 2.1.1, the TS SDK 1.31.0, curl) and rb, the operator who reads `journalctl -u mcphost` on mcphost-1. WHAT: a client needs a refusal body it can branch on, and an operator needs one journal line per call that says which tool was called and how it ended. WHY NOT TODAY, from mcphost@7d38fd13: (1) the two body-limit sites, `refuse_unimplemented_methods` (`src/http.rs:1871-1882`) and `deliver_client_response` (`src/http.rs:1981-1998`), return `StatusCode::PAYLOAD_TOO_LARGE.into_response()`, a bare status with no body and no content-type, and python `mcp` 2.1.1 only parses an error body on a 4xx when `Content-Type` starts with `application/json` (`mcp/client/streamable_http.py:342-360`), so the client substitutes a stand-in that names no limit; (2) `protocol_version_and_log` (`src/http.rs:1128-1166`) logs `mcp_name` from the optional `Mcp-Name` header and the HTTP status, so a JSON-RPC refusal rides a `status=200` line and the tool name nev...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-near-miss-mapping-refused.md",
+  "intent_slug": "mcphost-chain-near-miss-mapping-refused",
+  "root_motivation": "**Who.** An agent that writes its first chain from memory of another orchestrator's grammar: `panel_workflow_orchestrator_05` (copilot_vscode surface), and every agent that spells a reference as `steps.0.rows`, `prev.result.rows` or `{\"from\": \u2026}`.",
   "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the test server and no tenant key, When a tools/call of host.whoami padded inside params._meta to 1,048,577 bytes is POSTed to /mcp, Then the reply is HTTP 413, Content-Type application/json and the \u00a7 413 body, never 401 or tenant_key_missing, and the tenants row count is unchanged; the same shape at exactly 1,048,576 bytes is answered 200 and mints one tenant (row count +1); a same-size non-JSON body gets the same 413.",
-      "test": "tests/refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs"
+      "description": "Given python tools `fetch_data` and `transform_data` with no declared `outputs` and no completed run, When a chain whose step 2 maps `\"rows\": {\"from\": \"steps.0.rows\"}` is published without `force`, Then the reply is `compose_mapping_unresolved`, `data.step` is 2, `data.reason` is `not a path`, `data.did_you_mean` is `$.steps[0].result.rows`, the message is `step 2 reads steps.0.rows: not a path`, and no tool row exists.",
+      "test": "tests/chainmap_ac01_object_mapping_refused_at_publish.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given tenant A published t_ac2 and keyless B became an implicit tenant under 600 s ago, When B calls tools/call t_ac2 and a name no tenant owns, Then both -32002 bodies carry data.reason tool_not_found_on_implicit_tenant, data.tenant = B and the \u00a7 Hint fields, keys a subset of the listed set, no byte of A's distinctive namespace or any key; with A's tenant_key t_ac2 succeeds; B older than 600 s gets no data.reason.",
-      "test": "tests/refusals_ac02_tool_not_found_names_the_implicit_tenant.rs"
+      "description": "Given the class in \u00a7 Grammar class, When the generated incident table (\u00a7 Incident spellings, vendored sources) and a property test over generated inputs run, Then every input is accepted with one meaning (today's `StepRef::parse` `$.` paths only) or is `will_fail` with `did_you_mean` an accepted `$.` path or null (forward reference, unknown root, or an unknown field for which today's check names none), and each row matches its verdict and canonical-or-null.",
+      "test": "tests/chainmap_ac02_reference_class_closed.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given both body-limit sites (refuse_unimplemented_methods, deliver_client_response in src/http.rs), When either refuses, Then one shared builder writes the \u00a7 413 body: a unit test covers Some(content_length) and None, HTTP tests at refuse_unimplemented_methods cover 1,048,577 bytes with Content-Length and a chunked body (content_length null), deliver_client_response calls that builder, and drain_gate keeps its 503 JSON.",
-      "test": "tests/refusals_ac03_one_builder_for_both_body_limit_sites.rs"
+      "description": "Given the checker's reference-root set, When the parity test reads it and the keys of `CONTEXT_KEYS`, Then the two are equal, and a scan of the new near-miss function(s) and the `did_you_mean` rewrite function only (not `StepRef::parse` or the `CONTEXT_KEYS` table) finds no root-name string literal, the `steps`/`prev` distinction being read from the per-root attribute on the table.",
+      "test": "tests/chainmap_ac03_reference_roots_parity.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the error registry (src/error_registry.rs, the ERROR_CODES generator behind /errors.json and host.errors), When request_body_too_large is added, Then it is declared through err_code! with class, family and remedy so /errors.json lists it, the 413 body's data carries those fields plus request_id like every registered error, and README's request-body line names the body contract.",
-      "test": "tests/refusals_ac04_request_body_too_large_is_a_registered_error.rs"
+      "description": "Given the AC 1 chain, When published with `force: true`, Then the tool exists, the response `gates` entry reads `verdict: will_fail, forced: true`, and a call of it passes the object through to `transform_data` as a literal, observed as the AC 6 error `step 2 ('transform_data'): TypeError \u2026` (same fixture as AC 6).",
+      "test": "tests/chainmap_ac04_force_passes_the_object_through.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the http request line, When any /mcp POST completes, Then the line carries rpc=<method|batch|\"\">, tool=<tools/call name|\"\">, reply=ok|jsonrpc_error:<code>|http:<status>|batch by the \u00a7 Reply class mechanism (response extension, line at body end), a 413 adds content_length= and limit=, and a test with one global buffered subscriber runs two concurrent calls of different reply classes and asserts each line by tool=.",
-      "test": "tests/refusals_ac05_access_line_names_rpc_tool_and_reply.rs"
+      "description": "Given the AC 1 chain, When `host.tool_test` dry-runs it, Then the verdict is `will_fail` with the same `{step, path, reason, did_you_mean}` entry as AC 1 and `success` is not `true`, and the `verdict` and `dry_run_report` paths share one `steps_verdict` call (no second implementation).",
+      "test": "tests/chainmap_ac05_dry_run_shares_the_verdict.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the seven registered kinds (kinds::names()) and chain spec.steps[i], When spec or a step is not a JSON object, Then the -32602 message keeps each site's current prefix and ends with \", received <string|array|number|boolean|null>\", data.received_type carries the same word, the object check runs once in the registry before any kind's validate, and one test iterates kinds::names() so a kind added later cannot skip it.",
-      "test": "tests/refusals_ac06_non_object_spec_names_the_received_type.rs"
+      "description": "Given a published chain whose step 2 tool `transform_data` raises `TypeError` at call time, When `host.tool_call` fails, Then the error message is `step 2 ('transform_data'): ` followed by the child's message, `data.failed_step` is 2, `data.step_tool` is `transform_data`, and the error code is the child's; a step-1 failure reads `step 1 ('fetch_data'): \u2026`.",
+      "test": "tests/chainmap_ac06_step_failure_names_step_and_tool.rs"
     },
     {
       "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given `docs/kinds/chain.md`, When the docs test reads its near-miss sentence, Then the sentence says a value starting with a context root without `$.` is refused at publish as `not a path` and names every root in `CONTEXT_KEYS`, failing if a root is added to the table and not to the sentence.",
+      "test": "tests/chainmap_ac07_docs_name_every_root.rs"
+    },
+    {
+      "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 7 command in \u00a7 Live evidence commands runs from the build host with no credential, Then its curl line begins 413 application/json with a byte count above 0, the last line is jq_rc=0 on error_code request_body_too_large and limit_bytes 1048576, and no temp file remains (Live; evidence: AC 7 command in \u00a7 Live evidence commands showing 413 application/json and jq_rc=0)",
-      "test": "deferred: Live (prod; evidence: AC 7 command in \u00a7 Live evidence commands showing 413 application/json and jq_rc=0)"
+      "description": "Given prod after this PRD's deploy, When the AC 8 command in \u00a7 Live evidence commands runs from the build host, Then it prints `chainmap_ac08 code=compose_mapping_unresolved did_you_mean=$.steps[0].result.rows offboarded rc=0` and exits 0 (Live; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)",
+      "test": "deferred: Live (prod; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)"
     }
   ],
   "scope": [

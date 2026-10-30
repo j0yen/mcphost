@@ -64,6 +64,14 @@ mod ccv_ac04_host_cap_is_capacity;
 mod cfix_ac05_fixture_limits_and_applicability;
 #[path = "chainhost_ac05_quickstart_chain_example_resolves.rs"]
 mod chainhost_ac05_quickstart_chain_example_resolves;
+#[path = "chainmap_ac01_object_mapping_refused_at_publish.rs"]
+mod chainmap_ac01_object_mapping_refused_at_publish;
+#[path = "chainmap_ac04_force_passes_the_object_through.rs"]
+mod chainmap_ac04_force_passes_the_object_through;
+#[path = "chainmap_ac05_dry_run_shares_the_verdict.rs"]
+mod chainmap_ac05_dry_run_shares_the_verdict;
+#[path = "chainmap_ac06_step_failure_names_step_and_tool.rs"]
+mod chainmap_ac06_step_failure_names_step_and_tool;
 #[path = "chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant.rs"]
 mod chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant;
 #[path = "chanbridge_ac02_python_msg_send_reaches_inbox_with_thread_id.rs"]
