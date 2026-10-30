@@ -2,7 +2,7 @@ import mcphost
 
 # examples/docs-qa/ask_docs.py -- the recipe's one published tool. Calls
 # `mcphost.docs.search` over the zero-network, zero-metered-call loopback
-# channel (docs-qa.sh's own `host.docs.put` corpus is what this searches),
+# channel (docs-qa.sh's own `host.docs.put_many` corpus is what this searches),
 # and formats each passage with a `name:offset` citation so the answer is
 # checkable against the source document. Requirement 1/AC1/AC8.
 

@@ -3039,6 +3039,65 @@
     ],
     "type": "object"
   },
+  "host.docs.put_many": {
+    "properties": {
+      "index_lag_seconds": {
+        "type": "integer"
+      },
+      "refused": {
+        "type": "integer"
+      },
+      "results": {
+        "items": {
+          "properties": {
+            "bytes": {
+              "type": "integer"
+            },
+            "error_code": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "stored",
+                "replaced",
+                "skipped",
+                "refused"
+              ],
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "status"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "stored": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "index_lag_seconds",
+      "refused",
+      "results",
+      "stored"
+    ],
+    "type": "object"
+  },
   "host.docs.reindex": {
     "properties": {
       "rebuilding": {
@@ -3081,8 +3140,17 @@
       "bytes": {
         "type": "integer"
       },
+      "doc_max_bytes": {
+        "type": "integer"
+      },
       "documents": {
         "type": "integer"
+      },
+      "import_paths": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       },
       "index": {
         "properties": {
@@ -3109,6 +3177,9 @@
           }
         },
         "type": "object"
+      },
+      "put_many_max": {
+        "type": "integer"
       },
       "quota": {
         "properties": {
