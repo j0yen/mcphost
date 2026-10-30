@@ -1,72 +1,73 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-implicit-signup-per-session-not-per-peer.md",
-  "intent_slug": "mcphost-implicit-signup-per-session-not-per-peer",
-  "root_motivation": "**Who.** Any agent sharing an egress address and client build with another agent: every truth-tier persona on orch, two Claude Code users behind one office NAT, two tabs of one web client.",
-  "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-docs-import-and-stated-boundary.md",
+  "intent_slug": "mcphost-docs-import-and-stated-boundary",
+  "root_motivation": "WHO: an agent that already holds a corpus (a folder of markdown, a vector store built from it) and wants the host to answer questions over it: rag_indexer_01 (truth-recipe docs-qa, completion 0.00). WHAT: it put documents one by one, ran ask_docs, then quit at turn 25 because host.docs.put takes one text document per call and nowhere says what the host does and does not import. WHY NOT TODAY: resolve_content accepts content or content_base64, one document per call; the docs tools have no bulk call and no descriptor sentence about the boundary. THIS PRD adds host.docs.put_many (up to 50 documents per call, per-document results, quota-aware) and one boundary sentence first in the descriptors, host.quickstart and the recipe.",
+  "user_persona": "An agent with a folder of 120 markdown files that loads it in three host.docs.put_many calls, and an agent with a vector store that reads on turn 1 that the host does not import it and exports the source documents instead.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the in-process test host and two initialized sessions from one source IP and one User-Agent, When session A signs up with handoff and redeems, and session B then calls `host.table.create` without `tenant_key` inside the 10-minute window, Then B's call succeeds with `implicit: true` and the tenants table holds two distinct tenants.",
-      "test": "tests/ipsess_ac01_second_session_one_peer_gets_its_own_tenant.rs"
+      "description": "Given `tools/list` on the test host, When the `host.docs.put` and `host.docs.put_many` descriptions, the zero-document `host.quickstart` text and `examples/docs-qa/README.md` are read, Then each begins with the R3 boundary sentence byte-identical to the one constant the test imports.",
+      "test": "tests/dimp_ac01_boundary_sentence_first.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given session A of AC 1, When A calls `host.table.create` again without `tenant_key` inside the window, Then the call succeeds as A's tenant through the session binding (the call row's auth method is `session`), no second tenant is created, and no `tenant_key_missing` error is produced (the gate is never reached by the redeeming session).",
-      "test": "tests/ipsess_ac02_redeeming_session_stays_its_own_tenant.rs"
+      "description": "Given a tenant under quota, When `host.docs.put_many` is called with 50 documents mixing `content` and `content_base64`, Then `stored` is 50, `results` has 50 entries in input order with `status` `stored`, and `host.docs.list` returns 50 names.",
+      "test": "tests/dimp_ac02_fifty_documents_in_one_call.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given two requests from the same IP and User-Agent inside the window, one with no `Mcp-Session-Id` and one with a forged id this process never minted, When each calls `host.table.create` without `tenant_key`, Then each error is `-32602` `tenant_key_missing`, `data.reason` `peer_recent`, `data.session_presented` `false`, no `data.tenant`, and the hint contains `initialize` and `/t/` but neither A's namespace nor `pass the key`.",
-      "test": "tests/ipsess_ac03_sessionless_refusal_names_a_session_not_the_key.rs"
+      "description": "Given a tenant whose `docs_max` leaves room for 2 more documents, When `put_many` is called with 5, Then `stored` is 2, the other 3 carry `status` `refused` with `error_code` `quota_docs`, every stored document is readable through `host.docs.get`, and the call's JSON-RPC result is a success, not an error.",
+      "test": "tests/dimp_ac03_quota_refuses_the_overflow_per_document.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given every `Reason` variant, When each error's `message` and `data.hint` are rendered, Then the PeerRecent and ConnectionBound texts contain neither `pass the key` nor `tenant_key argument`, the Anonymous text is byte-identical to v0.118.8, and `errors.json` (the `error_registry` generator) lists the three hints under `tenant_key_missing.reasons`.",
-      "test": "tests/ipsess_ac04_no_key_dance_in_peer_recent_or_connection_bound.rs"
+      "description": "Given 51 documents, When `put_many` is called, Then the reply is `-32602` and `host.docs.list` is unchanged (nothing written).",
+      "test": "tests/dimp_ac04_fifty_one_documents_write_nothing.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the window elapsed (mock clock past 600 s), When a sessionless request from the same peer calls `host.table.create` without `tenant_key`, Then implicit signup proceeds as in v0.118.8 (the TTL is unchanged).",
-      "test": "tests/ipsess_ac05_window_elapsed_implicit_signup_proceeds.rs"
+      "description": "Given `put_many` with one document over `MCPHOST_DOC_MAX_BYTES` and one with invalid `content_base64` among three valid ones, When it runs, Then the two carry `status` `refused` with the same `error_code` and `message` a single `host.docs.put` of that document returns, the three are `stored`, and the call's JSON-RPC result is a success (R2).",
+      "test": "tests/dimp_ac05_per_document_refusals_match_single_put.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given the refusals of AC 3 and the yield of AC 1, When the journal is read, Then the refusal lines carry `session_presented=false` and the yield line carries `peer_recent_yielded=true`, each with the tool name, and no line carries a key or another tenant's namespace.",
-      "test": "tests/ipsess_ac06_journal_names_the_decision.rs"
+      "level": "MUST",
+      "description": "Given `put_many` with `on_conflict` `skip` and two documents whose names already exist, When it runs, Then those two report `skipped`, the rest `stored`, and the existing content is unchanged.",
+      "test": "tests/dimp_ac06_skip_leaves_existing_documents_alone.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given the test host, When `/contract.json` is fetched anonymously, Then `onboarding.implicit_signup.scope` is `\"session\"` and `onboarding.peer_recent.window_secs` is `600`.",
-      "test": "tests/ipsess_ac07_contract_states_the_rule.rs"
+      "level": "MUST",
+      "description": "Given `host.docs.status`, When it is read, Then `import_paths` equals `[\"content\", \"content_base64\", \"put_many\"]`, `put_many_max` is 50 and `doc_max_bytes` equals the configured cap; and `examples/docs-qa/docs-qa.sh` against the test host loads its corpus in one `put_many` call with the receipt's `tool_calls` \u2264 4.",
+      "test": "tests/dimp_ac07_status_names_import_paths_and_recipe_uses_the_batch.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 8 command in \u00a7 Live evidence commands runs from the build host, Then it prints `ipsess_ac08 A=offboarded B=offboarded rc=0` and exits 0 (Live; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)",
-      "test": "deferred: Live (prod; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)"
+      "description": "Given prod after this PRD's deploy, When the AC 8 command in \u00a7 Live evidence commands runs from the build host, Then it prints `dimp_ac08 stored=3 hits=1 offboarded rc=0` and exits 0 (Live; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)",
+      "test": "deferred: Live (prod; evidence: AC 8 command in the PRD Live evidence commands)"
     }
   ],
   "scope": [
-    "src/sync/mod.rs: the SourceKind registry, host.sync.create/list/get/delete/run_now, and the trigger tick's sync pass writing a not_implemented sync_runs receipt.",
-    "migrations/0130_syncs.sql: syncs and sync_runs tables; Plan.syncs_max (free 5, pro 50) and the quota_syncs_max, connection_missing and schedule_too_frequent error codes.",
-    "www/llms.txt gains a generated Data sync section and docs/tools.md the source.kind enum, both rendered from SourceKind."
+    "src/docs.rs: DOCS_BOUNDARY, PUT_MANY_MAX, doc_put_many (each entry through doc_put, one results row per input), and host.docs.status import_paths / put_many_max / doc_max_bytes.",
+    "src/handler.rs + src/handler/arms.rs + src/handler/preauth.rs + src/write_verbs.rs + src/dispatch_table.rs: the host.docs.put_many descriptor, arm and dry-run row; the boundary sentence leading the put and put_many descriptions and the zero-document host.quickstart docs text.",
+    "examples/docs-qa/: README.md leading with the boundary sentence; docs-qa.sh loading its corpus in one put_many call; docs/agent-quickstart.md (-> README.md, www/llms.txt) leading with the sentence.",
+    "Generated: contracts/host-tools.v1.json, host-output-schemas/variants, docs/tools.md, docs/host-tools.md, docs/openapi.json, sdk/, www/llms-full.txt, CODEMAP.md."
   ],
   "non_goals": [
-    "Fetching rows (the pull PRD); push or conflict handling (the two-way PRD); type inference beyond text columns; any new OAuth flow."
+    "Importing a vector index, embeddings or chunk tables from another system; archive (zip/tar) import; fetching a document by URL; changing quotas (docs_max, docs_bytes_max, MCPHOST_DOC_MAX_BYTES), chunking or the search ranking."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -75,35 +76,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "main_database_tables": "syncs and sync_runs live in the main database (migration 0130), not a per-tenant file, so the tick's sync pass is one indexed query across tenants."
+      "no_schema_change": "Additive tool; existing host.docs.put calls are unchanged and there is no migration."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent not keep a host table equal to a sheet?",
-      "a": "No verb registers an external source; the agent would own a puller, a token and a diff loop."
+      "q": "Why did rag_indexer_01 quit at turn 25?",
+      "a": "It wanted to import an existing LlamaIndex vector store and the recipe only takes raw text via host.docs.put."
     },
     {
       "why": 2,
-      "q": "Why is there no verb?",
-      "a": "host.table.append cannot update a row and host.trigger.set only calls a published tool."
+      "q": "Why did it learn that only at turn 25?",
+      "a": "No descriptor, quickstart or recipe sentence states what the docs store imports and what it does not."
     },
     {
       "why": 3,
-      "q": "Why start with a registry?",
-      "a": "One SourceKind enum generates the schema, docs and dispatch, so the five kinds cannot drift."
+      "q": "Why was there no such sentence?",
+      "a": "The shipped docs-qa recipe ACs assert hit rates and quotas, never what the surface says it cannot do."
     }
   ],
-  "created_at": "2026-10-21T00:00:00Z",
+  "created_at": "2026-10-29T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "What is source.secret?",
-      "resolution": "The NAME of a host.secret (stored as secret_name), never a value, so no secret-named field exists on a Debug struct."
+      "question": "What does stored count in a put_many reply?",
+      "resolution": "Documents written: entries with status stored or replaced; refused and skipped entries are not counted."
     },
     {
-      "question": "Do push and two_way modes run?",
-      "resolution": "They are accepted at create with status pending_mode (the PRD default) and the tick skips them."
+      "question": "Which receipt field is 'tool_calls <= 4' in AC7?",
+      "resolution": "The recipe receipt gains a top-level tool_calls = calls spent loading the corpus (one put_many); quota.tool_calls keeps counting the published tool's own calls (<= 10)."
     }
   ]
 }
