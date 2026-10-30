@@ -64,3 +64,10 @@ where = "host"
 wall_minutes = 10
 receipt = "target/autobuilder/receipts/risk-gate.json"
 fail_marker = "audit: BLOCKING"
+
+# wm-build only: hand PRs change ceilings under CI review
+[[check]]
+name = "ceiling-guard"
+cmd = "./scripts/ceiling-guard.sh"
+where = "host"
+wall_minutes = 2
