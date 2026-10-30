@@ -465,6 +465,12 @@ mod chainhost_ac04_dry_run_report_resolved_host;
 mod chainhost_ac06_usage_by_tool_step_tool;
 #[path = "chainhost_ac07_table_rows_max_at_step.rs"]
 mod chainhost_ac07_table_rows_max_at_step;
+#[path = "chainmap_ac02_reference_class_closed.rs"]
+mod chainmap_ac02_reference_class_closed;
+#[path = "chainmap_ac03_reference_roots_parity.rs"]
+mod chainmap_ac03_reference_roots_parity;
+#[path = "chainmap_ac07_docs_name_every_root.rs"]
+mod chainmap_ac07_docs_name_every_root;
 #[path = "chainprev_ac01_context_key_parity.rs"]
 mod chainprev_ac01_context_key_parity;
 #[path = "chainprev_ac02_missing_hop_will_fail.rs"]

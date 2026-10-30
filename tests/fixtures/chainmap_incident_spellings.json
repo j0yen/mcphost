@@ -1,0 +1,144 @@
+[
+  {
+    "spelling": "$.prev.action",
+    "source": "prev-contract.txt",
+    "from_step": 2,
+    "expect": "refuse",
+    "reason": "missing hop",
+    "canonical": "$.prev.result.action"
+  },
+  {
+    "spelling": "$.prev.result.lead",
+    "source": "prev-contract.txt",
+    "from_step": 2,
+    "expect": "refuse",
+    "reason": "unknown field",
+    "canonical": "$.prev.result.leads"
+  },
+  {
+    "spelling": "$.prev.result.rows",
+    "source": "path-check.txt",
+    "from_step": 2,
+    "expect": "refuse",
+    "reason": "unknown field",
+    "canonical": "$.prev.result.items"
+  },
+  {
+    "spelling": "$.prev.result.nope",
+    "source": "path-check.txt",
+    "from_step": 2,
+    "expect": "refuse",
+    "reason": "unknown field",
+    "canonical": null
+  },
+  {
+    "spelling": "$.steps[2].result.x",
+    "source": "path-check-b.txt",
+    "from_step": 2,
+    "expect": "refuse",
+    "reason": "forward reference",
+    "canonical": null
+  },
+  {
+    "spelling": "$.steps[0].result.count",
+    "source": "path-check-b.txt",
+    "from_step": 2,
+    "expect": "accept",
+    "reason": null,
+    "canonical": "$.steps[0].result.count"
+  },
+  {
+    "spelling": {
+      "from": "steps.0.rows"
+    },
+    "source": "wo05-dialect.txt",
+    "from_step": 2,
+    "expect": "refuse",
+    "reason": "not a path",
+    "canonical": "$.steps[0].result.rows"
+  },
+  {
+    "spelling": "steps.0.rows",
+    "source": "this-prd-class.txt",
+    "from_step": 2,
+    "expect": "refuse",
+    "reason": "not a path",
+    "canonical": "$.steps[0].result.rows"
+  },
+  {
+    "spelling": "prev.rows",
+    "source": "this-prd-class.txt",
+    "from_step": 1,
+    "expect": "refuse",
+    "reason": "not a path",
+    "canonical": "$.prev.result.rows"
+  },
+  {
+    "spelling": "$prev.result.rows",
+    "source": "this-prd-class.txt",
+    "from_step": 1,
+    "expect": "refuse",
+    "reason": "not a path",
+    "canonical": "$.prev.result.rows"
+  },
+  {
+    "spelling": "input.filters.since",
+    "source": "this-prd-class.txt",
+    "from_step": 2,
+    "expect": "refuse",
+    "reason": "not a path",
+    "canonical": "$.input.filters.since"
+  },
+  {
+    "spelling": {
+      "path": "$.prev.result.x"
+    },
+    "source": "this-prd-class.txt",
+    "from_step": 2,
+    "expect": "refuse",
+    "reason": "path inside a literal object",
+    "canonical": "$.prev.result.x"
+  },
+  {
+    "spelling": "input.since",
+    "source": "this-prd-class.txt",
+    "from_step": 2,
+    "expect": "accept",
+    "reason": null,
+    "canonical": null
+  },
+  {
+    "spelling": "index.html",
+    "source": "this-prd-class.txt",
+    "from_step": 2,
+    "expect": "accept",
+    "reason": null,
+    "canonical": null
+  },
+  {
+    "spelling": 42,
+    "source": "this-prd-class.txt",
+    "from_step": 2,
+    "expect": "accept",
+    "reason": null,
+    "canonical": null
+  },
+  {
+    "spelling": {
+      "from": "a@x.io"
+    },
+    "source": "this-prd-class.txt",
+    "from_step": 2,
+    "expect": "accept",
+    "reason": null,
+    "canonical": null
+  },
+  {
+    "spelling": {},
+    "source": "this-prd-class.txt",
+    "from_step": 2,
+    "expect": "accept",
+    "reason": null,
+    "canonical": null
+  }
+]

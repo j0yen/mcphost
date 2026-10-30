@@ -1,0 +1,5 @@
+# vendored once by the builder for PRD-mcphost-chain-near-miss-mapping-refused; lines copied verbatim
+# resolved: /home/jsy/Documents/PRDs/built-prds/PRD-mcphost-chain-prev-contract.md
+# lines: 96 97
+2. P0 — Given a chain whose step 2 maps `"action": "$.prev.action"` after a step-1 tool returning `{"action": "create", …}`, When published or dry-run, Then `verdict: will_fail` with evidence `{step: 2, path: "$.prev.action", did_you_mean: "$.prev.result.action"}` and no `success: true`.
+3. P0 — Given a predecessor with no declared `outputs` returning `{"leads": […]}`, When a chain maps `$.prev.result.lead` and is dry-run, Then `will_fail` with `available: ["leads"]` and `did_you_mean: "$.prev.result.leads"`, not `unverifiable`.

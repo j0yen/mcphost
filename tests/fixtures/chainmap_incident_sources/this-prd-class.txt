@@ -1,0 +1,5 @@
+# vendored once by the builder for PRD-mcphost-chain-near-miss-mapping-refused; lines copied verbatim
+# resolved: /home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-near-miss-mapping-refused.md
+# lines: 96 97
+| `"steps.0.rows"`, `"prev.rows"`, `"$prev.result.rows"`, `"input.filters.since"`, `{"path": "$.prev.result.x"}` | this PRD (the class, from the wo_05 dialect) | 2, 1, 1, 2, 2 | refuse, not a path / path inside a literal object | `$.steps[0].result.rows`, `$.prev.result.rows`, `$.prev.result.rows`, `$.input.filters.since`, `$.prev.result.x` |
+| `"input.since"`, `"index.html"`, `42`, `{"from": "a@x.io"}`, `{}` | this PRD (literals, Fable review FIX 2) | 2 | accept as literal | (none) |

@@ -1,0 +1,5 @@
+# vendored once by the builder for PRD-mcphost-chain-near-miss-mapping-refused; lines copied verbatim
+# resolved: /home/jsy/Documents/PRDs/built-prds/PRD-mcphost-chain-publish-time-path-check.md
+# lines: 16 88
+- Falsifier: on prod 0.106.0, `host.tool_publish` (no `dry_run`) of a chain whose step 2 maps `$.prev.result.nope` after a step-1 tool that has completed one run returns the tool published with `success: true` and an advisory verdict; if publish already refuses it, this PRD is moot
+1. P0 — Given a python tool that has completed 3 runs each returning `{"items": [...], "count": n}`, When a chain mapping `"rows": "$.prev.result.rows"` after it is published without `dry_run`, Then the publish is refused with `compose_mapping_unresolved`, `data.available` is `["count", "items"]`, `data.did_you_mean` is `$.prev.result.items`, and no tool row exists.
