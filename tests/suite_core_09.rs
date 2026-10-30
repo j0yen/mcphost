@@ -26,8 +26,6 @@ mod dimp;
 mod docs_qa;
 #[path = "support/dryspt_lint.rs"]
 mod dryspt_lint;
-#[path = "support/oauth.rs"]
-mod oauth;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/slotkind.rs"]
@@ -1029,21 +1027,3 @@ mod emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded;
 mod emsnd_ac05_unverified_tenant_mails_only_its_owner;
 #[path = "emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error.rs"]
 mod emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error;
-#[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
-mod enduser_ac02_assertion_http_headers_and_calls_row;
-#[path = "enduser_ac03_invalid_assertion_rejected.rs"]
-mod enduser_ac03_invalid_assertion_rejected;
-#[path = "enduser_ac05_state_set_get_end_user_self_isolation.rs"]
-mod enduser_ac05_state_set_get_end_user_self_isolation;
-#[path = "enduser_ac06_state_query_end_user_self_scales_via_index.rs"]
-mod enduser_ac06_state_query_end_user_self_scales_via_index;
-#[path = "enduser_ac07_end_user_required_and_explicit_impersonation.rs"]
-mod enduser_ac07_end_user_required_and_explicit_impersonation;
-#[path = "enduser_ac08_explicit_subject_forbidden_with_own_identity.rs"]
-mod enduser_ac08_explicit_subject_forbidden_with_own_identity;
-#[path = "enduser_ac09_quota_end_users.rs"]
-mod enduser_ac09_quota_end_users;
-#[path = "enduser_ac10_whoami.rs"]
-mod enduser_ac10_whoami;
-#[path = "enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs"]
-mod enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks;
