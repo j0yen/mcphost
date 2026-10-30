@@ -7,6 +7,8 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+#[path = "support/dimp.rs"]
+mod dimp;
 #[path = "support/exprf.rs"]
 mod exprf;
 #[path = "support/serve.rs"]
@@ -18,6 +20,8 @@ mod cproc_ac04_stalled_child_fails_within_deadline_and_is_reaped;
 mod cproc_ac05_ready_deadline_is_the_host_aware_timeout;
 #[path = "cprocb_ac01_perf_skip_ready_deadline_is_90s.rs"]
 mod cprocb_ac01_perf_skip_ready_deadline_is_90s;
+#[path = "dimp_ac05_per_document_refusals_match_single_put.rs"]
+mod dimp_ac05_per_document_refusals_match_single_put;
 #[path = "emin_ac02_non_fleet_needs_secret_header.rs"]
 mod emin_ac02_non_fleet_needs_secret_header;
 #[path = "emin_ac05_probe_script_hits_route.rs"]

@@ -28,13 +28,32 @@ use crate::tables;
 /// per deployment via `MCPHOST_DOC_MAX_BYTES` (the same "read once per
 /// call, no cached global" convention every other env-tunable bound in this
 /// crate uses, e.g. `bans::denials_threshold`).
-fn max_doc_bytes() -> i64 {
+pub(crate) fn max_doc_bytes() -> i64 {
     std::env::var("MCPHOST_DOC_MAX_BYTES")
         .ok()
         .and_then(|s| s.parse::<i64>().ok())
         .filter(|n| *n > 0)
         .unwrap_or(2 * 1024 * 1024)
 }
+
+/// PRD-mcphost-docs-import-and-stated-boundary R3: the one boundary sentence
+/// the `host.docs.put` / `host.docs.put_many` descriptions, `host.quickstart`
+/// for a tenant with no documents, `examples/docs-qa/README.md` and the
+/// "Docs Q&A in a minute" section of `www/llms.txt` all lead with, byte for
+/// byte. Tests import this constant; no copy of the sentence is typed twice.
+pub const DOCS_BOUNDARY: &str = "Documents are text the host indexes itself; a vector index built elsewhere (LlamaIndex, Chroma, pgvector) is not importable: export its source documents and put them.";
+
+/// R1: the `on_conflict` values `host.docs.put_many` takes; the first is the
+/// default.
+pub const ON_CONFLICT_MODES: &[&str] = &["replace", "skip"];
+
+/// R4: the ways a document gets into the store, as `host.docs.status` names
+/// them (`content` and `content_base64` are `host.docs.put`'s two argument
+/// forms; `put_many` is the batch tool).
+pub const IMPORT_PATHS: &[&str] = &["content", "content_base64", "put_many"];
+
+/// R1: the most documents one `host.docs.put_many` call takes.
+pub const PUT_MANY_MAX: usize = 50;
 
 /// requirement 2: the only mimes `host.docs.put` accepts, explicit or
 /// inferred.
@@ -403,6 +422,100 @@ pub async fn doc_put(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
     }))
 }
 
+// ---- host.docs.put_many --------------------------------------------------
+
+/// PRD-mcphost-docs-import-and-stated-boundary R1/R2: up to
+/// [`PUT_MANY_MAX`] documents in one call. Every entry goes through
+/// [`doc_put`] (so quota, size, mime and indexing are one code path) and gets
+/// its own `results` row, in input order: `stored` / `replaced` / `skipped` /
+/// `refused`, a refusal carrying the `error_code` and `message` the single
+/// call would return. A refusal of one entry never undoes another, and the
+/// call itself succeeds; only a malformed call (no `documents`, none, more
+/// than the cap, a bad `on_conflict`) is `invalid_params`, before any write.
+/// `stored` counts the documents written (`stored` + `replaced`).
+pub async fn doc_put_many(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let documents = args
+        .get("documents")
+        .and_then(Value::as_array)
+        .ok_or_else(|| AppError::InvalidArgs("missing required argument 'documents' (an array)".to_string()))?;
+    if documents.is_empty() || documents.len() > PUT_MANY_MAX {
+        return Err(AppError::InvalidArgs(format!(
+            "'documents' takes 1 to {PUT_MANY_MAX} documents per call, got {}; nothing was written",
+            documents.len()
+        )));
+    }
+    let skip_existing = match arg_str_opt(args, "on_conflict").as_deref() {
+        None | Some("replace") => false,
+        Some("skip") => true,
+        Some(other) => {
+            return Err(AppError::InvalidArgs(format!(
+                "'on_conflict' must be 'replace' or 'skip', got '{other}'"
+            )));
+        }
+    };
+
+    let mut results = Vec::with_capacity(documents.len());
+    let (mut stored, mut refused) = (0_i64, 0_i64);
+    for doc in documents {
+        let name = doc.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+        let existing = if name.trim().is_empty() {
+            None
+        } else {
+            state
+                .db
+                .document_find_by_name(tenant.id, name.clone())
+                .await?
+                .filter(|d| d.deleted_at.is_none())
+        };
+        if skip_existing && let Some(existing) = &existing {
+            results.push(json!({"name": name, "status": "skipped", "bytes": existing.bytes}));
+            continue;
+        }
+        match doc_put(state, tenant, doc).await {
+            Ok(put) => {
+                stored += 1;
+                results.push(json!({
+                    "name": name,
+                    "status": if existing.is_some() { "replaced" } else { "stored" },
+                    "id": put["id"],
+                    "version": put["version"],
+                    "bytes": put["bytes"],
+                }));
+            }
+            // Database and internal failures are not a property of the one
+            // document: they fail the call, as they would the single put.
+            Err(e @ (AppError::Storage(_) | AppError::Internal(_))) => return Err(e),
+            Err(e) => {
+                refused += 1;
+                let refusal = e.into_error_data();
+                results.push(json!({
+                    "name": name,
+                    "status": "refused",
+                    "error_code": refusal.data.as_ref().and_then(|d| d.get("error_code")).cloned().unwrap_or(Value::Null),
+                    "message": refusal.message,
+                }));
+            }
+        }
+    }
+
+    let now = crate::state::now_unix();
+    state.db.doc_index_state_ensure(tenant.id, now).await?;
+    let watermark = state
+        .db
+        .doc_index_state_get(tenant.id)
+        .await?
+        .ok_or_else(|| AppError::Internal("doc_index_state row missing after ensure".into()))?
+        .indexed_watermark;
+    let index_lag_seconds = index_lag_seconds(state, tenant.id, watermark, now).await?;
+
+    Ok(json!({
+        "results": results,
+        "stored": stored,
+        "refused": refused,
+        "index_lag_seconds": index_lag_seconds,
+    }))
+}
+
 // ---- host.docs.get --------------------------------------------------------
 
 /// requirement 4/AC4/AC10: `{id | name, version?, text?}` -- `version`
@@ -572,6 +685,11 @@ pub async fn doc_status(state: &AppState, tenant: &Tenant, _args: &Value) -> Res
         "text_bytes": text_bytes,
         "watermark": watermark,
         "quota": {"documents_max": plan.docs_max, "bytes_max": plan.docs_bytes_max},
+        // PRD-mcphost-docs-import-and-stated-boundary R4: the import surface a
+        // client can read instead of prose.
+        "import_paths": IMPORT_PATHS,
+        "put_many_max": PUT_MANY_MAX,
+        "doc_max_bytes": max_doc_bytes(),
         "index": {
             "mode": mode,
             "indexed_watermark": idx.indexed_watermark,

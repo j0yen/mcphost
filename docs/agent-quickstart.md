@@ -217,13 +217,17 @@ that made the path matter.
 
 ## Docs Q&A in a minute
 
+Documents are text the host indexes itself; a vector index built elsewhere (LlamaIndex, Chroma, pgvector) is not importable: export its source documents and put them.
+
 Turn a folder of markdown into a checkable Q&A tool, end to end, in one
 script:
 
 1. `signup(name)` — one fresh tenant.
-2. `host.docs.put(name, content)` — once per document (this recipe's own
-   corpus: 8 documents, ~22 KiB total, well under the 2 MiB per-document
-   cap).
+2. `host.docs.put_many(documents)` — up to 50 documents per call, each
+   `{name, content}` (or `content_base64`); this recipe's own corpus is one
+   call: 8 documents, ~22 KiB total, well under the 2 MiB per-document cap.
+   Every document gets its own `stored` / `replaced` / `skipped` / `refused`
+   row, so one refusal never undoes another.
 3. `host.docs.status()` — poll until `index.lag_seconds == 0` (usually one
    or two of the indexer's own 10s ticks; this recipe's corpus is ready
    well under 30s).

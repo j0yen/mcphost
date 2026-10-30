@@ -1084,6 +1084,13 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_docs_put_many<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            docs::doc_put_many(&self.state, tenant, &args).await
+        })
+    }
+
     pub(crate) fn arm_host_blob_put<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;

@@ -21,6 +21,7 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.state.table_create` | write | supported | |
 | `host.state.table_drop` | drop | supported | |
 | `host.docs.put` | write | supported | |
+| `host.docs.put_many` | write | supported | |
 | `host.docs.delete` | delete | supported | |
 | `host.docs.purge` | delete | supported | |
 | `host.index.create` | write | supported | |
