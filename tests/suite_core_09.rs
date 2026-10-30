@@ -20,12 +20,12 @@ mod child_proc_lint;
 mod codemap;
 #[path = "support/ctrace.rs"]
 mod ctrace;
+#[path = "support/dimp.rs"]
+mod dimp;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
 #[path = "support/dryspt_lint.rs"]
 mod dryspt_lint;
-#[path = "support/oauth.rs"]
-mod oauth;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/slotkind.rs"]
@@ -791,6 +791,16 @@ mod demu_ac05_host_verbs_unsupported;
 mod demu_ac06_lint_failure_exits_before_bind;
 #[path = "demu_ac07_file_watch.rs"]
 mod demu_ac07_file_watch;
+#[path = "dimp_ac01_boundary_sentence_first.rs"]
+mod dimp_ac01_boundary_sentence_first;
+#[path = "dimp_ac02_fifty_documents_in_one_call.rs"]
+mod dimp_ac02_fifty_documents_in_one_call;
+#[path = "dimp_ac03_quota_refuses_the_overflow_per_document.rs"]
+mod dimp_ac03_quota_refuses_the_overflow_per_document;
+#[path = "dimp_ac04_fifty_one_documents_write_nothing.rs"]
+mod dimp_ac04_fifty_one_documents_write_nothing;
+#[path = "dimp_ac06_skip_leaves_existing_documents_alone.rs"]
+mod dimp_ac06_skip_leaves_existing_documents_alone;
 #[path = "dkeyc_ac01_child_cannot_escalate_scope.rs"]
 mod dkeyc_ac01_child_cannot_escalate_scope;
 #[path = "dkeyc_ac02_chain_depth_and_can_delegate_gate.rs"]
@@ -1017,21 +1027,3 @@ mod emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded;
 mod emsnd_ac05_unverified_tenant_mails_only_its_owner;
 #[path = "emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error.rs"]
 mod emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error;
-#[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
-mod enduser_ac02_assertion_http_headers_and_calls_row;
-#[path = "enduser_ac03_invalid_assertion_rejected.rs"]
-mod enduser_ac03_invalid_assertion_rejected;
-#[path = "enduser_ac05_state_set_get_end_user_self_isolation.rs"]
-mod enduser_ac05_state_set_get_end_user_self_isolation;
-#[path = "enduser_ac06_state_query_end_user_self_scales_via_index.rs"]
-mod enduser_ac06_state_query_end_user_self_scales_via_index;
-#[path = "enduser_ac07_end_user_required_and_explicit_impersonation.rs"]
-mod enduser_ac07_end_user_required_and_explicit_impersonation;
-#[path = "enduser_ac08_explicit_subject_forbidden_with_own_identity.rs"]
-mod enduser_ac08_explicit_subject_forbidden_with_own_identity;
-#[path = "enduser_ac09_quota_end_users.rs"]
-mod enduser_ac09_quota_end_users;
-#[path = "enduser_ac10_whoami.rs"]
-mod enduser_ac10_whoami;
-#[path = "enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs"]
-mod enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks;
