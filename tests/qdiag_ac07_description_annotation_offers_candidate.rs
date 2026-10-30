@@ -32,7 +32,7 @@ async fn description_annotation_word_offers_the_owning_column_as_a_candidate() {
         .tools_call("host.table.query", json!({"sql": "SELECT usd FROM expenses"}))
         .await
         .expect_err("usd is not a declared column");
-    assert_eq!(err.error_code.as_deref(), Some("storage"), "err: {err:?}");
+    assert_eq!(err.error_code.as_deref(), Some("table_column_not_found"), "err: {err:?}");
 
     let log = extract_structured(
         &client.tools_call("host.table.query_log", json!({"limit": 1})).await.expect("query_log"),

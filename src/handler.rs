@@ -2768,7 +2768,9 @@ fn host_tools_part_04() -> Vec<Tool> {
              each refusal names the rule or bound it hit. handle: true materialises the result \
              as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a \
              20-row sample, per-column stats over every row) naming a hdl_<id> you can later \
-             reference in FROM or a CTE through this same tool.",
+             reference in FROM or a CTE through this same tool. A table the tenant never \
+             declared answers table_not_found and an unknown column table_column_not_found \
+             (-32602), each with data.candidates and data.hint.",
             host_schema(
                 json!({
                     "sql": {

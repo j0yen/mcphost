@@ -142,6 +142,9 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
     // (`output_schemas::OPAQUE_FIELDS`): `host.table.query` rows are the
     // tenant's columns.
     edited.insert("host.table.query");
+    // PRD-mcphost-table-query-names-missing-table AC4: `host.table.query_diagnose`
+    // gained the optional `data` block (the missing-table error's `data`).
+    edited.insert("host.table.query_diagnose");
     // PRD-mcphost-tool-call-output-root-opaque R1: the two forwarding roots
     // type only the keys the host writes (this covers `host.tool.call`'s
     // merged tenant payload, its `id` and `rows`).

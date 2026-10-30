@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.122.0 — 2026-10-30
+
+Released by wm-build land: loop: mcphost-table-query-names-missing-table.
+
 ## v0.121.0 — 2026-10-30
 
 Released by wm-build land: loop: mcphost-docs-import-and-stated-boundary.
