@@ -21,7 +21,7 @@ g() { git -C "$FX" "$@"; }
 git clone -q --local --no-checkout "$ROOT" "$FX" || exit 2
 g checkout -q --detach "$(git -C "$ROOT" rev-parse HEAD)" || exit 2
 cp "$ROOT/scripts/ci-test-partition.sh" "$FX/scripts/ci-test-partition.sh"   # the working-tree script under test
-g add -A && g commit -q -m "fixture: script under test" || exit 2
+g add -A && { g diff --cached --quiet || g commit -q -m "fixture: script under test"; } || exit 2   # no commit when the clone already has the script
 B0="$(g rev-parse HEAD)"
 SUITE="$(jq -r 'keys[] | select(startswith("suite_"))' "$FX/scripts/ci-suite-measured.json" | head -1)"
 [ -n "$SUITE" ] || { echo "fixture: no suite_* key in ci-suite-measured.json"; exit 2; }
@@ -94,7 +94,10 @@ FX="$SAVED_FX"
 
 mk_main 0; g checkout -q -B pr-d main && set_pending "0123456789abcdef0123456789abcdef01234567" && g commit -q -am "bogus since" || exit 2
 run -- --land --land-mode=pr
-if [ "$RC" -ne 0 ] && ! grep -qF "has post-merge age" <<<"$OUT"; then ok "fail closed: unverifiable since never reads as age 0"; else fail "fail closed: unverifiable since (rc=$RC)"; fi
+# Check order in `check`: cat-file "since unreachable" (before --land) runs ahead of the --land rev-parse --verify
+# "cannot verify since", so a non-object since always hits the earlier one; the --land message is unreachable here.
+want_refuse "fail closed: unverifiable since never reads as age 0" "since unreachable: fetch-depth too shallow or since not on main (0123456789)"
+if grep -qF "has post-merge age" <<<"$OUT"; then fail "fail closed: unverifiable since must not report an age"; else ok "fail closed: unverifiable since reports no age"; fi
 
 mk_main 0; g checkout -q -B pr-e main && g commit -q --allow-empty -m "pr-only commit" && set_pending "$(g rev-parse HEAD)" && g commit -q -am "since on the PR branch only" || exit 2
 run -- --land --land-mode=pr
