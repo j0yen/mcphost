@@ -241,6 +241,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // "origin-counts-script" lane (routes scripts/ops/origin-counts.py to the
     // AC6 and AC7 proof tests) -- an intended addition since the baseline, not
     // drift.
+    // PR #541 added its own "ceiling-guard" lane (routes scripts/ceiling-guard.sh
+    // and tests/scripts/ceiling-guard.test.sh to the shell test) -- an intended
+    // addition since the baseline, not drift.
     assert_eq!(
         added,
         vec![
@@ -248,6 +251,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "audit-export",
             "blobguard-fixtures",
             "capabilities-wire-check",
+            "ceiling-guard",
             "checkcompat-race-soak",
             "child-proc-lint",
             "codemap",
@@ -286,7 +290,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "vendor",
             "wasm-fixtures",
         ],
-        "only admin-schemas, blobguard-fixtures, capabilities-wire-check, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
+        "only admin-schemas, blobguard-fixtures, capabilities-wire-check, ceiling-guard, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
          loop-config, oauthconf-data, origin-counts-script, osrx-live-script, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sdk-python, sharing-docs, \
          spec-fields-doc-check, tblurlp-live-script, tool-naming, vendor, and wasm-fixtures may have been added since \

@@ -466,3 +466,11 @@ required_commands = [
   "cargo test --workspace mcphost_external_class_positive_evidence_ac06",
   "cargo test --workspace mcphost_external_class_positive_evidence_ac07",
 ]
+
+[[lane]]
+id = "ceiling-guard"
+description = "scripts/ceiling-guard.sh and its shell test tests/scripts/ceiling-guard.test.sh. Added project-locally: no existing lane routes a standalone script under scripts/ or a shell test under tests/scripts/; the proof is the test's own run."
+globs = ["scripts/ceiling-guard.sh", "tests/scripts/ceiling-guard.test.sh"]
+required_commands = [
+  "bash tests/scripts/ceiling-guard.test.sh",
+]
