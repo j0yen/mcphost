@@ -322,6 +322,14 @@
       }
     }
   },
+  "onboarding": {
+    "implicit_signup": {
+      "scope": "session"
+    },
+    "peer_recent": {
+      "window_secs": 600
+    }
+  },
   "output_envelope_fields": [
     "__resources_used",
     "call_id",

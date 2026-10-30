@@ -3,7 +3,7 @@
 //! whose first keyless call created tenant T, When the same IP and User-Agent
 //! make a second keyless `host.*` call within 600 s, Then it is refused
 //! `tenant_key_missing` with `data.reason` "peer_recent", NO `data.tenant`,
-//! `data.session_header` "Mcp-Session-Id" and the nk401 R3 PeerRecent hint,
+//! `data.session_header` "Mcp-Session-Id" and the PeerRecent hint,
 //! the tenant count stays 1, and `host.quickstart` and
 //! explicit `signup` from that peer still succeed.
 
@@ -30,11 +30,7 @@ async fn a_header_ignoring_client_gets_one_tenant_per_peer_and_the_refusal_names
     assert_eq!(err.error_code.as_deref(), Some("tenant_key_missing"), "{err:?}");
     assert_eq!(err.data["reason"], json!("peer_recent"), "{err:?}");
     assert!(err.data.get("tenant").is_none(), "a peer refusal must not name tenant {tenant}: {err:?}");
-    assert_eq!(
-        err.data["hint"],
-        json!("a tenant_key was redeemed from your address in the last 10 minutes; if that was you, pass it on every host.* call; if you are a different agent, call signup with handoff:true"),
-        "{err:?}"
-    );
+    assert_eq!(err.data["hint"], json!(mcphost::errors::PEER_RECENT_HINT), "{err:?}");
     assert_eq!(err.data["session_header"], json!("Mcp-Session-Id"), "{err:?}");
     assert_eq!(server.state.db.list_tenants().await.expect("tenants").len(), 1, "the tenant count stays 1");
 

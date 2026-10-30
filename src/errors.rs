@@ -267,6 +267,18 @@ impl Reason {
         }
     }
 
+    /// The `message` of a `tenant_key_missing` refusal for this reason.
+    /// PRD-mcphost-implicit-signup-per-session-not-per-peer R4: only
+    /// `Anonymous` keeps the original sentence; the other two name a session
+    /// or a tenant URL, never a key to paste.
+    pub fn message(&self) -> &'static str {
+        match self {
+            Reason::Anonymous => ANONYMOUS_MESSAGE,
+            Reason::ConnectionBound(_) => CONNECTION_BOUND_MESSAGE,
+            Reason::PeerRecent => PEER_RECENT_MESSAGE,
+        }
+    }
+
     /// Inverse of [`Reason::wire`] for the HTTP middleware, which sees only
     /// the serialized body. Anything unrecognized (including an absent
     /// field) is `Anonymous`, which keeps the 401.
@@ -279,14 +291,38 @@ impl Reason {
     }
 }
 
+/// The `Anonymous` message, byte-identical to v0.118.8.
+pub const ANONYMOUS_MESSAGE: &str = "tenant_key is required: pass the key that signup returned as the tenant_key argument";
+/// The `PeerRecent` message (R4): a session or a tenant URL, no key.
+pub const PEER_RECENT_MESSAGE: &str = "no tenant for this call: a key was redeemed from your address in the last 10 minutes and this request presented no session of its own; send initialize first, or call your tenant URL";
+/// The `ConnectionBound` message (R4): this session's own tenant, no key.
+pub const CONNECTION_BOUND_MESSAGE: &str = "no tenant for this call: this session already belongs to a tenant; keep calling on the same session or call its tenant URL";
+
 /// `data` key on a named refusal that points at the ways to get a key.
 pub const GET_A_KEY: &str = "get_a_key";
 pub const GET_A_KEY_TEXT: &str = "call signup for your own key (host.quickstart explains the flow)";
-pub const PEER_RECENT_HINT: &str = "a tenant_key was redeemed from your address in the last 10 minutes; if that was you, pass it on every host.* call; if you are a different agent, call signup with handoff:true";
+/// PRD-mcphost-implicit-signup-per-session-not-per-peer R3: the PeerRecent hint
+/// names two remedies, a session or a tenant URL, and no key or namespace.
+pub const PEER_RECENT_HINT: &str = "a key was redeemed from your address in the last 10 minutes and this request presented no session of its own; send initialize first (a session of your own gets its own tenant on its first host.* call) or, if that tenant is yours, call its tenant URL: https://mcphost.dev/t/<namespace>/mcp";
 
 /// The ConnectionBound hint (R3).
 pub fn connection_hint(namespace: &str) -> String {
-    format!("this connection authenticated as {namespace}; pass its tenant_key on every host.* call")
+    format!(
+        "this connection authenticated as {namespace}; keep calling on the same session (send its Mcp-Session-Id) \
+         or call its tenant URL: https://mcphost.dev/t/{namespace}/mcp"
+    )
+}
+
+/// One `{reason, hint}` row per [`Reason`], for the registry's
+/// `tenant_key_missing.reasons`. `Anonymous` has no separate hint, so its row
+/// lists its message; the namespace in the `ConnectionBound` hint is the
+/// placeholder word.
+pub fn reason_hints() -> Value {
+    json!([
+        {"reason": Reason::Anonymous.wire(), "hint": ANONYMOUS_MESSAGE},
+        {"reason": "connection_bound", "hint": connection_hint("<namespace>")},
+        {"reason": Reason::PeerRecent.wire(), "hint": PEER_RECENT_HINT},
+    ])
 }
 
 /// `data.reason` of a `tool_not_found` raised on a young implicit tenant.
@@ -311,7 +347,7 @@ pub const TOOL_NOT_FOUND_FIELDS: &[&str] = &[
 
 /// Every key a serialized `tenant_key_missing` refusal's `data` may carry.
 pub const REFUSAL_FIELDS: &[&str] = &[
-    "error_code", "reason", "tenant", "hint", GET_A_KEY, "anchor", "field", "expected", "docs", "example", "request_id",
+    "error_code", "reason", "tenant", "hint", "session_presented", GET_A_KEY, "anchor", "field", "expected", "docs", "example", "request_id",
     "next_call", "class", "family", "feedback_hint", "help_url", "remedy", "retry",
 ];
 
@@ -344,7 +380,7 @@ pub enum AppError {
     /// missing. `None` keeps the original, unnamed refusal for every other
     /// `host.*`/`billing.*` call with neither header nor argument on a
     /// connection with no memory at all.
-    #[error("tenant_key is required: pass the key that signup returned as the tenant_key argument")]
+    #[error("{}", .0.message())]
     TenantKeyMissing(Reason),
     /// PRD-mcphost-auth-error-names-argument requirement 2 / AC2-3: a
     /// `tenant_key` argument present but matching no tenant (or a disabled
@@ -960,6 +996,7 @@ crate::err_code! {
     pub TENANT_KEY_MISSING => "tenant_key_missing",
     Auth, AgentFault, false,
     "Pass tenant_key, or reconnect through your onboarding url; data.tenant names the tenant when known.",
+    reasons: reason_hints,
 }
 
 crate::err_code! {
@@ -1557,6 +1594,7 @@ impl AppError {
                 }
                 Reason::PeerRecent => {
                     obj.insert("hint".to_string(), json!(PEER_RECENT_HINT));
+                    obj.insert("session_presented".to_string(), json!(false));
                     obj.insert("session_header".to_string(), json!(SESSION_HEADER));
                     obj.insert(GET_A_KEY.to_string(), json!(GET_A_KEY_TEXT));
                 }
