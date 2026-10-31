@@ -1,4 +1,4 @@
--- compat: previous -- only `CREATE INDEX IF NOT EXISTS` over existing columns; an old release ignores an index it never names (PRD-mcphost-migration-safety requirement 4).
+-- compat: previous -- `CREATE INDEX IF NOT EXISTS` over existing columns and one wholly new table; an old release ignores an index and a table it never names (PRD-mcphost-migration-safety requirement 4).
 -- mcphost 0138_tenant_fk_indexes: PRD-mcphost-synthetic-tenant-purge R8.
 --
 -- Every delete of a `tenants` row looks, in each table that references it,
@@ -44,3 +44,24 @@ CREATE INDEX IF NOT EXISTS idx_tenp_usage_daily_caller_tenant_id ON "usage_daily
 CREATE INDEX IF NOT EXISTS idx_tenp_tenants_scratch_of ON "tenants"("scratch_of") WHERE "scratch_of" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_tenp_index_sources_tenant_id ON "index_sources"("tenant_id");
 CREATE INDEX IF NOT EXISTS idx_tenp_invites_org_id ON "invites"("org_id");
+
+-- R8: a namespace a tenant delete frees is reserved for good. `UNIQUE
+-- (tenants.namespace)` alone lets a later tenant take it, and text that still
+-- carries it (`runs.tool_name` on shared-call rows, `tools.forked_from`, message
+-- and post `from_address`) would then resolve to a stranger. `delete_tenant_rows`
+-- inserts the namespace here on every delete path; the backfill below reserves
+-- the ones freed before this migration. The two actions are the only values a
+-- tenant delete writes to `admin_events` (`admin.tenant_delete` and
+-- `admin.tenant_delete_by_prefix` both pass `tenant_delete`; the external purge
+-- passes `tenant_purge_expired`). `INSERT OR IGNORE`: idempotent at every open,
+-- and `tests/tenp_ac03_*` re-runs this statement after planting rows.
+CREATE TABLE IF NOT EXISTS namespace_tombstones (
+    namespace   TEXT PRIMARY KEY,
+    purged_unix INTEGER NOT NULL,
+    action      TEXT NOT NULL
+);
+INSERT OR IGNORE INTO namespace_tombstones (namespace, purged_unix, action)
+    SELECT tenant, COALESCE(CAST(strftime('%s', ts) AS INTEGER), 0), action
+    FROM admin_events
+    WHERE action IN ('tenant_delete', 'tenant_purge_expired') AND tenant IS NOT NULL
+    ORDER BY id;
