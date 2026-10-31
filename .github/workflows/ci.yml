@@ -140,7 +140,14 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: verify test partition is total and disjoint
-        run: ./scripts/ci-test-partition.sh check
+        run: |
+          # --land: refuse a PR whose merge would age a pending measured entry past the limit main
+          # enforces (the post-merge age, counted from the base tip; fetch-depth 0 above).
+          case "${{ github.event_name }}" in
+            pull_request) ./scripts/ci-test-partition.sh check --land --land-mode=pr ;;
+            merge_group)  ./scripts/ci-test-partition.sh check --land --land-mode=merge_group ;;
+            *)            ./scripts/ci-test-partition.sh check ;;
+          esac
 
       # `--doc` cannot be combined with any other target selector, so doctests
       # are their own invocation rather than part of any shard.
