@@ -884,6 +884,15 @@
     },
     {
       "backoff": {
+        "kind": "none"
+      },
+      "code": "namespace_reserved",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
         "kind": "fixed",
         "ms": 5000
       },
