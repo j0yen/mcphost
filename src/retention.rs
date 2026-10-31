@@ -273,6 +273,16 @@ pub fn synthetic_purge_grace_days() -> Option<i64> {
     Some(days_from_env(SYNTHETIC_PURGE_GRACE_ENV, SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS))
 }
 
+/// `PRAGMA incremental_vacuum(pages)`: hands up to `pages` free pages back to
+/// the file. The pragma frees one page per step, so every row is drained
+/// (`execute_batch` would step once and free a single page).
+pub(crate) fn incremental_vacuum(conn: &Connection, pages: i64) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA incremental_vacuum({pages})"))?;
+    let mut rows = stmt.query([])?;
+    while rows.next()?.is_some() {}
+    Ok(())
+}
+
 /// The wall budget of one expire or purge stage. A `test-support` build reads
 /// [`TEST_BUDGET_ENV`] so a test can make one sweep unable to finish; a
 /// release build never does.
@@ -804,7 +814,8 @@ fn prune_sync_inner(
     // database to `auto_vacuum=INCREMENTAL` (always true past that
     // migration) -- harmless (a documented no-op) on the `NONE` mode a
     // brand-new connection would otherwise never see in this crate.
-    let _ = conn.execute_batch("PRAGMA incremental_vacuum;");
+    // PRD-mcphost-synthetic-tenant-purge R9: bounded, like the purge batches; never a full VACUUM.
+    let _ = incremental_vacuum(&conn, PURGE_VACUUM_PAGES);
     PruneOutcome {
         deleted,
         error: None,

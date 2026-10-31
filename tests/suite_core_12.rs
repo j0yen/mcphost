@@ -744,6 +744,8 @@ mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
 mod tenp_ac02_subject_named_by_other_tenants_is_held_or_cascades;
 #[path = "tenp_ac03_every_tenant_fk_is_indexed_and_deleted_namespaces_reserved.rs"]
 mod tenp_ac03_every_tenant_fk_is_indexed_and_deleted_namespaces_reserved;
+#[path = "tenp_ac05_purge_waits_for_its_due_date_and_reports_first.rs"]
+mod tenp_ac05_purge_waits_for_its_due_date_and_reports_first;
 #[path = "testtruth_ac01_chain_prev_will_fail.rs"]
 mod testtruth_ac01_chain_prev_will_fail;
 #[path = "testtruth_ac02_chain_prev_result_pass.rs"]

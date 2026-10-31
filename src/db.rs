@@ -17405,6 +17405,13 @@ impl Db {
     /// this method only does the quick before/after bookkeeping on the
     /// shared connection.
     pub async fn prune_once(&self) -> Result<PruneReport, AppError> {
+        self.prune_once_at(crate::state::now_unix()).await
+    }
+
+    /// [`Self::prune_once`] on the caller's clock: every stage dates its work
+    /// from `now_unix`, so a test walks the sweep across days without waiting.
+    /// The row it logs carries that clock as `started_unix`.
+    pub async fn prune_once_at(&self, now_unix: i64) -> Result<PruneReport, AppError> {
         // PRD-mcphost-synthetic-tenant-purge R1: one sweep at a time; a sweep
         // that finds another running logs `busy` and changes nothing.
         let Ok(_one_sweep) = self.sweep_lock.try_lock() else {
@@ -17416,7 +17423,7 @@ impl Db {
         let path = self.path.clone();
         let cfg = self.cfg;
         let counters = self.counters.clone();
-        let started = crate::state::now_unix();
+        let started = now_unix;
         let outcome = tokio::task::spawn_blocking(move || {
             crate::retention::prune_sync(&path, &cfg, &counters, &windows, &plan_calls_days, started)
         })
@@ -17466,7 +17473,7 @@ impl Db {
                 }
             }
         }
-        let finished = crate::state::now_unix();
+        let finished = crate::state::now_unix().max(started);
         let ok = outcome.error.is_none();
         let mut deleted_value = serde_json::to_value(&outcome.deleted).unwrap_or_else(|_| json!({}));
         if let (Some(block), Some(obj)) = (external_block, deleted_value.as_object_mut())

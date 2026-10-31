@@ -238,7 +238,7 @@ fn purge_batch_sync(
         }
         if run.delete {
             let before = freelist_count(&conn)?;
-            conn.execute_batch(&format!("PRAGMA incremental_vacuum({});", crate::retention::PURGE_VACUUM_PAGES))?;
+            crate::retention::incremental_vacuum(&conn, crate::retention::PURGE_VACUUM_PAGES)?;
             let after = freelist_count(&conn)?;
             out.vacuumed_pages = (before - after).max(0);
             out.freelist_pages = after;
