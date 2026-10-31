@@ -226,6 +226,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/tables_model.rs` (<1k) PRD-mcphost-table-semantic-model: `host.table.describe` and friends -- a generated semantic model over a te...
 - `src/tasks.rs` (<1k) PRD-mcphost-task-handoff-tool: `host.task.*`, a task as a thread with a state machine the host owns.
 - `src/tenant_clients.rs` (<1k) `tenant_clients` + `join_codes` (PRD-mcphost-same-user-second-agent): a second client of the same user join...
+- `src/tenant_refs.rs` (<1k) PRD-mcphost-synthetic-tenant-purge R1/R3: the columns by which one tenant's row names another, written once.
 - `src/tenant_state.rs` (<1k) Business logic for `host.state.*` (PRD-mcphost-tenant-state P0 requirements 1-4): a per-tenant key-value na...
 - `src/timeline.rs` (<1k) PRD-mcphost-job-timeline-tool: `host.job.timeline(run_id)` (alias `host.job_timeline`) -- one step-by-step...
 - `src/tool_aliases.rs` (<1k) PRD-mcphost-tool-naming-convention-and-aliases: the alias -> canonical table for every `host.*` tool whose...
@@ -372,6 +373,12 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `TABLE_WRITE_VERBS` in `src/tables.rs`
 - `ANNOTATION_KEYS` in `src/tables_model.rs`
 - `STATUS_TOOLS` in `src/tasks.rs`
+- `DELETED_BY_COLUMN` in `src/tenant_refs.rs`
+- `NO_FK_TENANT_TABLES` in `src/tenant_refs.rs`
+- `NULLED` in `src/tenant_refs.rs`
+- `SAME_TENANT` in `src/tenant_refs.rs`
+- `SET_NULL` in `src/tenant_refs.rs`
+- `TWO_SIDED` in `src/tenant_refs.rs`
 - `ERROR_FAMILIES` in `src/timeline.rs`
 - `FORMATS` in `src/timeline.rs`
 - `TIMELINE_FIELDS` in `src/timeline.rs`
