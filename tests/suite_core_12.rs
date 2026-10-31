@@ -740,6 +740,8 @@ mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
 mod tenantprm_ac07_key_and_oauth_suites_unchanged;
 #[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
 mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
+#[path = "tenp_ac02_subject_named_by_other_tenants_is_held_or_cascades.rs"]
+mod tenp_ac02_subject_named_by_other_tenants_is_held_or_cascades;
 #[path = "testtruth_ac01_chain_prev_will_fail.rs"]
 mod testtruth_ac01_chain_prev_will_fail;
 #[path = "testtruth_ac02_chain_prev_result_pass.rs"]

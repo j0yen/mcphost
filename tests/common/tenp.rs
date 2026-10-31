@@ -23,6 +23,8 @@ const OVERRIDES: &[(&str, &str, &str)] = &[
     ("meter_events", "mode", "'sent'"),
     ("org_members", "role", "'member'"),
     ("recipe_uses", "via", "'quickstart'"),
+    // A plan's own `calls` window deletes an old row in the sweep.
+    ("calls", "started_unix", "CAST(strftime('%s', 'now') AS INTEGER)"),
     // An old event: a generated stamp would postpone the subject's due date.
     ("tenant_lifecycle_events", "created_unix", "1000"),
 ];
@@ -170,4 +172,170 @@ pub fn last_block(conn: &Connection) -> serde_json::Value {
 
 pub fn count(conn: &Connection, sql: &str) -> i64 {
     conn.query_row(sql, [], |r| r.get(0)).expect("count")
+}
+
+/// What a counterpart tenant is, for the classes `src/tenant_refs.rs` splits by.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// Both markers, unclaimed, `signup_source = 'implicit'`: the synthetic class.
+    SyntheticImplicit,
+    /// Both markers, unclaimed, an explicit sign-up: still the synthetic class.
+    SyntheticExplicit,
+    /// Both markers and a claim: a claimed test account is `other`.
+    Claimed,
+    /// The label without the origin.
+    LabelOnly,
+    /// The origin without the label.
+    OriginOnly,
+    /// An external tenant.
+    External,
+}
+
+/// Inserts one enabled tenant of `kind`, last seen at `now`, and returns its id.
+pub fn insert_tenant(conn: &Connection, ns: &str, kind: Kind, now: i64) -> i64 {
+    let (origin, label, source, claimed) = match kind {
+        Kind::SyntheticImplicit => ("synthetic", Some("synthorg:test"), "implicit", None),
+        Kind::SyntheticExplicit => ("synthetic", Some("synthorg:test"), "explicit", None),
+        Kind::Claimed => ("synthetic", Some("synthorg:test"), "implicit", Some(now - DAY)),
+        Kind::LabelOnly => ("external", Some("synthorg:test"), "implicit", None),
+        Kind::OriginOnly => ("synthetic", None, "implicit", None),
+        Kind::External => ("external", None, "implicit", None),
+    };
+    conn.execute(
+        "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, signup_source, origin, \
+         synthetic, claimed_unix, created_unix, last_seen_unix) \
+         VALUES (?1, ?1, ?2, '2026-01-01T00:00:00Z', 0, ?3, ?4, ?5, ?6, ?7, ?7)",
+        params![ns, format!("hash-{ns}"), source, origin, label, claimed, now],
+    )
+    .expect("insert counterpart");
+    conn.last_insert_rowid()
+}
+
+static UNIQUE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+
+/// Inserts one row into `table` with the columns in `set` (name, SQL expression)
+/// and a unique dummy in every other required column; returns its rowid.
+pub fn plant(conn: &Connection, table: &str, set: &[(&str, String)]) -> i64 {
+    let cols: Vec<(String, String, bool, bool, i64)> = {
+        let mut stmt = conn
+            .prepare("SELECT name, type, \"notnull\", dflt_value IS NOT NULL, pk FROM pragma_table_info(?1)")
+            .expect("prepare cols");
+        stmt.query_map([table], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0, r.get::<_, i64>(3)? != 0, r.get(4)?)))
+            .expect("cols")
+            .collect::<Result<_, _>>()
+            .expect("col rows")
+    };
+    let pk_count = cols.iter().filter(|c| c.4 > 0).count();
+    let unique = UNIQUE.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let (mut names, mut vals) = (Vec::new(), Vec::new());
+    for (name, ty, not_null, has_default, pk) in &cols {
+        if let Some((_, expr)) = set.iter().find(|(n, _)| n == name) {
+            names.push(name.clone());
+            vals.push(expr.clone());
+        } else if let Some((_, _, expr)) = OVERRIDES.iter().find(|o| o.0 == table && o.1 == name) {
+            names.push(name.clone());
+            vals.push((*expr).to_string());
+        } else if *pk > 0 && ty.eq_ignore_ascii_case("INTEGER") && pk_count == 1 {
+            continue;
+        } else if (!not_null && !has_default && *pk == 0) || (*has_default && *pk == 0) {
+            continue;
+        } else {
+            let ty = ty.to_ascii_uppercase();
+            let expr = if ty.contains("INT") {
+                unique.to_string()
+            } else if ty == "REAL" || ty == "FLOAT" {
+                "0".to_string()
+            } else if ty.contains("BLOB") {
+                "X'00'".to_string()
+            } else {
+                format!("'x{unique}'")
+            };
+            names.push(name.clone());
+            vals.push(expr);
+        }
+    }
+    let sql = format!("INSERT INTO \"{table}\" ({}) VALUES ({})", names.join(", "), vals.join(", "));
+    conn.execute(&sql, []).unwrap_or_else(|e| panic!("plant {table}: {e}\n{sql}"));
+    conn.last_insert_rowid()
+}
+
+/// Every non-FTS table's rows as strings, sorted, minus `skip`: a snapshot to compare.
+pub fn dump(conn: &Connection, skip: &[&str]) -> std::collections::BTreeMap<String, Vec<String>> {
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%\\_fts%' ESCAPE '\\' AND name NOT LIKE '%\\_content' ESCAPE '\\' AND sql NOT LIKE 'CREATE VIRTUAL%'")
+        .expect("tables")
+        .query_map([], |r| r.get(0))
+        .expect("tables")
+        .collect::<Result<_, _>>()
+        .expect("table rows");
+    let mut out = std::collections::BTreeMap::new();
+    for table in tables.into_iter().filter(|t| !skip.contains(&t.as_str())) {
+        let mut stmt = conn.prepare(&format!("SELECT * FROM \"{table}\"")).expect("select");
+        let n = stmt.column_count();
+        let mut rows: Vec<String> = stmt
+            .query_map([], |r| {
+                Ok((0..n).map(|i| format!("{:?}", r.get_ref(i).expect("cell"))).collect::<Vec<_>>().join("|"))
+            })
+            .expect("rows")
+            .collect::<Result<_, _>>()
+            .expect("row strings");
+        rows.sort();
+        out.insert(table, rows);
+    }
+    out
+}
+
+/// `(table, column)` of every integer column that holds a tenant id: a foreign
+/// key to `tenants`, or named `tenant_id`, `*_tenant_id`, `created_by`, `scratch_of`.
+pub fn tenant_columns(conn: &Connection) -> Vec<(String, String)> {
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'tenants'")
+        .expect("tables")
+        .query_map([], |r| r.get(0))
+        .expect("tables")
+        .collect::<Result<_, _>>()
+        .expect("table rows");
+    let mut out = Vec::new();
+    for table in tables.iter().map(String::as_str).chain(std::iter::once("tenants")) {
+        let mut stmt = conn
+            .prepare(
+                "SELECT c.name FROM pragma_table_info(?1) c WHERE (c.type LIKE 'INT%' AND (c.name = 'tenant_id' \
+                 OR c.name LIKE '%\\_tenant\\_id' ESCAPE '\\' OR c.name IN ('created_by', 'scratch_of'))) \
+                 OR c.name IN (SELECT f.\"from\" FROM pragma_foreign_key_list(?1) f WHERE f.\"table\" = 'tenants')",
+            )
+            .expect("prepare");
+        for col in stmt.query_map([table], |r| r.get::<_, String>(0)).expect("cols") {
+            out.push((table.to_string(), col.expect("col")));
+        }
+    }
+    out
+}
+
+/// Asserts two [`dump`]s are equal, naming each table (and its changed rows) that differs.
+pub fn assert_same_dump(
+    before: &std::collections::BTreeMap<String, Vec<String>>,
+    after: &std::collections::BTreeMap<String, Vec<String>>,
+    what: &str,
+) {
+    let mut changed = Vec::new();
+    for (table, rows) in after {
+        let old = before.get(table).cloned().unwrap_or_default();
+        if &old != rows {
+            let gone: Vec<&String> = old.iter().filter(|r| !rows.contains(r)).take(3).collect();
+            let new: Vec<&String> = rows.iter().filter(|r| !old.contains(r)).take(3).collect();
+            changed.push(format!("{table}: removed {gone:?} added {new:?}"));
+        }
+    }
+    assert!(changed.is_empty(), "{what}: {changed:#?}");
+}
+
+/// Widens every age window of the plain row-pruning tables to a century, so the
+/// sweep's ordinary retention leaves a fixture row with an old stamp alone and a
+/// before/after [`dump`] shows only what the tenant policy did.
+pub fn widen_row_retention(conn: &Connection) {
+    conn.execute(
+        "UPDATE retention_policy SET days = 36500 WHERE table_name NOT IN (?1, 'external_unclaimed_tenants')",
+        params![POLICY],
+    )
+    .expect("widen retention");
 }

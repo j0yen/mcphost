@@ -35,3 +35,12 @@ CREATE INDEX IF NOT EXISTS idx_tenp_tasks_recipient_tenant_id ON "tasks"("recipi
 CREATE INDEX IF NOT EXISTS idx_tenp_threads_created_by ON "threads"("created_by");
 CREATE INDEX IF NOT EXISTS idx_tenp_tool_caller_limits_caller_tenant_id ON "tool_caller_limits"("caller_tenant_id");
 CREATE INDEX IF NOT EXISTS idx_tenp_tool_version_watermarks_caller_tenant_id ON "tool_version_watermarks"("caller_tenant_id");
+
+-- Columns that name a tenant with no foreign key, or are only reached through
+-- a join the purge counts (`src/tenant_refs.rs`): the same one-scan-per-subject
+-- cost without these. Partial where most rows hold NULL.
+CREATE INDEX IF NOT EXISTS idx_tenp_runs_caller_tenant_id ON "runs"("caller_tenant_id") WHERE "caller_tenant_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tenp_usage_daily_caller_tenant_id ON "usage_daily"("caller_tenant_id");
+CREATE INDEX IF NOT EXISTS idx_tenp_tenants_scratch_of ON "tenants"("scratch_of") WHERE "scratch_of" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tenp_index_sources_tenant_id ON "index_sources"("tenant_id");
+CREATE INDEX IF NOT EXISTS idx_tenp_invites_org_id ON "invites"("org_id");

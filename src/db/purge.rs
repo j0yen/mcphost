@@ -36,26 +36,126 @@ pub(crate) fn purge_due_at(p: &str) -> String {
     )
 }
 
-/// When a purge runs: the sweep's clock and the grace in seconds.
+/// How one batch runs: the sweep's clock, the grace in seconds, and whether it
+/// deletes (a sweep) or only counts (the report-only sweep and the dry run).
 #[derive(Clone, Copy)]
-struct PurgeClock {
+struct PurgeRun {
     now: i64,
     grace_secs: i64,
+    delete: bool,
+}
+
+/// What names one subject through one column, split by the other tenant's class.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ColumnRefs {
+    pub outcome: &'static str,
+    pub synthetic_implicit: i64,
+    pub synthetic_explicit: i64,
+    pub other: i64,
+    /// Only for an author column the schema sets to NULL (`other` is then JSON null).
+    pub set_null_rows: Option<i64>,
+}
+
+impl ColumnRefs {
+    fn to_json(&self) -> Value {
+        match self.set_null_rows {
+            Some(rows) => json!({"outcome": self.outcome, "rows": rows, "other": null}),
+            None => json!({
+                "outcome": self.outcome,
+                "synthetic_implicit": self.synthetic_implicit,
+                "synthetic_explicit": self.synthetic_explicit,
+                "other": self.other,
+            }),
+        }
+    }
+}
+
+/// Every column that names a subject from another tenant's row, by key.
+pub(crate) type Refs = std::collections::BTreeMap<String, ColumnRefs>;
+
+/// Columns a row of a tenant outside the synthetic class names the subject by.
+fn entangled_columns(refs: &Refs) -> Vec<String> {
+    refs.iter().filter(|(_, c)| c.set_null_rows.is_none() && c.other > 0).map(|(k, _)| k.clone()).collect()
+}
+
+fn add_refs(total: &mut Refs, refs: &Refs) {
+    for (key, c) in refs {
+        let t = total.entry(key.clone()).or_insert_with(|| ColumnRefs { outcome: c.outcome, ..Default::default() });
+        t.synthetic_implicit += c.synthetic_implicit;
+        t.synthetic_explicit += c.synthetic_explicit;
+        t.other += c.other;
+        if let Some(rows) = c.set_null_rows {
+            *t.set_null_rows.get_or_insert(0) += rows;
+        }
+    }
+}
+
+fn refs_json(refs: &Refs) -> Value {
+    Value::Object(refs.iter().map(|(k, c)| (k.clone(), c.to_json())).collect())
+}
+
+/// Counts the rows of other tenants that name `id`, by column and by the other
+/// tenant's class (`tenant_refs::TWO_SIDED`), and the author columns the
+/// schema will set to NULL. Zero columns are left out.
+pub(crate) fn count_refs(conn: &Connection, id: i64) -> Result<Refs, AppError> {
+    let mut refs = Refs::new();
+    for r in crate::tenant_refs::TWO_SIDED {
+        let sql = format!(
+            "WITH x(other_id) AS ({other}) SELECT cls, COUNT(*) FROM \
+             (SELECT {class} AS cls FROM x JOIN tenants o ON o.id = x.other_id) GROUP BY cls",
+            other = r.other_sql,
+            class = crate::tenant_refs::OTHER_CLASS_SQL,
+        );
+        let mut stmt = conn.prepare_cached(&sql)?;
+        let mut rows = stmt.query(named_params! {":id": id})?;
+        let mut col = ColumnRefs { outcome: r.outcome.as_str(), ..Default::default() };
+        let mut any = false;
+        while let Some(row) = rows.next()? {
+            let (class, n): (String, i64) = (row.get(0)?, row.get(1)?);
+            any = true;
+            match class.as_str() {
+                "synthetic_implicit" => col.synthetic_implicit = n,
+                "synthetic_explicit" => col.synthetic_explicit = n,
+                _ => col.other = n,
+            }
+        }
+        if any {
+            refs.insert(r.key.to_string(), col);
+        }
+    }
+    for (table, column) in crate::tenant_refs::SET_NULL {
+        let n: i64 = conn
+            .prepare_cached(&format!("SELECT COUNT(*) FROM \"{table}\" WHERE \"{column}\" = ?1"))?
+            .query_row(params![id], |r| r.get(0))?;
+        if n > 0 {
+            let outcome = crate::tenant_refs::Outcome::SetNull.as_str();
+            refs.insert(format!("{table}.{column}"), ColumnRefs { outcome, set_null_rows: Some(n), ..Default::default() });
+        }
+    }
+    Ok(refs)
 }
 
 /// One batch's outcome on the blocking side.
 #[derive(Debug, Default)]
 pub(crate) struct PurgeBatchOut {
     pub purged: Vec<Tenant>,
+    /// Subjects a row of a tenant outside the synthetic class names, by column.
+    pub held: Vec<(i64, Vec<String>)>,
+    /// What the batch's subjects are named by, summed.
+    pub refs: Refs,
     /// Milliseconds each purged subject's transaction held the write lock.
     pub hold_ms: Vec<u64>,
     pub vacuumed_pages: i64,
     pub freelist_pages: i64,
 }
 
-/// A subject the class re-check refused to delete.
+/// What the class re-check and the reference count decided for one subject.
 enum SubjectOutcome {
-    Purged(Box<Tenant>),
+    Purged(Box<Tenant>, Refs),
+    /// A row of a tenant outside the synthetic class names it: kept, reported.
+    Held(Refs, Vec<String>),
+    /// Counted only (the run does not delete).
+    Counted(Refs, Vec<String>),
     /// No longer in the class or not yet due (claimed, enabled or touched since the candidate read).
     Skipped,
 }
@@ -65,16 +165,18 @@ fn freelist_count(conn: &Connection) -> rusqlite::Result<i64> {
 }
 
 /// Deletes one subject: re-check the class inside the immediate transaction,
-/// then the shared row executor.
-fn purge_subject(conn: &Connection, id: i64, clock: PurgeClock) -> Result<SubjectOutcome, AppError> {
-    crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+/// hold it if a row of a tenant outside the synthetic class names it, else the
+/// shared row executor.
+fn purge_subject(conn: &Connection, id: i64, run: PurgeRun) -> Result<SubjectOutcome, AppError> {
+    let behavior = if run.delete { crate::txn::TxBehavior::Immediate } else { crate::txn::TxBehavior::Deferred };
+    crate::txn::with_tx(conn, behavior, |conn| {
         let sql = format!(
             "SELECT namespace FROM tenants t WHERE t.id = :id AND {class} AND {due} <= :now",
             class = purge_class("t."),
             due = purge_due_at("t."),
         );
         let namespace: Option<String> = conn
-            .query_row(&sql, named_params! {":id": id, ":now": clock.now, ":grace": clock.grace_secs}, |r| r.get(0))
+            .query_row(&sql, named_params! {":id": id, ":now": run.now, ":grace": run.grace_secs}, |r| r.get(0))
             .optional()?;
         let Some(namespace) = namespace else {
             return Ok(SubjectOutcome::Skipped);
@@ -82,9 +184,18 @@ fn purge_subject(conn: &Connection, id: i64, clock: PurgeClock) -> Result<Subjec
         let Some(tenant) = Db::query_tenant_by_namespace(conn, &namespace)? else {
             return Ok(SubjectOutcome::Skipped);
         };
+        let refs = count_refs(conn, tenant.id)?;
+        let entangled = entangled_columns(&refs);
+        if !run.delete {
+            return Ok(SubjectOutcome::Counted(refs, entangled));
+        }
+        if !entangled.is_empty() {
+            return Ok(SubjectOutcome::Held(refs, entangled));
+        }
         let counts = Db::count_tenant_child_rows(conn, tenant.id)?;
-        Db::delete_tenant_rows(conn, &tenant, &counts, crate::retention::SYNTHETIC_PURGE_ACTION)?;
-        Ok(SubjectOutcome::Purged(Box::new(tenant)))
+        let detail = json!({"cross_refs": refs_json(&refs)});
+        Db::delete_tenant_rows_detail(conn, &tenant, &counts, crate::retention::SYNTHETIC_PURGE_ACTION, Some(&detail))?;
+        Ok(SubjectOutcome::Purged(Box::new(tenant), refs))
     })
 }
 
@@ -96,28 +207,42 @@ fn purge_batch_sync(
     cfg: &DbConfig,
     counters: &Arc<DbCounters>,
     candidates: &[i64],
-    clock: PurgeClock,
+    run: PurgeRun,
 ) -> Result<PurgeBatchOut, AppError> {
     instrument_block(counters, ROLE_PRUNE, || {
         let (conn, _audit) = open_with_role(path, ROLE_PRUNE, cfg)?;
+        // The reference count prepares ~30 statements per subject.
+        conn.set_prepared_statement_cache_capacity(128);
         let mut out = PurgeBatchOut::default();
         for id in candidates {
             let started = std::time::Instant::now();
-            let outcome = purge_subject(&conn, *id, clock)?;
-            let held = started.elapsed();
-            if let SubjectOutcome::Purged(tenant) = outcome {
-                out.purged.push(*tenant);
-                out.hold_ms.push(held.as_millis() as u64);
+            let outcome = purge_subject(&conn, *id, run)?;
+            let held_for = started.elapsed();
+            match outcome {
+                SubjectOutcome::Purged(tenant, refs) => {
+                    add_refs(&mut out.refs, &refs);
+                    out.purged.push(*tenant);
+                    out.hold_ms.push(held_for.as_millis() as u64);
+                }
+                SubjectOutcome::Held(refs, columns) | SubjectOutcome::Counted(refs, columns) => {
+                    add_refs(&mut out.refs, &refs);
+                    if !columns.is_empty() {
+                        out.held.push((*id, columns));
+                    }
+                }
+                SubjectOutcome::Skipped => {}
             }
-            if held > SLOW_SUBJECT {
-                std::thread::sleep(held.min(SLOW_SUBJECT_PAUSE_MAX));
+            if run.delete && held_for > SLOW_SUBJECT {
+                std::thread::sleep(held_for.min(SLOW_SUBJECT_PAUSE_MAX));
             }
         }
-        let before = freelist_count(&conn)?;
-        conn.execute_batch(&format!("PRAGMA incremental_vacuum({});", crate::retention::PURGE_VACUUM_PAGES))?;
-        let after = freelist_count(&conn)?;
-        out.vacuumed_pages = (before - after).max(0);
-        out.freelist_pages = after;
+        if run.delete {
+            let before = freelist_count(&conn)?;
+            conn.execute_batch(&format!("PRAGMA incremental_vacuum({});", crate::retention::PURGE_VACUUM_PAGES))?;
+            let after = freelist_count(&conn)?;
+            out.vacuumed_pages = (before - after).max(0);
+            out.freelist_pages = after;
+        }
         Ok(out)
     })
 }
@@ -247,47 +372,54 @@ impl Db {
         *self.tenant_removed.write().unwrap_or_else(|e| e.into_inner()) = Some(hook);
     }
 
-    /// The purge stage of one sweep at `now`. `may_delete` is false for the
-    /// report-only sweep (the first one that carries the block). Returns the
+    /// The purge stage of one sweep at `now`. `delete` is false for the
+    /// report-only sweep (the first one that carries the block) and for the
+    /// dry run: they count every due subject and delete nothing. Returns the
     /// policy block's purge keys.
     pub(crate) async fn purge_synthetic_stage(
         &self,
         now: i64,
         grace_days: i64,
-        may_delete: bool,
+        delete: bool,
     ) -> Result<serde_json::Map<String, Value>, AppError> {
-        let (would_purge, due_unix) = self.purge_due_counts(now, grace_days).await?;
-        let mut block = serde_json::Map::new();
-        block.insert("purge_due_unix".into(), json!(due_unix));
-        block.insert("would_purge".into(), json!(would_purge));
-        let mut purged = 0i64;
-        let mut vacuumed = 0i64;
-        let mut freelist = 0i64;
+        let (due, due_unix) = self.purge_due_counts(now, grace_days).await?;
+        let run = PurgeRun { now, grace_secs: grace_days.saturating_mul(86_400), delete };
+        let removed = self.tenant_removed.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let started = std::time::Instant::now();
+        let budget = crate::retention::stage_budget();
+        let mut refs = Refs::new();
+        let mut entangled: std::collections::BTreeMap<String, i64> = Default::default();
+        let mut entangled_subjects = 0i64;
+        let (mut purged, mut vacuumed, mut freelist, mut after) = (0i64, 0i64, 0i64, 0i64);
         let mut batches: Vec<Value> = Vec::new();
-        let mut after = 0i64;
-        let mut held_over = 0i64;
-        if may_delete && would_purge > 0 {
-            let removed = self.tenant_removed.read().unwrap_or_else(|e| e.into_inner()).clone();
-            let started = std::time::Instant::now();
-            let budget = crate::retention::stage_budget();
-            loop {
-                let batch_started = std::time::Instant::now();
-                let ids = self.purge_candidates(now, grace_days, after, crate::retention::PURGE_BATCH).await?;
-                let Some(&last) = ids.last() else { break };
-                after = last;
-                let (path, cfg, counters) = (self.path.clone(), self.cfg, self.counters.clone());
-                let clock = PurgeClock { now, grace_secs: grace_days.saturating_mul(86_400) };
-                let out = tokio::task::spawn_blocking(move || purge_batch_sync(&path, &cfg, &counters, &ids, clock))
+        loop {
+            if due == 0 {
+                break;
+            }
+            let batch_started = std::time::Instant::now();
+            let ids = self.purge_candidates(now, grace_days, after, crate::retention::PURGE_BATCH).await?;
+            let Some(&last) = ids.last() else { break };
+            after = last;
+            let (path, cfg, counters) = (self.path.clone(), self.cfg, self.counters.clone());
+            let out = tokio::task::spawn_blocking(move || purge_batch_sync(&path, &cfg, &counters, &ids, run))
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))??;
-                for tenant in &out.purged {
-                    if let Some(hook) = &removed {
-                        hook(tenant.id).await;
-                    }
+            for tenant in &out.purged {
+                if let Some(hook) = &removed {
+                    hook(tenant.id).await;
                 }
-                purged += out.purged.len() as i64;
-                vacuumed += out.vacuumed_pages;
-                freelist = out.freelist_pages;
+            }
+            add_refs(&mut refs, &out.refs);
+            for (_, columns) in &out.held {
+                entangled_subjects += 1;
+                for column in columns {
+                    *entangled.entry(column.clone()).or_default() += 1;
+                }
+            }
+            purged += out.purged.len() as i64;
+            vacuumed += out.vacuumed_pages;
+            freelist = out.freelist_pages;
+            if delete {
                 let wall_ms = batch_started.elapsed().as_millis() as i64;
                 let mut holds = out.hold_ms.clone();
                 holds.sort_unstable();
@@ -298,7 +430,7 @@ impl Db {
                 }));
                 tracing::info!(
                     purged = out.purged.len(),
-                    held_over = would_purge - purged,
+                    held_entangled = out.held.len(),
                     wall_ms,
                     vacuumed_pages = out.vacuumed_pages,
                     "synthetic tenant purge batch"
@@ -307,10 +439,15 @@ impl Db {
                     break;
                 }
             }
-            held_over = self.purge_remaining(now, grace_days, after).await?;
         }
+        let held_over = if delete && due > 0 { self.purge_remaining(now, grace_days, after).await? } else { 0 };
+        let mut block = serde_json::Map::new();
+        block.insert("purge_due_unix".into(), json!(due_unix));
+        block.insert("would_purge".into(), json!(if delete { purged + held_over } else { due - entangled_subjects }));
         block.insert("purged".into(), json!(purged));
         block.insert("held_over".into(), json!(held_over));
+        block.insert("held_entangled".into(), json!(entangled));
+        block.insert("cross_refs".into(), refs_json(&refs));
         block.insert("vacuumed_pages".into(), json!(vacuumed));
         block.insert("freelist_pages".into(), json!(freelist));
         block.insert("batches".into(), json!(batches));

@@ -8395,21 +8395,53 @@ impl Db {
         counts: &TenantDeleteCounts,
         action: &str,
     ) -> Result<(), AppError> {
+        Self::delete_tenant_rows_detail(conn, tenant, counts, action, None)
+    }
+
+    /// [`Self::delete_tenant_rows`] with `extra` merged into the journal line's
+    /// detail. PRD-mcphost-synthetic-tenant-purge R3: before the tenant row goes,
+    /// every column that names it without cascading is dealt with here, so no
+    /// row names it afterwards: the nullable columns are set to NULL (two of
+    /// them are `NO ACTION` foreign keys that would fail the delete), the rows
+    /// that name it from a `NOT NULL` column with no foreign key are deleted,
+    /// and the tables with a `tenant_id` and no foreign key are emptied of it.
+    /// Text that carries its namespace is never rewritten.
+    fn delete_tenant_rows_detail(
+        conn: &rusqlite::Connection,
+        tenant: &Tenant,
+        counts: &TenantDeleteCounts,
+        action: &str,
+        extra: Option<&Value>,
+    ) -> Result<(), AppError> {
+        for (table, column) in crate::tenant_refs::NULLED {
+            conn.prepare_cached(&format!("UPDATE \"{table}\" SET \"{column}\" = NULL WHERE \"{column}\" = ?1"))?
+                .execute(params![tenant.id])?;
+        }
+        for (table, column) in crate::tenant_refs::DELETED_BY_COLUMN {
+            conn.prepare_cached(&format!("DELETE FROM \"{table}\" WHERE \"{column}\" = ?1"))?
+                .execute(params![tenant.id])?;
+        }
+        for table in crate::tenant_refs::NO_FK_TENANT_TABLES {
+            conn.prepare_cached(&format!("DELETE FROM \"{table}\" WHERE tenant_id = ?1"))?
+                .execute(params![tenant.id])?;
+        }
         conn.execute("DELETE FROM tenant_lifecycle_events WHERE tenant_id = ?1", params![tenant.id])?;
         // Cached: SQLite compiles the cascade into the statement, one program per
         // referencing table (118 on prod), and a purge runs this once per subject.
         conn.prepare_cached("DELETE FROM tenants WHERE id = ?1")?.execute(params![tenant.id])?;
-        let detail = json!({
+        let mut detail = json!({
             "namespace": tenant.namespace,
             "tools_removed": counts.tools_removed,
             "secrets_removed": counts.secrets_removed,
             "calls_removed": counts.calls_removed,
             "logs_removed": counts.logs_removed,
-        })
-        .to_string();
+        });
+        if let (Some(extra), Some(obj)) = (extra.and_then(Value::as_object), detail.as_object_mut()) {
+            obj.extend(extra.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
         conn.execute(
             "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
-            params![now_rfc3339(), action, tenant.namespace, detail],
+            params![now_rfc3339(), action, tenant.namespace, detail.to_string()],
         )?;
         Ok(())
     }

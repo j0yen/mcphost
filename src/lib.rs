@@ -143,6 +143,7 @@ pub mod delegation_recipe;
 pub mod registry;
 pub mod registry_manifest;
 pub mod retention;
+pub mod tenant_refs;
 pub mod returns;
 pub mod rowpolicy;
 pub mod receipts;
