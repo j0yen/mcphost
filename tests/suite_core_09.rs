@@ -801,6 +801,12 @@ mod dimp_ac03_quota_refuses_the_overflow_per_document;
 mod dimp_ac04_fifty_one_documents_write_nothing;
 #[path = "dimp_ac06_skip_leaves_existing_documents_alone.rs"]
 mod dimp_ac06_skip_leaves_existing_documents_alone;
+#[path = "dimpr_ac01_driver_present_parses_and_boundary_matches.rs"]
+mod dimpr_ac01_driver_present_parses_and_boundary_matches;
+#[path = "dimpr_ac02_dead_port_fails_closed.rs"]
+mod dimpr_ac02_dead_port_fails_closed;
+#[path = "dimpr_ac03_driver_passes_against_test_server.rs"]
+mod dimpr_ac03_driver_passes_against_test_server;
 #[path = "dkeyc_ac01_child_cannot_escalate_scope.rs"]
 mod dkeyc_ac01_child_cannot_escalate_scope;
 #[path = "dkeyc_ac02_chain_depth_and_can_delegate_gate.rs"]

@@ -2585,6 +2585,13 @@
       "AC6": "tests/dimp_ac06_skip_leaves_existing_documents_alone.rs",
       "AC7": "tests/dimp_ac07_status_names_import_paths_and_recipe_uses_the_batch.rs",
       "AC8": "deferred: Live (prod; evidence: AC 8 command in the PRD Live evidence commands)"
+    },
+    "dimpr": {
+      "_prd": "PRD-mcphost-docs-put-many-live-reproof.md (test_prefix: dimpr)",
+      "AC1": "tests/dimpr_ac01_driver_present_parses_and_boundary_matches.rs",
+      "AC4": "deferred: Live (prod; evidence: tests/live/dimp_ac08_put_many.py against https://mcphost.dev/mcp)",
+      "AC2": "tests/dimpr_ac02_dead_port_fails_closed.rs",
+      "AC3": "tests/dimpr_ac03_driver_passes_against_test_server.rs"
     }
   }
 }
