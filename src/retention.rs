@@ -240,6 +240,52 @@ pub fn external_lifecycle_view(subject: &crate::db::ExternalSubject, window: i64
 /// Tenants claimed and torn down per batch (measured on 6,000 subjects).
 pub const EXPIRE_BATCH_SIZE: i64 = 500;
 
+/// PRD-mcphost-synthetic-tenant-purge R1: the grace env, in days after the
+/// later of the last activity, the last lifecycle event and the policy floor.
+pub const SYNTHETIC_PURGE_GRACE_ENV: &str = "MCPHOST_RETENTION_SYNTHETIC_PURGE_GRACE_DAYS";
+pub const SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS: i64 = 14;
+/// Subjects one purge batch deletes.
+pub const PURGE_BATCH: i64 = 500;
+/// Wall budget of one stage (expire or purge), measured from the stage's start.
+pub const PURGE_BUDGET_SECS: u64 = 120;
+/// The expire stage shares the purge stage's budget.
+pub const EXPIRE_BUDGET_SECS: u64 = PURGE_BUDGET_SECS;
+/// Pages one `incremental_vacuum` hands back per batch (8 MiB at 4 KiB).
+pub const PURGE_VACUUM_PAGES: i64 = 2048;
+/// Rows the first sweep lists by name in `pre_floor_sample`.
+pub const PRE_FLOOR_SAMPLE_LIMIT: usize = 200;
+/// Draws a namespace mint makes before it gives up on a reserved candidate.
+pub const NAMESPACE_DRAW_LIMIT: usize = 16;
+/// `admin_events.action` of a synthetic purge.
+pub const SYNTHETIC_PURGE_ACTION: &str = "tenant_purge_synthetic";
+/// `disabled_reason` values the purge accepts.
+pub const PURGE_DISABLED_REASONS: &[&str] =
+    &[crate::auth_shape::IDLE_EXPIRED_REASON, crate::auth_shape::SELF_OFFBOARD_REASON];
+/// Test-only (`feature = "test-support"`): the stage wall budget in seconds.
+pub const TEST_BUDGET_ENV: &str = "MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_BUDGET_SECS";
+
+/// The purge grace in days; `None` when the env reads `off`. An unset,
+/// empty, zero or non-numeric value is the default.
+pub fn synthetic_purge_grace_days() -> Option<i64> {
+    if env_is_off(SYNTHETIC_PURGE_GRACE_ENV) {
+        return None;
+    }
+    Some(days_from_env(SYNTHETIC_PURGE_GRACE_ENV, SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS))
+}
+
+/// The wall budget of one expire or purge stage. A `test-support` build reads
+/// [`TEST_BUDGET_ENV`] so a test can make one sweep unable to finish; a
+/// release build never does.
+pub fn stage_budget() -> Duration {
+    if cfg!(feature = "test-support")
+        && let Some(secs) =
+            std::env::var(TEST_BUDGET_ENV).ok().and_then(|raw| raw.parse::<f64>().ok()).filter(|s| *s >= 0.0)
+    {
+        return Duration::from_secs_f64(secs);
+    }
+    Duration::from_secs(PURGE_BUDGET_SECS)
+}
+
 /// A policy table's window as the seed stores it. Every row ignores `0`
 /// (falls back to its default) except the synthetic tenant-expiry row, where
 /// `0` is an off switch; both tenant rows also accept the literal `off`.

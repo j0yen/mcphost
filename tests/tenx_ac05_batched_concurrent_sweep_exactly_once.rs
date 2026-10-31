@@ -3,8 +3,10 @@
 //! twice concurrently and once more on an empty set, Then every subject is
 //! expired exactly once over more than one batch, a subject touched by
 //! `touch_last_seen` between batches is skipped, non-subjects are unchanged,
-//! each run writes one `prune_log` row with `expired`, `skipped_billing`,
-//! `would_expire` (0 and no error for the empty run), and no teardown ran twice.
+//! each run writes one `prune_log` row (the one that swept carries `expired`,
+//! `skipped_billing`, `would_expire`, 0 and no error for the empty run; the
+//! other reports `busy`, PRD-mcphost-synthetic-tenant-purge R1), and no
+//! teardown ran twice.
 
 use crate::common::tenx::{self, DAY, Fx};
 use crate::common::{EnvGuard, TestServer};
@@ -134,19 +136,18 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
         assert_eq!(tenx::state(&conn, *id), (false, None), "non-subject {id} unchanged");
     }
 
+    // PRD-mcphost-synthetic-tenant-purge R1: the sweeps share one mutex, so the second
+    // finds the first running and logs `busy` instead of claiming alongside it.
     let rows = log_rows(&conn);
     assert_eq!(rows.len(), 2, "one prune_log row per run");
     let key = |k: &str| format!("synthetic_implicit_tenants.{k}");
-    let expired: i64 = rows.iter().map(|(_, d)| d[&key("expired")].as_i64().unwrap()).sum();
-    assert_eq!(expired as usize, SUBJECTS - 1, "two runs split the work, each row claimed once");
-    assert!(
-        rows.iter().all(|(ok, d)| *ok && d[&key("skipped_billing")] == 1 && d[&key("would_expire")] == 1),
-        "{rows:?}"
-    );
-    assert!(
-        rows.iter().all(|(_, d)| d[&key("expired")].as_i64().unwrap() <= SUBJECTS as i64),
-        "bounded"
-    );
+    let busy = |d: &serde_json::Map<String, Value>| d["synthetic_implicit_tenants"]["busy"] == json!(true);
+    assert_eq!(rows.iter().filter(|(_, d)| busy(d)).count(), 1, "exactly one run found the other: {rows:?}");
+    let (ok, worked) = rows.iter().find(|(_, d)| !busy(d)).expect("the run that swept");
+    assert!(*ok);
+    assert_eq!(worked[&key("expired")].as_i64(), Some(SUBJECTS as i64 - 1), "the sweep claimed each subject once");
+    assert_eq!((worked[&key("skipped_billing")].as_i64(), worked[&key("would_expire")].as_i64()), (Some(1), Some(1)));
+    assert!(rows.iter().all(|(ok, _)| *ok));
 
     // An empty set: nothing left to claim, no backlog.
     conn.execute_batch("DELETE FROM tenants").expect("empty the table");

@@ -20,6 +20,12 @@ members = [
 [profile.dev]
 debug = "line-tables-only"  # 2026-10-13 red leg 78: full debuginfo made every test binary 830-900 MB (34 artifacts > 300 MB = 22.8 G per worktree) and saturated the build host's NVMe; line tables keep file:line in backtraces and panics
 
+# PRD-mcphost-synthetic-tenant-purge: the bundled SQLite is C compiled at the
+# profile's opt level; at -O0 a tenant delete holds the write lock ~5x longer
+# than in release, which is what the AC 1 latency bound measures.
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3
+
 [profile.release]
 strip = true
 

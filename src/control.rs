@@ -949,6 +949,16 @@ pub async fn teardown_expired_tenant(state: &AppState, tenant_id: i64) {
     tracing::info!(tenant_id, "tenant expired: synthetic implicit, idle");
 }
 
+/// PRD-mcphost-synthetic-tenant-purge R1: what the purge stage runs on a
+/// tenant whose rows it already deleted, as `purge_external_unclaimed` does:
+/// every kind's `on_tenant_removed`, then the tenant's table file.
+pub async fn tenant_removed_cleanup(state: &AppState, tenant_id: i64) {
+    for k in state.kinds.all() {
+        k.on_tenant_removed(tenant_id).await;
+    }
+    crate::admin::remove_tenant_tables(state, tenant_id);
+}
+
 /// Hands the sweep (`Db::prune_once`) the teardown above; called once when
 /// the server starts, since the DB layer holds no `AppState`.
 pub fn install_tenant_teardown(state: &AppState) {
@@ -958,6 +968,13 @@ pub fn install_tenant_teardown(state: &AppState) {
         move |id| {
             let state = state.clone();
             Box::pin(async move { teardown_expired_tenant(&state, id).await })
+        }
+    }));
+    state.db.clone().set_tenant_removed(std::sync::Arc::new({
+        let state = state.clone();
+        move |id| {
+            let state = state.clone();
+            Box::pin(async move { tenant_removed_cleanup(&state, id).await })
         }
     }));
     state.db.clone().set_external_sweep(std::sync::Arc::new({

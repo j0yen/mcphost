@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 use crate::errors::AppError;
 use crate::paged::{OrderEnum as _, Paged as _};
 
+mod purge;
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -364,6 +366,7 @@ const MIGRATION_0136: &str = include_str!("../migrations/0136_calls_progress.sql
 /// PRD-mcphost-external-class-positive-evidence: `tenants.origin_tainted_unix`,
 /// `origin_counters`, and the one-shot tri-state backfill with its journal.
 const MIGRATION_0137: &str = include_str!("../migrations/0137_origin_tristate.sql");
+const MIGRATION_0138: &str = include_str!("../migrations/0138_tenant_fk_indexes.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3095,6 +3098,13 @@ pub struct Db {
     /// Test-only: awaited between the invalidation's two phases with the ids
     /// phase 1 marked ([`Db::set_external_phase_hook_for_test`]).
     external_phase_hook: Arc<std::sync::RwLock<Option<ExternalPhaseHook>>>,
+    /// PRD-mcphost-synthetic-tenant-purge R1: the control-layer cleanup the
+    /// purge stage runs on each tenant it deleted (kind hooks, table file);
+    /// installed with the teardown above.
+    tenant_removed: Arc<std::sync::RwLock<Option<TenantTeardown>>>,
+    /// PRD-mcphost-synthetic-tenant-purge R1: one sweep at a time per database,
+    /// so a scheduled sweep and `admin.prune_now` never interleave.
+    sweep_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 /// See [`Db::set_external_phase_hook_for_test`].
@@ -3127,6 +3137,8 @@ impl Clone for Db {
             tenant_teardown: self.tenant_teardown.clone(),
             external_sweep: self.external_sweep.clone(),
             external_phase_hook: self.external_phase_hook.clone(),
+            tenant_removed: self.tenant_removed.clone(),
+            sweep_lock: self.sweep_lock.clone(),
         }
     }
 }
@@ -3170,6 +3182,8 @@ impl Db {
             tenant_teardown: Arc::new(std::sync::RwLock::new(None)),
             external_sweep: Arc::new(std::sync::RwLock::new(None)),
             external_phase_hook: Arc::new(std::sync::RwLock::new(None)),
+            tenant_removed: Arc::new(std::sync::RwLock::new(None)),
+            sweep_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
         db.migrate_sync()?;
         // PRD-mcphost-subscriptions-listen R5: debug builds check every tool-list write.
@@ -3487,6 +3501,8 @@ impl Db {
         Self::migrate_0135_tenant_lifecycle_events(&conn)?;
         Self::migrate_0136_calls_progress(&conn)?;
         Self::migrate_0137_origin_tristate(&conn)?;
+        // Only `CREATE INDEX IF NOT EXISTS`: idempotent as-is.
+        conn.execute_batch(MIGRATION_0138)?;
         Ok(())
     }
 
@@ -8380,7 +8396,9 @@ impl Db {
         action: &str,
     ) -> Result<(), AppError> {
         conn.execute("DELETE FROM tenant_lifecycle_events WHERE tenant_id = ?1", params![tenant.id])?;
-        conn.execute("DELETE FROM tenants WHERE id = ?1", params![tenant.id])?;
+        // Cached: SQLite compiles the cascade into the statement, one program per
+        // referencing table (118 on prod), and a purge runs this once per subject.
+        conn.prepare_cached("DELETE FROM tenants WHERE id = ?1")?.execute(params![tenant.id])?;
         let detail = json!({
             "namespace": tenant.namespace,
             "tools_removed": counts.tools_removed,
@@ -17286,6 +17304,11 @@ impl Db {
     /// this method only does the quick before/after bookkeeping on the
     /// shared connection.
     pub async fn prune_once(&self) -> Result<PruneReport, AppError> {
+        // PRD-mcphost-synthetic-tenant-purge R1: one sweep at a time; a sweep
+        // that finds another running logs `busy` and changes nothing.
+        let Ok(_one_sweep) = self.sweep_lock.try_lock() else {
+            return self.busy_prune_report().await;
+        };
         let windows = self.retention_windows().await?;
         let windows_for_expiry = windows.clone();
         let plan_calls_days = self.plan_calls_retention();
@@ -17320,6 +17343,20 @@ impl Db {
                 }
             }
         }
+        // PRD-mcphost-synthetic-tenant-purge: the purge stage, after the external block.
+        let mut synthetic_block = Value::Null;
+        if outcome.error.is_none() {
+            let days = windows_for_expiry
+                .iter()
+                .find(|(n, _)| n == crate::retention::SYNTHETIC_IMPLICIT_POLICY)
+                .map_or(0, |(_, d)| *d);
+            match self.synthetic_policy_block(started, days).await {
+                Ok(block) => synthetic_block = Value::Object(block),
+                Err(e) => {
+                    outcome.error = Some(format!("{}: purge: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
+                }
+            }
+        }
         let finished = crate::state::now_unix();
         let ok = outcome.error.is_none();
         let mut deleted_value = serde_json::to_value(&outcome.deleted).unwrap_or_else(|_| json!({}));
@@ -17327,6 +17364,9 @@ impl Db {
             && !block.is_null()
         {
             obj.insert(crate::retention::EXTERNAL_UNCLAIMED_POLICY.to_string(), block);
+        }
+        if let (Some(obj), false) = (deleted_value.as_object_mut(), synthetic_block.is_null()) {
+            obj.insert(crate::retention::SYNTHETIC_IMPLICIT_POLICY.to_string(), synthetic_block.clone());
         }
         let deleted_json = serde_json::to_string(&deleted_value).unwrap_or_else(|_| "{}".to_string());
         self.with_conn({
@@ -17360,6 +17400,7 @@ impl Db {
                 deleted: outcome.deleted,
                 started_unix: started,
                 finished_unix: finished,
+                synthetic: if synthetic_block.is_null() { json!({}) } else { synthetic_block },
             }),
             Some(e) => Err(AppError::Storage(format!("prune failed: {e}"))),
         }
@@ -24404,6 +24445,9 @@ pub struct PruneReport {
     pub deleted: std::collections::BTreeMap<String, i64>,
     pub started_unix: i64,
     pub finished_unix: i64,
+    /// PRD-mcphost-synthetic-tenant-purge: the synthetic policy's block as
+    /// the sweep logged it (`{}` when the sweep wrote none).
+    pub synthetic: Value,
 }
 
 /// [`Db::usage_size_stats`]'s `last_prune` field.

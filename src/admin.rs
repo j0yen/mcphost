@@ -617,6 +617,7 @@ pub async fn prune_now(state: &AppState) -> Result<Value, AppError> {
         "started_unix": report.started_unix,
         "finished_unix": report.finished_unix,
         "deleted": report.deleted,
+        crate::retention::SYNTHETIC_IMPLICIT_POLICY: report.synthetic,
     }))
 }
 
