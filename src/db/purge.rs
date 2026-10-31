@@ -352,19 +352,25 @@ impl Db {
         &self,
         now: i64,
         window_days: i64,
+        armed: bool,
+        mut block: serde_json::Map<String, Value>,
     ) -> Result<serde_json::Map<String, Value>, AppError> {
-        let mut block = serde_json::Map::new();
         if window_days <= 0 || crate::retention::env_is_off(crate::retention::SYNTHETIC_IMPLICIT_ENV) {
             block.insert("expire".into(), json!("off"));
             block.insert("purge".into(), json!("off"));
             return Ok(block);
         }
-        let Some(grace_days) = crate::retention::synthetic_purge_grace_days() else {
-            block.insert("purge".into(), json!("off"));
-            return Ok(block);
-        };
-        let armed = self.synthetic_purge_logged().await?;
-        self.purge_synthetic_stage(now, grace_days, armed).await
+        match crate::retention::synthetic_purge_grace_days() {
+            None => {
+                block.insert("purge".into(), json!("off"));
+            }
+            Some(grace_days) => block.extend(self.purge_synthetic_stage(now, grace_days, armed).await?),
+        }
+        // What either stage left for the next sweep, and each stage's own share.
+        let held = |key: &str| block.get(key).and_then(Value::as_i64).unwrap_or(0);
+        let held_over = held("expire_held_over") + held("purge_held_over");
+        block.insert("held_over".into(), json!(held_over));
+        Ok(block)
     }
 
     /// Installs the cleanup the purge stage runs on each tenant it deleted.
@@ -445,7 +451,7 @@ impl Db {
         block.insert("purge_due_unix".into(), json!(due_unix));
         block.insert("would_purge".into(), json!(if delete { purged + held_over } else { due - entangled_subjects }));
         block.insert("purged".into(), json!(purged));
-        block.insert("held_over".into(), json!(held_over));
+        block.insert("purge_held_over".into(), json!(held_over));
         block.insert("held_entangled".into(), json!(entangled));
         block.insert("cross_refs".into(), refs_json(&refs));
         block.insert("vacuumed_pages".into(), json!(vacuumed));

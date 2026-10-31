@@ -1048,6 +1048,7 @@ async fn warn_external_unclaimed(
                     .db
                     .record_lifecycle_event(LifecycleEvent {
                         tenant_id: c.id,
+                        policy: crate::retention::EXTERNAL_UNCLAIMED_POLICY,
                         stage: "warn_no_address",
                         idle_since_unix: c.idle_since_unix,
                         status_code: None,
@@ -1086,6 +1087,7 @@ async fn warn_external_unclaimed(
                     .db
                     .record_lifecycle_event(LifecycleEvent {
                         tenant_id: c.id,
+                        policy: crate::retention::EXTERNAL_UNCLAIMED_POLICY,
                         stage: "warned",
                         idle_since_unix: c.idle_since_unix,
                         status_code: None,
@@ -1103,6 +1105,7 @@ async fn warn_external_unclaimed(
                     .db
                     .record_lifecycle_event(LifecycleEvent {
                         tenant_id: c.id,
+                        policy: crate::retention::EXTERNAL_UNCLAIMED_POLICY,
                         stage: "warn_failed",
                         idle_since_unix: c.idle_since_unix,
                         status_code: status,
@@ -3462,6 +3465,7 @@ async fn send_invalidation_notice(
         }
         let event = LifecycleEvent {
             tenant_id,
+            policy: crate::retention::EXTERNAL_UNCLAIMED_POLICY,
             stage: "notice_failed",
             idle_since_unix: idle_since,
             status_code: status,

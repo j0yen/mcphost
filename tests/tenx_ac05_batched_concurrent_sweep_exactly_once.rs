@@ -6,7 +6,7 @@
 //! each run writes one `prune_log` row (the one that swept carries `expired`,
 //! `skipped_billing`, `would_expire`, 0 and no error for the empty run; the
 //! other reports `busy`, PRD-mcphost-synthetic-tenant-purge R1), and no
-//! teardown ran twice.
+//! teardown ran twice. A row minted before the floor is a subject too (R2).
 
 use crate::common::tenx::{self, DAY, Fx};
 use crate::common::{EnvGuard, TestServer};
@@ -94,6 +94,11 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
     let idle = 2 * DAY;
     let mut subjects = Vec::with_capacity(SUBJECTS);
     let tx = conn.transaction().unwrap();
+    // The first row, so the touched subject (the last row) stays the only one in the last batch.
+    // Minted before the floor: its idle run starts at the floor (R2), so it is a subject.
+    let mut before_floor = Fx::subject("tenx-s-before-floor", now, 11, idle);
+    before_floor.created_unix = now - 11 * DAY;
+    let before_floor = tenx::insert(&tx, &before_floor);
     for i in 0..SUBJECTS {
         subjects.push(tenx::insert(&tx, &Fx::subject(&format!("tenx-s{i}"), now, 3, idle)));
     }
@@ -109,12 +114,11 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
     add("paid", &|f| f.paid_unix = Some(now - DAY));
     add("synthetic-null", &|f| f.synthetic = None);
     add("billing-ref", &|f| f.billing_ref = Some("cus_test"));
-    add("before-floor", &|f| f.created_unix = now - 11 * DAY);
     add("explicit", &|f| f.signup_source = Some("explicit"));
     add("unclassified", &|f| f.origin = "unclassified");
     add("source-null", &|f| f.signup_source = None);
+    assert_eq!(non_subjects.len(), 9);
     tx.commit().unwrap();
-    assert_eq!(non_subjects.len(), 10);
     // The last-inserted subject: the claim walks rowids upward, so it is in the last batch.
     let target = *subjects.last().unwrap();
     victim.store(target, Ordering::SeqCst);
@@ -126,8 +130,9 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
     let ids = removed.lock().unwrap().clone();
     let unique: HashSet<i64> = ids.iter().copied().collect();
     assert_eq!(ids.len(), unique.len(), "no teardown ran twice");
-    assert_eq!(unique.len(), SUBJECTS - 1, "every subject but the touched one was torn down");
+    assert_eq!(unique.len(), SUBJECTS, "every subject but the touched one, and the pre-floor row, was torn down");
     assert!(!unique.contains(&target));
+    assert!(unique.contains(&before_floor));
     for id in &subjects[..SUBJECTS - 1] {
         assert_eq!(tenx::state(&conn, *id), (true, Some("idle_expired".to_string())), "subject {id}");
     }
@@ -145,8 +150,9 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
     assert_eq!(rows.iter().filter(|(_, d)| busy(d)).count(), 1, "exactly one run found the other: {rows:?}");
     let (ok, worked) = rows.iter().find(|(_, d)| !busy(d)).expect("the run that swept");
     assert!(*ok);
-    assert_eq!(worked[&key("expired")].as_i64(), Some(SUBJECTS as i64 - 1), "the sweep claimed each subject once");
-    assert_eq!((worked[&key("skipped_billing")].as_i64(), worked[&key("would_expire")].as_i64()), (Some(1), Some(1)));
+    assert_eq!(worked[&key("expired")].as_i64(), Some(SUBJECTS as i64), "the sweep claimed each subject once");
+    // Not yet idle the window: the idle-1h row and the touched subject.
+    assert_eq!((worked[&key("skipped_billing")].as_i64(), worked[&key("would_expire")].as_i64()), (Some(1), Some(2)));
     assert!(rows.iter().all(|(ok, _)| *ok));
 
     // An empty set: nothing left to claim, no backlog.
@@ -160,5 +166,5 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
         (last[&key("expired")].as_i64(), last[&key("skipped_billing")].as_i64(), last[&key("would_expire")].as_i64()),
         (Some(0), Some(0), Some(0))
     );
-    assert_eq!(removed.lock().unwrap().len(), SUBJECTS - 1, "the empty run tore nothing down");
+    assert_eq!(removed.lock().unwrap().len(), SUBJECTS, "the empty run tore nothing down");
 }

@@ -44,6 +44,8 @@ mod ntfyb_ac03_webhook_retries_to_delivered_or_failed;
 mod support_ac05_support_url_rendered_or_not_configured;
 #[path = "tenp_ac01_concurrent_sweeps_purge_every_subject_once.rs"]
 mod tenp_ac01_concurrent_sweeps_purge_every_subject_once;
+#[path = "tenp_ac04_pre_floor_rows_idle_from_the_floor_and_are_reported.rs"]
+mod tenp_ac04_pre_floor_rows_idle_from_the_floor_and_are_reported;
 #[path = "tenx_ac01_idle_synthetic_implicit_tenant_expires.rs"]
 mod tenx_ac01_idle_synthetic_implicit_tenant_expires;
 #[path = "tenx_ac02_window_env_seed_and_floor.rs"]

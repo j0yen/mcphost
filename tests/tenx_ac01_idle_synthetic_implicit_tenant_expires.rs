@@ -1,9 +1,12 @@
 //! PRD-mcphost-synthetic-implicit-tenant-expiry
 //! AC1 (P0) — Given subject fixture A and seven variants (claimed, origin
-//! external, idle 1 hour, paid, `synthetic` NULL, billing_ref set, before the
-//! floor), When `prune_once` runs with the default window, Then only A ends
+//! external, idle 1 hour, paid, `synthetic` NULL, billing_ref set), When
+//! `prune_once` runs with the default window, Then only A ends
 //! `disabled = 1, disabled_reason = 'idle_expired'`, its session released,
 //! every kind's `on_tenant_removed` run; the variants are unchanged.
+//! PRD-mcphost-synthetic-tenant-purge R2 moved the floor from the selector to
+//! the idle clock: a subject minted before the floor is a subject too, idle
+//! from `MAX(last seen, floor)`, so it expires with A.
 
 use crate::common::tenx::{self, DAY, Fx};
 use crate::common::{EnvGuard, TestServer};
@@ -73,7 +76,10 @@ async fn tenx_ac01_only_the_idle_synthetic_implicit_unclaimed_tenant_expires() {
     add("paid", &|f| f.paid_unix = Some(now - DAY));
     add("synthetic-null", &|f| f.synthetic = None);
     add("billing-ref", &|f| f.billing_ref = Some("cus_test"));
-    add("before-floor", &|f| f.created_unix = now - 11 * DAY);
+
+    let mut before_floor = Fx::subject("tenx-before-floor", now, 11, idle);
+    before_floor.created_unix = now - 11 * DAY;
+    let pre = tenx::insert(&conn, &before_floor);
 
     let sid = server.state.session_bindings.issue();
     assert!(server.state.session_bindings.bind(&sid, a, now));
@@ -82,9 +88,12 @@ async fn tenx_ac01_only_the_idle_synthetic_implicit_unclaimed_tenant_expires() {
     server.state.db.prune_once().await.expect("prune_once");
 
     assert_eq!(tenx::state(&conn, a), (true, Some("idle_expired".to_string())));
+    assert_eq!(tenx::state(&conn, pre), (true, Some("idle_expired".to_string())), "a pre-floor row idles from the floor");
     for (label, id) in &variants {
         assert_eq!(tenx::state(&conn, *id), (false, None), "variant {label} must be unchanged");
     }
     assert_eq!(server.state.session_bindings.lookup(&sid, now), None, "A's session is released");
-    assert_eq!(*removed.lock().unwrap(), vec![a], "on_tenant_removed ran once, for A only");
+    let mut torn_down = removed.lock().unwrap().clone();
+    torn_down.sort_unstable();
+    assert_eq!(torn_down, vec![a, pre], "on_tenant_removed ran once each, for the two subjects only");
 }

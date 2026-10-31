@@ -16747,7 +16747,9 @@ impl Db {
     /// Claims one batch of idle subjects (`UPDATE ... WHERE id IN (SELECT
     /// ... LIMIT)` -- the bundled SQLite lacks `UPDATE ... LIMIT`) and
     /// returns the ids this very statement flipped: a tenant is torn down
-    /// only by the sweep whose UPDATE returned it.
+    /// only by the sweep whose UPDATE returned it. Each flip writes its
+    /// `invalidated` lifecycle event in the same transaction, so the purge
+    /// stage dates the grace from the disable.
     pub(crate) async fn claim_idle_synthetic_tenants(
         &self,
         now_unix: i64,
@@ -16756,17 +16758,35 @@ impl Db {
     ) -> Result<Vec<i64>, AppError> {
         let cutoff = now_unix - window_days.saturating_mul(86_400);
         self.with_conn(move |conn| {
-            let sql = format!(
-                "UPDATE tenants SET disabled = 1, disabled_reason = '{reason}' WHERE id IN \
-                 (SELECT id FROM tenants WHERE {pred} LIMIT :batch) RETURNING id",
-                reason = crate::auth_shape::IDLE_EXPIRED_REASON,
-                pred = synthetic_expiry_predicate(ExpiryTerms::SWEEP),
-            );
-            let mut stmt = conn.prepare(&sql)?;
-            let ids = stmt
-                .query_map(named_params! {":cutoff": cutoff, ":batch": batch}, |r| r.get::<_, i64>(0))?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(ids)
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                let sql = format!(
+                    "UPDATE tenants SET disabled = 1, disabled_reason = '{reason}' WHERE id IN \
+                     (SELECT id FROM tenants WHERE {pred} LIMIT :batch) RETURNING id, {idle}",
+                    reason = crate::auth_shape::IDLE_EXPIRED_REASON,
+                    pred = synthetic_expiry_predicate(ExpiryTerms::SWEEP),
+                    idle = external_idle_since(""),
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let claimed = stmt
+                    .query_map(named_params! {":cutoff": cutoff, ":batch": batch}, |r| {
+                        Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (tenant_id, idle_since_unix) in &claimed {
+                    insert_lifecycle_event(
+                        conn,
+                        &LifecycleEvent {
+                            tenant_id: *tenant_id,
+                            policy: crate::retention::SYNTHETIC_IMPLICIT_POLICY,
+                            stage: "invalidated",
+                            idle_since_unix: *idle_since_unix,
+                            status_code: None,
+                            created_unix: now_unix,
+                        },
+                    )?;
+                }
+                Ok(claimed.into_iter().map(|(id, _)| id).collect())
+            })
         })
         .await
     }
@@ -16787,8 +16807,8 @@ impl Db {
         .await
     }
 
-    /// When `tenant_id` expires if it stays idle: `COALESCE(last_seen_unix,
-    /// created_unix) + window` for a row that is `CLASS AND FLOOR`, `None`
+    /// When `tenant_id` expires if it stays idle: its idle clock
+    /// ([`external_idle_since`]) plus the window for a row in `CLASS`, `None`
     /// for any other row or a window of 0 (no idle term: a subject is a
     /// subject whether or not it is idle yet).
     pub(crate) async fn tenant_expires_at(&self, tenant_id: i64) -> Result<Option<i64>, AppError> {
@@ -16798,9 +16818,9 @@ impl Db {
         }
         self.with_conn(move |conn| {
             let sql = format!(
-                "SELECT COALESCE(last_seen_unix, created_unix) + :window FROM tenants \
-                 WHERE id = :id AND {}",
-                synthetic_expiry_predicate(ExpiryTerms::SUBJECT)
+                "SELECT {idle} + :window FROM tenants WHERE id = :id AND {}",
+                synthetic_expiry_predicate(ExpiryTerms::SUBJECT),
+                idle = external_idle_since("")
             );
             Ok(conn
                 .query_row(&sql, named_params! {":window": days * 86_400, ":id": tenant_id}, |r| r.get(0))
@@ -16809,7 +16829,7 @@ impl Db {
         .await
     }
 
-    /// `admin.tenants`: every subject's expiry (`CLASS AND FLOOR`) by tenant
+    /// `admin.tenants`: every subject's expiry (`CLASS`) by tenant
     /// id; empty while the window is 0.
     pub(crate) async fn subject_expiries(&self) -> Result<std::collections::HashMap<i64, i64>, AppError> {
         let days = self.synthetic_expiry_window_days().await?;
@@ -16818,8 +16838,9 @@ impl Db {
         }
         self.with_conn(move |conn| {
             let sql = format!(
-                "SELECT id, COALESCE(last_seen_unix, created_unix) + :window FROM tenants WHERE {}",
-                synthetic_expiry_predicate(ExpiryTerms::SUBJECT)
+                "SELECT id, {idle} + :window FROM tenants WHERE {}",
+                synthetic_expiry_predicate(ExpiryTerms::SUBJECT),
+                idle = external_idle_since("")
             );
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
@@ -16901,24 +16922,7 @@ impl Db {
 
     /// Writes one `tenant_lifecycle_events` row.
     pub(crate) async fn record_lifecycle_event(&self, event: LifecycleEvent) -> Result<(), AppError> {
-        let LifecycleEvent { tenant_id, stage, idle_since_unix, status_code, created_unix } = event;
-        self.with_conn(move |conn| {
-            conn.execute(
-                "INSERT INTO tenant_lifecycle_events \
-                 (tenant_id, policy, stage, idle_since_unix, status_code, created_unix) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    tenant_id,
-                    crate::retention::EXTERNAL_UNCLAIMED_POLICY,
-                    stage,
-                    idle_since_unix,
-                    status_code.map(i64::from),
-                    created_unix
-                ],
-            )?;
-            Ok(())
-        })
-        .await
+        self.with_conn(move |conn| insert_lifecycle_event(conn, &event)).await
     }
 
     /// `EXT` tenants due a warning at `now` and not warned yet in their
@@ -17288,25 +17292,67 @@ impl Db {
         .await
     }
 
-    /// The expiry pass of one `prune_once`: no-op for window 0 (stated once
+    /// The class rows minted before the policy floor, whose idle run starts at
+    /// the floor: their count and, up to `limit`, `{tenant_id, display_name,
+    /// created_unix, idle_days}` for each (never a key, secret or address).
+    pub(crate) async fn synthetic_pre_floor(&self, now_unix: i64, limit: usize) -> Result<(i64, Vec<Value>), AppError> {
+        self.with_conn(move |conn| {
+            let pred = synthetic_pre_floor_predicate();
+            let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM tenants WHERE {pred}"), [], |r| r.get(0))?;
+            if limit == 0 || count == 0 {
+                return Ok((count, Vec::new()));
+            }
+            let sql = format!(
+                "SELECT id, display_name, created_unix, {idle} FROM tenants WHERE {pred} ORDER BY id LIMIT :limit",
+                idle = external_idle_since(""),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(named_params! {":limit": limit as i64}, |r| {
+                    let idle_since: i64 = r.get(3)?;
+                    Ok(json!({
+                        "tenant_id": r.get::<_, i64>(0)?,
+                        "display_name": r.get::<_, String>(1)?,
+                        "created_unix": r.get::<_, i64>(2)?,
+                        "idle_days": ((now_unix - idle_since) / 86_400).max(0),
+                    }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((count, rows))
+        })
+        .await
+    }
+
+    /// The expiry stage of one `prune_once`: no-op for window 0 (stated once
     /// here: `IDLE` with a zero window would match every subject, so `0`
-    /// short-circuits before any SQL). Returns the journal entries.
+    /// short-circuits before any SQL). Batches of [`EXPIRE_BATCH_SIZE`] while
+    /// the stage's own wall time is under the budget; what it did not reach is
+    /// `held_over`. Returns the policy block's expire keys; `armed` is the R1
+    /// gate (a prior `prune_log` row carries `purge_due_unix`), and a sweep
+    /// that is not armed also names the pre-floor rows.
     async fn expire_synthetic_implicit_tenants(
         &self,
         windows: &[(String, i64)],
         now_unix: i64,
+        armed: bool,
         deleted: &mut std::collections::BTreeMap<String, i64>,
-    ) -> Result<(), AppError> {
+    ) -> Result<serde_json::Map<String, Value>, AppError> {
         let policy = crate::retention::SYNTHETIC_IMPLICIT_POLICY;
+        let mut block = serde_json::Map::new();
         let Some(&(_, days)) = windows.iter().find(|(n, _)| n == policy) else {
-            return Ok(());
+            return Ok(block);
         };
         if days <= 0 {
-            return Ok(());
+            return Ok(block);
         }
+        let sample_limit = if armed { 0 } else { crate::retention::PRE_FLOOR_SAMPLE_LIMIT };
+        let (pre_floor, sample) = self.synthetic_pre_floor(now_unix, sample_limit).await?;
         let teardown = self.tenant_teardown.read().unwrap_or_else(|e| e.into_inner()).clone();
         let batch = crate::retention::EXPIRE_BATCH_SIZE;
+        let budget = crate::retention::stage_budget();
+        let started = std::time::Instant::now();
         let mut expired = 0i64;
+        let mut stopped_at_budget = false;
         loop {
             let ids = self.claim_idle_synthetic_tenants(now_unix, days, batch).await?;
             for id in &ids {
@@ -17318,12 +17364,35 @@ impl Db {
             if (ids.len() as i64) < batch {
                 break;
             }
+            if started.elapsed() >= budget {
+                stopped_at_budget = true;
+                break;
+            }
         }
         let (skipped_billing, would_expire) = self.synthetic_expiry_counts(now_unix, days).await?;
+        let held_over = if stopped_at_budget { self.synthetic_expiry_due(now_unix, days).await? } else { 0 };
         deleted.insert(format!("{policy}.expired"), expired);
         deleted.insert(format!("{policy}.skipped_billing"), skipped_billing);
         deleted.insert(format!("{policy}.would_expire"), would_expire);
-        Ok(())
+        block.insert("expired".into(), json!(expired));
+        block.insert("skipped_billing".into(), json!(skipped_billing));
+        block.insert("would_expire".into(), json!(would_expire));
+        block.insert("expire_held_over".into(), json!(held_over));
+        block.insert("pre_floor".into(), json!(pre_floor));
+        if !armed {
+            block.insert("pre_floor_sample".into(), Value::Array(sample));
+        }
+        Ok(block)
+    }
+
+    /// Class rows idle the window and not yet disabled: what the expire stage still has to do.
+    async fn synthetic_expiry_due(&self, now_unix: i64, window_days: i64) -> Result<i64, AppError> {
+        let cutoff = now_unix - window_days.saturating_mul(86_400);
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT COUNT(*) FROM tenants WHERE {}", synthetic_expiry_predicate(ExpiryTerms::SWEEP));
+            Ok(conn.query_row(&sql, named_params! {":cutoff": cutoff}, |r| r.get(0))?)
+        })
+        .await
     }
 
     /// Runs one full prune cycle -- the nightly scheduler and every AC1-4
@@ -17354,12 +17423,20 @@ impl Db {
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
         let mut outcome = outcome;
-        if outcome.error.is_none()
-            && let Err(e) = self
-                .expire_synthetic_implicit_tenants(&windows_for_expiry, started, &mut outcome.deleted)
-                .await
-        {
-            outcome.error = Some(format!("{}: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
+        // The R1 gate, read once before this sweep writes its own row.
+        let armed = match self.synthetic_purge_logged().await {
+            Ok(armed) => armed,
+            Err(e) => {
+                outcome.error.get_or_insert(format!("{}: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
+                false
+            }
+        };
+        let mut expire_block = serde_json::Map::new();
+        if outcome.error.is_none() {
+            match self.expire_synthetic_implicit_tenants(&windows_for_expiry, started, armed, &mut outcome.deleted).await {
+                Ok(block) => expire_block = block,
+                Err(e) => outcome.error = Some(format!("{}: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY)),
+            }
         }
         // PRD-mcphost-external-unclaimed-tenant-expiry: the external policy's
         // block rides in `deleted_json` under its policy name.
@@ -17382,7 +17459,7 @@ impl Db {
                 .iter()
                 .find(|(n, _)| n == crate::retention::SYNTHETIC_IMPLICIT_POLICY)
                 .map_or(0, |(_, d)| *d);
-            match self.synthetic_policy_block(started, days).await {
+            match self.synthetic_policy_block(started, days, armed, expire_block).await {
                 Ok(block) => synthetic_block = Value::Object(block),
                 Err(e) => {
                     outcome.error = Some(format!("{}: purge: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
@@ -24327,49 +24404,53 @@ fn expiry_class(billed: bool) -> String {
         if billed { "NOT " } else { "" },
     )
 }
-const EXPIRY_FLOOR: &str = "created_unix >= (SELECT floor_unix FROM retention_policy \
-    WHERE table_name = 'synthetic_implicit_tenants')";
-const EXPIRY_BEFORE_FLOOR: &str = "created_unix < (SELECT floor_unix FROM retention_policy \
-    WHERE table_name = 'synthetic_implicit_tenants')";
-const EXPIRY_IDLE: &str = "COALESCE(last_seen_unix, created_unix) < :cutoff";
+/// Which idle term one caller composes. The clock is `MAX(COALESCE(last_seen_unix,
+/// created_unix), floor_unix)` ([`external_idle_since`]): a row minted before the
+/// policy floor starts its idle run at the floor, not at its mint time.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Idle {
+    /// No idle term: a subject is a subject whether or not it is idle yet.
+    Any,
+    /// Idle for at least the window: the sweep's claim.
+    Elapsed,
+    /// Not yet idle the window.
+    NotYet,
+}
 
 /// Which terms one caller composes.
 #[derive(Clone, Copy)]
 pub(crate) struct ExpiryTerms {
     billed: bool,
-    floor: Floor,
-    idle: bool,
-}
-
-#[derive(Clone, Copy)]
-enum Floor {
-    After,
-    Before,
+    idle: Idle,
 }
 
 impl ExpiryTerms {
-    /// The sweep's claim: `CLASS AND FLOOR AND IDLE`.
-    pub(crate) const SWEEP: Self = Self { billed: false, floor: Floor::After, idle: true };
-    /// What `host.doctor` / `admin.tenants` read: `CLASS AND FLOOR`.
-    pub(crate) const SUBJECT: Self = Self { billed: false, floor: Floor::After, idle: false };
-    /// `CLASS` minus `billing_ref`, with `billing_ref IS NOT NULL`, `AND FLOOR AND IDLE`.
-    pub(crate) const SKIPPED_BILLING: Self = Self { billed: true, floor: Floor::After, idle: true };
-    /// The backlog: `CLASS AND IDLE AND NOT FLOOR`.
-    pub(crate) const WOULD_EXPIRE: Self = Self { billed: false, floor: Floor::Before, idle: true };
+    /// The sweep's claim: `CLASS AND IDLE`.
+    pub(crate) const SWEEP: Self = Self { billed: false, idle: Idle::Elapsed };
+    /// What `host.doctor` / `admin.tenants` read: `CLASS`.
+    pub(crate) const SUBJECT: Self = Self { billed: false, idle: Idle::Any };
+    /// `CLASS` minus `billing_ref`, with `billing_ref IS NOT NULL`, `AND IDLE`.
+    pub(crate) const SKIPPED_BILLING: Self = Self { billed: true, idle: Idle::Elapsed };
+    /// `CLASS AND NOT IDLE`: what the next window will take.
+    pub(crate) const WOULD_EXPIRE: Self = Self { billed: false, idle: Idle::NotYet };
 }
 
-/// Composes `CLASS`, `FLOOR` and `IDLE` per caller. The idle term binds
-/// `:cutoff` when present.
+/// Composes `CLASS` and `IDLE` per caller. The idle term binds `:cutoff` when present.
 pub(crate) fn synthetic_expiry_predicate(terms: ExpiryTerms) -> String {
     let mut parts = vec![expiry_class(terms.billed)];
-    match terms.floor {
-        Floor::After => parts.push(EXPIRY_FLOOR.to_string()),
-        Floor::Before => parts.push(EXPIRY_BEFORE_FLOOR.to_string()),
-    }
-    if terms.idle {
-        parts.push(EXPIRY_IDLE.to_string());
+    let idle = external_idle_since("");
+    match terms.idle {
+        Idle::Any => {}
+        Idle::Elapsed => parts.push(format!("{idle} < :cutoff")),
+        Idle::NotYet => parts.push(format!("{idle} >= :cutoff")),
     }
     parts.join(" AND ")
+}
+
+/// `CLASS AND created_unix < floor_unix`: the rows minted before the policy
+/// floor, whose idle run starts at the floor.
+pub(crate) fn synthetic_pre_floor_predicate() -> String {
+    format!("{} AND created_unix < {EXTERNAL_FLOOR_SQL}", expiry_class(false))
 }
 
 /// PRD-mcphost-external-unclaimed-tenant-expiry `EXT`: an unclaimed, unpaid,
@@ -24426,10 +24507,30 @@ pub enum InvalidationOutcome {
     Gone,
 }
 
+/// Inserts one `tenant_lifecycle_events` row on `conn` (inside the caller's transaction, if any).
+fn insert_lifecycle_event(conn: &Connection, event: &LifecycleEvent) -> Result<(), AppError> {
+    conn.execute(
+        "INSERT INTO tenant_lifecycle_events \
+         (tenant_id, policy, stage, idle_since_unix, status_code, created_unix) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            event.tenant_id,
+            event.policy,
+            event.stage,
+            event.idle_since_unix,
+            event.status_code.map(i64::from),
+            event.created_unix
+        ],
+    )?;
+    Ok(())
+}
+
 /// One `tenant_lifecycle_events` row to write.
 #[derive(Debug, Clone)]
 pub struct LifecycleEvent {
     pub tenant_id: i64,
+    /// The policy that wrote the event (`retention::*_POLICY`).
+    pub policy: &'static str,
     pub stage: &'static str,
     pub idle_since_unix: i64,
     pub status_code: Option<u16>,
