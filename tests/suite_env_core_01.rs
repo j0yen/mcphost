@@ -46,6 +46,8 @@ mod support_ac05_support_url_rendered_or_not_configured;
 mod tenp_ac01_concurrent_sweeps_purge_every_subject_once;
 #[path = "tenp_ac04_pre_floor_rows_idle_from_the_floor_and_are_reported.rs"]
 mod tenp_ac04_pre_floor_rows_idle_from_the_floor_and_are_reported;
+#[path = "tenp_ac06_dry_run_reports_without_writing_and_the_contract_carries_the_purge.rs"]
+mod tenp_ac06_dry_run_reports_without_writing_and_the_contract_carries_the_purge;
 #[path = "tenx_ac01_idle_synthetic_implicit_tenant_expires.rs"]
 mod tenx_ac01_idle_synthetic_implicit_tenant_expires;
 #[path = "tenx_ac02_window_env_seed_and_floor.rs"]

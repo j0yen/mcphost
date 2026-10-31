@@ -610,8 +610,17 @@ pub async fn dependency_reaudit(state: &AppState) -> Result<Value, AppError> {
 
 /// P2 requirement 7 (AC10): run one retention-prune cycle on demand and
 /// return its per-table deleted counts -- the same [`crate::db::Db::prune_once`]
-/// the nightly scheduler calls.
-pub async fn prune_now(state: &AppState) -> Result<Value, AppError> {
+/// the nightly scheduler calls. PRD-mcphost-synthetic-tenant-purge R4:
+/// `dry_run: true` returns only the synthetic policy's counts, computed under
+/// one read transaction, writing no `prune_log` row and deleting nothing.
+pub async fn prune_now(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    if args.get("dry_run").and_then(Value::as_bool) == Some(true) {
+        let block = state.db.synthetic_dry_run(crate::state::now_unix()).await?;
+        return Ok(json!({
+            "dry_run": true,
+            crate::retention::SYNTHETIC_IMPLICIT_POLICY: block,
+        }));
+    }
     let report = state.db.prune_once().await?;
     Ok(json!({
         "started_unix": report.started_unix,
@@ -2138,6 +2147,7 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         "signups_human": signups_human,
         "implicit_second_signup_blocked": implicit_second_signup_blocked,
         "tenants_idle_expired": state.db.count_tenants_idle_expired().await?,
+        "tenants_synthetic_purged": state.db.count_tenants_synthetic_purged().await?,
         "implicit_zero_ok_calls": implicit_zero_ok_calls,
         "implicit_signup_rolled_back": implicit_signup_rolled_back,
         "implicit_peer_refused": {"fleet": refused_fleet, "external": refused_external},

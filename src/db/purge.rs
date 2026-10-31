@@ -247,6 +247,87 @@ fn purge_batch_sync(
     })
 }
 
+/// The dry run's block (`admin.prune_now {dry_run: true}`): what the next sweeps
+/// would expire and purge, counted in one read transaction on a connection of
+/// its own. Writes nothing and takes no sweep lock.
+fn dry_run_sync(
+    path: &Path,
+    cfg: &DbConfig,
+    counters: &Arc<DbCounters>,
+    now: i64,
+    grace_secs: i64,
+) -> Result<Value, AppError> {
+    instrument_block(counters, ROLE_PRUNE, || {
+        let (conn, _audit) = open_with_role(path, ROLE_PRUNE, cfg)?;
+        conn.set_prepared_statement_cache_capacity(128);
+        crate::txn::with_tx(&conn, crate::txn::TxBehavior::Deferred, |conn| {
+            let stored: Option<i64> = conn
+                .query_row(
+                    "SELECT days FROM retention_policy WHERE table_name = ?1",
+                    params![crate::retention::SYNTHETIC_IMPLICIT_POLICY],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let window = if crate::retention::env_is_off(crate::retention::SYNTHETIC_IMPLICIT_ENV) {
+                0
+            } else {
+                stored.unwrap_or(0).max(0)
+            };
+            let would_expire: i64 = if window > 0 {
+                let sql = format!(
+                    "SELECT COUNT(*) FROM tenants WHERE {}",
+                    synthetic_expiry_predicate(ExpiryTerms::WOULD_EXPIRE)
+                );
+                conn.query_row(&sql, named_params! {":cutoff": now - window.saturating_mul(86_400)}, |r| r.get(0))?
+            } else {
+                0
+            };
+            let pre_floor: i64 = conn.query_row(
+                &format!("SELECT COUNT(*) FROM tenants WHERE {}", synthetic_pre_floor_predicate()),
+                [],
+                |r| r.get(0),
+            )?;
+            let due_sql = format!(
+                "SELECT t.id FROM tenants t WHERE {class} AND {due} <= :now ORDER BY t.id",
+                class = purge_class("t."),
+                due = purge_due_at("t."),
+            );
+            let ids = conn
+                .prepare(&due_sql)?
+                .query_map(named_params! {":now": now, ":grace": grace_secs}, |r| r.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            let due_unix: Option<i64> = conn.query_row(
+                &format!("SELECT MIN({due}) FROM tenants t WHERE {class}", class = purge_class("t."), due = purge_due_at("t.")),
+                named_params! {":grace": grace_secs},
+                |r| r.get(0),
+            )?;
+            let run = PurgeRun { now, grace_secs, delete: false };
+            let mut refs = Refs::new();
+            let mut entangled: std::collections::BTreeMap<String, i64> = Default::default();
+            let mut held = 0i64;
+            for id in &ids {
+                if let SubjectOutcome::Counted(subject_refs, columns) = purge_subject(conn, *id, run)? {
+                    add_refs(&mut refs, &subject_refs);
+                    if !columns.is_empty() {
+                        held += 1;
+                    }
+                    for column in columns {
+                        *entangled.entry(column).or_default() += 1;
+                    }
+                }
+            }
+            Ok(json!({
+                "would_expire": would_expire,
+                "pre_floor": pre_floor,
+                "would_purge": ids.len() as i64 - held,
+                "purge_due_unix": due_unix,
+                "cross_refs": refs_json(&refs),
+                "held_entangled": entangled,
+            }))
+        })
+    })
+}
+
 /// A subject transaction longer than this earns a pause.
 const SLOW_SUBJECT: std::time::Duration = std::time::Duration::from_millis(5);
 /// Longest pause after a slow subject.
@@ -371,6 +452,17 @@ impl Db {
         let held_over = held("expire_held_over") + held("purge_held_over");
         block.insert("held_over".into(), json!(held_over));
         Ok(block)
+    }
+
+    /// `admin.prune_now {dry_run: true}`: the synthetic policy's block as the
+    /// next sweeps would compute it at `now`, with the purge grace as if armed
+    /// (also while the grace env reads `off`). Writes nothing.
+    pub(crate) async fn synthetic_dry_run(&self, now: i64) -> Result<Value, AppError> {
+        let grace_secs = crate::retention::synthetic_purge_grace_days_for_report().saturating_mul(86_400);
+        let (path, cfg, counters) = (self.path.clone(), self.cfg, self.counters.clone());
+        tokio::task::spawn_blocking(move || dry_run_sync(&path, &cfg, &counters, now, grace_secs))
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
     }
 
     /// Installs the cleanup the purge stage runs on each tenant it deleted.

@@ -6106,8 +6106,9 @@ fn admin_tools_raw() -> Vec<Tool> {
         Tool::new(
             "admin.prune_now",
             "Run one retention-prune cycle immediately (the same cycle the nightly scheduler \
-             runs) and return its per-table deleted counts.",
-            schema(json!({}), &[]),
+             runs) and return its per-table deleted counts. dry_run: true returns only the \
+             synthetic tenant policy's counts and writes nothing.",
+            schema(json!({"dry_run": {"type": "boolean"}}), &[]),
         ),
         Tool::new(
             "admin.db.stats",
@@ -8556,7 +8557,7 @@ impl McpHostHandler {
             }
             "admin.usage" => admin::usage(&self.state, &args).await,
             "admin.usage.top" => admin::usage_top(&self.state, &args).await,
-            "admin.prune_now" => admin::prune_now(&self.state).await,
+            "admin.prune_now" => admin::prune_now(&self.state, &args).await,
             "admin.db.stats" => admin::db_stats(&self.state).await,
             "admin.dependency_reaudit" => admin::dependency_reaudit(&self.state).await,
             "admin.tool_list" => admin::tool_list(&self.state, &args).await,

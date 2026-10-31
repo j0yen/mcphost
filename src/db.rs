@@ -16864,6 +16864,19 @@ impl Db {
         .await
     }
 
+    /// `admin.funnel`'s `tenants_synthetic_purged`: a `COUNT` of the purge's
+    /// journal rows (`admin_events` survives the delete), so it survives a restart.
+    pub async fn count_tenants_synthetic_purged(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM admin_events WHERE action = ?1",
+                params![crate::retention::SYNTHETIC_PURGE_ACTION],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
     // ---- external unclaimed tenant expiry (PRD-mcphost-external-unclaimed-tenant-expiry) ----
 
     /// The external policy's window in days: `0` when the env var reads

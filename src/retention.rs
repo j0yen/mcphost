@@ -206,6 +206,22 @@ pub fn contract_default_days() -> i64 {
     SYNTHETIC_IMPLICIT_DEFAULT_DAYS
 }
 
+/// The purge grace the contract advertises. A `test-support` build reads
+/// `MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_PURGE_GRACE_DAYS` so a test can move it
+/// and watch `contract dump --check` fail; a release build never does. The
+/// wall budget the contract publishes is [`PURGE_BUDGET_SECS`], never the
+/// test-only override of [`stage_budget`].
+pub fn contract_purge_grace_days() -> i64 {
+    if cfg!(feature = "test-support")
+        && let Some(days) = std::env::var("MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_PURGE_GRACE_DAYS")
+            .ok()
+            .and_then(|raw| raw.parse::<i64>().ok())
+    {
+        return days;
+    }
+    SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS
+}
+
 /// `host.doctor`'s `tenant_lifecycle` for one tenant: `expires_at` is
 /// [`crate::db::Db::tenant_expires_at`] (`None` = not a subject). `policy`
 /// names only the external unclaimed policy, so it is null here.
@@ -281,6 +297,12 @@ pub(crate) fn incremental_vacuum(conn: &Connection, pages: i64) -> rusqlite::Res
     let mut rows = stmt.query([])?;
     while rows.next()?.is_some() {}
     Ok(())
+}
+
+/// The grace a dry run counts against: the env's value, or the default while
+/// the env reads `off` (the dry run reports what the purge would do once armed).
+pub fn synthetic_purge_grace_days_for_report() -> i64 {
+    synthetic_purge_grace_days().unwrap_or(SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS)
 }
 
 /// The wall budget of one expire or purge stage. A `test-support` build reads
