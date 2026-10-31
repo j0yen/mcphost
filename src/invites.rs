@@ -239,27 +239,46 @@ pub async fn claim_on_first_call(
     funnel_origin: &str,
 ) -> Result<(Tenant, Value), AppError> {
     let code_hash = crate::auth::hash_key(code);
-    let invitee_namespace = crate::auth::generate_namespace();
     let invitee_key_hash = crate::auth::hash_key(&crate::auth::generate_key());
     let invitee_url_secret = crate::auth::generate_url_secret();
     let invitee_url_secret_hash = crate::auth::hash_key(&invitee_url_secret);
     let invitee_standing_code = crate::auth::generate_url_secret();
     let invitee_standing_code_hash = crate::auth::hash_key(&invitee_standing_code);
 
-    let claimed = state
-        .db
-        .claim_invite(
-            code.to_string(),
-            code_hash,
-            invitee_namespace,
-            invitee_key_hash,
-            invitee_url_secret_hash,
-            invitee_standing_code_hash,
-            invitee_standing_code,
-            funnel_origin.to_string(),
-            crate::org::OrgCaps::from_state(state),
-        )
-        .await?;
+    // PRD-mcphost-synthetic-tenant-purge R6: a candidate namespace that a live
+    // tenant holds, or that a deleted one reserved, is drawn again.
+    let mut claimed = None;
+    for draw in 1..=crate::retention::NAMESPACE_DRAW_LIMIT {
+        let attempt = state
+            .db
+            .claim_invite(
+                code.to_string(),
+                code_hash.clone(),
+                crate::auth::generate_namespace(),
+                invitee_key_hash.clone(),
+                invitee_url_secret_hash.clone(),
+                invitee_standing_code_hash.clone(),
+                invitee_standing_code.clone(),
+                funnel_origin.to_string(),
+                crate::org::OrgCaps::from_state(state),
+            )
+            .await;
+        match attempt {
+            Ok(done) => {
+                claimed = Some(done);
+                break;
+            }
+            Err(e) if e.is_namespace_taken() => {
+                if draw == crate::retention::NAMESPACE_DRAW_LIMIT {
+                    return Err(AppError::namespace_draws_exhausted());
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    let Some(claimed) = claimed else {
+        return Err(AppError::namespace_draws_exhausted());
+    };
 
     if let Some(session_id) = session_id {
         state

@@ -5539,28 +5539,31 @@ impl Db {
         let created_at = now_rfc3339();
         let created_unix = now_unix();
         self.with_conn(move |conn| {
-            conn.execute(
-                "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
-                 synthetic, source_class, client_name, client_version, created_unix, origin, origin_detail, \
-                 signup_source, funnel_origin) \
-                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                params![
-                    namespace,
-                    display_name,
-                    key_hash,
-                    created_at,
-                    synthetic,
-                    source_class,
-                    client_name,
-                    client_version,
-                    created_unix,
-                    origin,
-                    origin_detail,
-                    signup_source,
-                    funnel_origin,
-                ],
-            )?;
-            let id = conn.last_insert_rowid();
+            let id = crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                refuse_reserved_namespace(conn, &namespace)?;
+                conn.execute(
+                    "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
+                     synthetic, source_class, client_name, client_version, created_unix, origin, origin_detail, \
+                     signup_source, funnel_origin) \
+                     VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                    params![
+                        namespace,
+                        display_name,
+                        key_hash,
+                        created_at,
+                        synthetic,
+                        source_class,
+                        client_name,
+                        client_version,
+                        created_unix,
+                        origin,
+                        origin_detail,
+                        signup_source,
+                        funnel_origin,
+                    ],
+                )?;
+                Ok(conn.last_insert_rowid())
+            })?;
             Ok(Tenant {
                 id,
                 namespace,
@@ -8425,6 +8428,13 @@ impl Db {
             conn.prepare_cached(&format!("DELETE FROM \"{table}\" WHERE tenant_id = ?1"))?
                 .execute(params![tenant.id])?;
         }
+        // R6: the namespace is reserved for good, so text that still carries it
+        // (a shared-call `runs.tool_name`, `tools.forked_from`, a `from_address`)
+        // can never resolve to a later tenant.
+        conn.execute(
+            "INSERT OR IGNORE INTO namespace_tombstones (namespace, purged_unix, action) VALUES (?1, ?2, ?3)",
+            params![tenant.namespace, now_unix(), action],
+        )?;
         conn.execute("DELETE FROM tenant_lifecycle_events WHERE tenant_id = ?1", params![tenant.id])?;
         // Cached: SQLite compiles the cascade into the statement, one program per
         // referencing table (118 on prod), and a purge runs this once per subject.
@@ -24527,6 +24537,15 @@ pub enum InvalidationOutcome {
     Gone,
 }
 
+/// Refuses a namespace a deleted tenant held (`namespace_tombstones`). Run
+/// inside the transaction of the tenant insert it guards.
+fn refuse_reserved_namespace(conn: &Connection, namespace: &str) -> Result<(), AppError> {
+    let reserved = conn
+        .prepare_cached("SELECT 1 FROM namespace_tombstones WHERE namespace = ?1")?
+        .exists(params![namespace])?;
+    if reserved { Err(AppError::namespace_reserved()) } else { Ok(()) }
+}
+
 /// Inserts one `tenant_lifecycle_events` row on `conn` (inside the caller's transaction, if any).
 fn insert_lifecycle_event(conn: &Connection, event: &LifecycleEvent) -> Result<(), AppError> {
     conn.execute(
@@ -26147,6 +26166,7 @@ impl Db {
                     |r| r.get(0),
                 )?;
 
+                refuse_reserved_namespace(conn, &invitee_namespace)?;
                 let display_name = format!("invitee-of-{inviter_namespace}");
                 // Requirement 2 (AC2) / 7 (AC3): the response-facing
                 // `source`/`via` fields name the plaintext code the

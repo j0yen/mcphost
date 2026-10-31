@@ -577,24 +577,44 @@ pub async fn signup(
 
     let is_implicit = signup_source.as_deref() == Some("implicit");
     let key = generate_key();
-    let namespace = generate_namespace();
     let key_hash = hash_key(&key);
-    let tenant = state
-        .db
-        .create_tenant_attributed_with_source(
-            display_name,
-            namespace.clone(),
-            key_hash,
-            synthetic,
-            Some(class.as_str().to_string()),
-            attribution.client_name.map(str::to_string),
-            attribution.client_version.map(str::to_string),
-            origin.to_string(),
-            origin_detail,
-            signup_source,
-            funnel_origin,
-        )
-        .await?;
+    // PRD-mcphost-synthetic-tenant-purge R6: a random candidate that a live
+    // tenant holds, or that a deleted one reserved, is drawn again.
+    let mut minted = None;
+    for draw in 1..=crate::retention::NAMESPACE_DRAW_LIMIT {
+        let candidate = generate_namespace();
+        let attempt = state
+            .db
+            .create_tenant_attributed_with_source(
+                display_name.clone(),
+                candidate.clone(),
+                key_hash.clone(),
+                synthetic.clone(),
+                Some(class.as_str().to_string()),
+                attribution.client_name.map(str::to_string),
+                attribution.client_version.map(str::to_string),
+                origin.to_string(),
+                origin_detail.clone(),
+                signup_source.clone(),
+                funnel_origin.clone(),
+            )
+            .await;
+        match attempt {
+            Ok(tenant) => {
+                minted = Some((tenant, candidate));
+                break;
+            }
+            Err(e) if e.is_namespace_taken() => {
+                if draw == crate::retention::NAMESPACE_DRAW_LIMIT {
+                    return Err(AppError::namespace_draws_exhausted());
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    let Some((tenant, namespace)) = minted else {
+        return Err(AppError::namespace_draws_exhausted());
+    };
 
     // PRD-mcphost-implicit-signup-mints-only-on-success R4: an implicit signup's
     // `signup_events` row carries the tenant it created (new rows only, no

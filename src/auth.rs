@@ -29,8 +29,39 @@ pub fn generate_sub_key() -> String {
 /// The prefix [`generate_sub_key`] puts on every sub-key.
 pub const SUB_KEY_PREFIX: &str = "mk_";
 
+/// Test-only (`feature = "test-support"`): a comma-separated list of namespaces
+/// the draw hands out, in order, before it falls back to random ones.
+pub const TEST_NAMESPACE_CANDIDATES_ENV: &str = "MCPHOST_TEST_ONLY_NAMESPACE_CANDIDATES";
+
+/// The next [`TEST_NAMESPACE_CANDIDATES_ENV`] entry, or `None` once the list is
+/// used up (or the variable is unset, which also rewinds it). A release build
+/// never reads the variable.
+#[cfg(feature = "test-support")]
+fn next_test_candidate() -> Option<String> {
+    static CURSOR: std::sync::Mutex<(String, usize)> = std::sync::Mutex::new((String::new(), 0));
+    let mut cursor = CURSOR.lock().unwrap_or_else(|e| e.into_inner());
+    let Ok(raw) = std::env::var(TEST_NAMESPACE_CANDIDATES_ENV) else {
+        *cursor = (String::new(), 0);
+        return None;
+    };
+    if cursor.0 != raw {
+        *cursor = (raw.clone(), 0);
+    }
+    let pick = raw.split(',').map(str::trim).filter(|c| !c.is_empty()).nth(cursor.1)?.to_string();
+    cursor.1 += 1;
+    Some(pick)
+}
+
+#[cfg(not(feature = "test-support"))]
+fn next_test_candidate() -> Option<String> {
+    None
+}
+
 /// A namespace of the form `t_<8 hex>`.
 pub fn generate_namespace() -> String {
+    if let Some(candidate) = next_test_candidate() {
+        return candidate;
+    }
     let mut bytes = [0u8; 4];
     rand::thread_rng().fill_bytes(&mut bytes);
     format!("t_{}", to_hex(&bytes))

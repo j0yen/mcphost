@@ -183,6 +183,7 @@ pub const RETRY_POLICY: &[RetryRow] = &[
     no(crate::tables::TABLE_NOT_FOUND, FIX),
     no(crate::tables::TABLE_QUERY_REJECTED, FIX),
     no(crate::tables::TABLE_ROW_CONFLICT, FIX),
+    no(crate::errors::NAMESPACE_RESERVED, FIX),
     yes("table_unavailable", Backoff::Fixed(5000), 3, BACKOFF),
     no("template_error", FIX),
     no("tool_exception", NO),

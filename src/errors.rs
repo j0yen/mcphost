@@ -1241,7 +1241,7 @@ impl AppError {
                 // already uses for the analogous KV-store rejections.
                 "table_schema_violation" | "table_not_found" | "table_column_not_found" | "table_query_rejected"
                 | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
-                c if c == crate::tables::TABLE_ROW_CONFLICT => ErrorCode::INVALID_PARAMS,
+                c if c == crate::tables::TABLE_ROW_CONFLICT || c == NAMESPACE_RESERVED => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-document-store P0 requirements 2-5: a too-large
                 // put, an unsupported mime, or either quota overrun are all
                 // caller-input problems, same INVALID_PARAMS bucket as the
@@ -2495,6 +2495,48 @@ fn constraint_conflict(extended_code: i32, sqlite_msg: &str) -> AppError {
         code: crate::tables::TABLE_ROW_CONFLICT,
         message: format!("row conflicts{on} ({constraint})"),
         data: serde_json::json!({"constraint": constraint, "table": table, "column": column}),
+    }
+}
+
+crate::err_code! {
+    pub NAMESPACE_RESERVED,
+    code: "namespace_reserved", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Draw another namespace; this one belonged to a deleted tenant and is reserved for good.",
+}
+
+impl AppError {
+    /// PRD-mcphost-synthetic-tenant-purge R6: a tenant insert named a namespace
+    /// in `namespace_tombstones` (the `table_row_conflict` shape).
+    pub fn namespace_reserved() -> Self {
+        AppError::Structured {
+            code: NAMESPACE_RESERVED,
+            message: "row conflicts on namespace (reserved)".to_string(),
+            data: serde_json::json!({"constraint": "reserved", "table": "namespace_tombstones", "column": "namespace"}),
+        }
+    }
+
+    /// `true` when a tenant insert failed only because its random namespace was
+    /// taken: reserved by a tombstone, or `UNIQUE` on a live tenant.
+    pub fn is_namespace_taken(&self) -> bool {
+        match self {
+            AppError::Structured { code, .. } if *code == NAMESPACE_RESERVED => true,
+            AppError::Structured { code, data, .. } if *code == crate::tables::TABLE_ROW_CONFLICT => {
+                data.get("table").and_then(serde_json::Value::as_str) == Some("tenants")
+                    && data.get("column").and_then(serde_json::Value::as_str) == Some("namespace")
+            }
+            _ => false,
+        }
+    }
+
+    /// The error a mint returns after [`crate::retention::NAMESPACE_DRAW_LIMIT`]
+    /// draws all collided: `table_row_conflict` on `tenants.namespace`, as a
+    /// collision has always been reported.
+    pub fn namespace_draws_exhausted() -> Self {
+        AppError::Structured {
+            code: crate::tables::TABLE_ROW_CONFLICT,
+            message: "row conflicts on namespace (unique)".to_string(),
+            data: serde_json::json!({"constraint": "unique", "table": "tenants", "column": "namespace"}),
+        }
     }
 }
 
