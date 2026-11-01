@@ -278,7 +278,9 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `DEAD_LETTER_REASONS` in `src/deadletters.rs`
 - `DISPATCH_TABLE` in `src/dispatch_table.rs`
 - `ALLOWED_MIMES` in `src/docs.rs`
+- `IMPORT_PATHS` in `src/docs.rs`
 - `INDEX_PROVIDERS` in `src/docs.rs`
+- `ON_CONFLICT_MODES` in `src/docs.rs`
 - `SEARCH_MODES` in `src/docs.rs`
 - `DOCTOR_FIXTURES` in `src/doctor.rs`
 - `DOCTOR_NEXT` in `src/doctor.rs`

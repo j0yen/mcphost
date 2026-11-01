@@ -1,72 +1,72 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-implicit-signup-per-session-not-per-peer.md",
-  "intent_slug": "mcphost-implicit-signup-per-session-not-per-peer",
-  "root_motivation": "**Who.** Any agent sharing an egress address and client build with another agent: every truth-tier persona on orch, two Claude Code users behind one office NAT, two tabs of one web client.",
-  "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-trusted-discovery-catalog-receipts.md",
+  "intent_slug": "mcphost-trusted-discovery-catalog-receipts",
+  "root_motivation": "**Who.** An agent (Claude Code, an SDK client, a synthorg persona) that calls `host.catalog.search` to find a shared tool it can call instead of writing one; Joe reading the anonymous catalog as the public face of the host; the operator judging whether the catalog proves anything.",
+  "user_persona": "An agent whose first SELECT names a table or column it has not declared, and must learn from the reply which table or column is missing and which declared names are closest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the in-process test host and two initialized sessions from one source IP and one User-Agent, When session A signs up with handoff and redeems, and session B then calls `host.table.create` without `tenant_key` inside the 10-minute window, Then B's call succeeds with `implicit: true` and the tenants table holds two distinct tenants.",
-      "test": "tests/ipsess_ac01_second_session_one_peer_gets_its_own_tenant.rs"
+      "description": "Given a tenant with a published tool, When host.tool_test, or require_tested on host.tool_share, returns pass or will_fail on the current version, Then the row stores that verdict with the version it judged, tested_version moves exactly as today, after a republish the entry shows test_verdict null and the tool ranks as untested until retested, and catalog.search shows test_verdict only when it judged the current version.",
+      "test": "tests/tdisc_ac01_verdict_stored_with_version.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given session A of AC 1, When A calls `host.table.create` again without `tenant_key` inside the window, Then the call succeeds as A's tenant through the session binding (the call row's auth method is `session`), no second tenant is created, and no `tenant_key_missing` error is produced (the gate is never reached by the redeeming session).",
-      "test": "tests/ipsess_ac02_redeeming_session_stays_its_own_tenant.rs"
+      "description": "Given tools of a synthetic-marked, a disabled and a plain owner shared public, When the well-known document is read and a plain and another synthetic-marked tenant each call catalog.search and tool_list_shared, Then the anonymous and plain reads list only the plain owner's tool, the synthetic tenant's reads add the synthetic owner's tool, none lists the disabled owner's tool, and include_synthetic is in the contract dump.",
+      "test": "tests/tdisc_ac02_view_by_owner_mark.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given two requests from the same IP and User-Agent inside the window, one with no `Mcp-Session-Id` and one with a forged id this process never minted, When each calls `host.table.create` without `tenant_key`, Then each error is `-32602` `tenant_key_missing`, `data.reason` `peer_recent`, `data.session_presented` `false`, no `data.tenant`, and the hint contains `initialize` and `/t/` but neither A's namespace nor `pass the key`.",
-      "test": "tests/ipsess_ac03_sessionless_refusal_names_a_session_not_the_key.rs"
+      "description": "Given a public tool called by its owner, twice by a plain tenant (one ok, one error), once by a synthetic-marked tenant and once 31 days ago, When a plain caller searches, Then the entry carries calls_30d n 2 ok 1; a synthetic-marked caller sees n 3 ok 2; the old call counts in neither; and no entry carries a caller or tenant id, only the owner namespace.",
+      "test": "tests/tdisc_ac03_calls_30d_receipts.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given every `Reason` variant, When each error's `message` and `data.hint` are rendered, Then the PeerRecent and ConnectionBound texts contain neither `pass the key` nor `tenant_key argument`, the Anonymous text is byte-identical to v0.118.8, and `errors.json` (the `error_registry` generator) lists the three hints under `tenant_key_missing.reasons`.",
-      "test": "tests/ipsess_ac04_no_key_dance_in_peer_recent_or_connection_bound.rs"
+      "description": "Given five plain owners' public tools A pass 1/1, B pass 95/100, C untested with no calls, D republished after a pass then tested will_fail with 100/100, E equal to C but shared later, all calls by plain tenants, When a sixth plain tenant runs catalog.search and tool_list_shared and the well-known document is read, Then all three return the order B, A, E, C, D, ordered by the one search_catalog SQL.",
+      "test": "tests/tdisc_ac04_order_on_receipts.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the window elapsed (mock clock past 600 s), When a sessionless request from the same peer calls `host.table.create` without `tenant_key`, Then implicit signup proceeds as in v0.118.8 (the TTL is unchanged).",
-      "test": "tests/ipsess_ac05_window_elapsed_implicit_signup_proceeds.rs"
+      "description": "Given the committed host-output-schemas.v1.json, When a test serializes a fully populated catalog.search result, Then at every level, including tools.items, calls_30d and view, every emitted key is declared and every declared key is emitted, each of those objects sets additionalProperties false, and removing any emitted field, nested or not, from the schema fails the test naming the key path.",
+      "test": "tests/tdisc_ac05_schema_two_way.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given the refusals of AC 3 and the yield of AC 1, When the journal is read, Then the refusal lines carry `session_presented=false` and the yield line carries `peer_recent_yielded=true`, each with the tool name, and no line carries a key or another tenant's namespace.",
-      "test": "tests/ipsess_ac06_journal_names_the_decision.rs"
+      "level": "MUST",
+      "description": "Given 1,000 public tools over 300 owners and 100,000 calls rows seeded in a test, When 8 concurrent callers search with no q, a q matching nothing and limit 50, Then no q returns 50 entries with view.owners counting the distinct owners in the view, the no-match q returns tools [] with view present, and p95 over 20 runs stays under 250 ms.",
+      "test": "tests/tdisc_ac06_catalog_search_at_scale.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given the test host, When `/contract.json` is fetched anonymously, Then `onboarding.implicit_signup.scope` is `\"session\"` and `onboarding.peer_recent.window_secs` is `600`.",
-      "test": "tests/ipsess_ac07_contract_states_the_rule.rs"
+      "level": "MUST",
+      "description": "Given an in-process TestServer, When tests/live/tdisc_live_receipts_rank.py runs under python3 -I against its base_url/mcp, Then its last stdout line is `tdisc_live first=tested receipts=ok hidden=2 view=real offboarded rc=0`, it exits 0, both tenants it signed up are offboarded and no key is printed; against a closed loopback port its last line ends rc=2 and it exits 2.",
+      "test": "tests/tdisc_ac07_live_driver.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 8 command in \u00a7 Live evidence commands runs from the build host, Then it prints `ipsess_ac08 A=offboarded B=offboarded rc=0` and exits 0 (Live; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)",
-      "test": "deferred: Live (prod; evidence: AC 8 command in \u00a7 Live evidence commands, last two lines of its output)"
+      "description": "Given prod after the deploy that carries this PRD, When the AC 8 command in \u00a7 Live evidence commands runs from the build host, Then its last two lines are the driver's `rc=0` line and `rc=0` (Live; evidence: python3 -I tests/live/tdisc_live_receipts_rank.py https://mcphost.dev/mcp from the build host, last two lines tdisc_live first=tested receipts=ok hidden=2 view=real offboarded rc=0 and rc=0)",
+      "test": "deferred: Live (prod; evidence: python3 -I tests/live/tdisc_live_receipts_rank.py https://mcphost.dev/mcp from the build host, last two lines tdisc_live first=tested receipts=ok hidden=2 view=real offboarded rc=0 and rc=0)"
     }
   ],
   "scope": [
-    "src/sync/mod.rs: the SourceKind registry, host.sync.create/list/get/delete/run_now, and the trigger tick's sync pass writing a not_implemented sync_runs receipt.",
-    "migrations/0130_syncs.sql: syncs and sync_runs tables; Plan.syncs_max (free 5, pro 50) and the quota_syncs_max, connection_missing and schedule_too_frequent error codes.",
-    "www/llms.txt gains a generated Data sync section and docs/tools.md the source.kind enum, both rendered from SourceKind."
+    "src/tables.rs + src/query_diag.rs: classify a recognised rusqlite no-such-table / no-such-column error on the table SQL paths before the Storage conversion, with the diagnosis (table/column, candidates, hint, declared_tables_count) in the error data.",
+    "src/errors.rs + error registry + errors.json: new table_column_not_found code (family Table, AgentFault, non-retryable) in the INVALID_PARAMS arm; generated surfaces regenerated.",
+    "host-tools.v1.json descriptor for host.table.query and its generated docs, contract and SDKs."
   ],
   "non_goals": [
-    "Fetching rows (the pull PRD); push or conflict handling (the two-way PRD); type inference beyond text columns; any new OAuth flow."
+    "Changing the diagnosis algorithm or its bands; SQL dialect help; touching host.state.* behaviour; any change to query_log rows."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -75,35 +75,31 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "main_database_tables": "syncs and sync_runs live in the main database (migration 0130), not a per-tenant file, so the tick's sync pass is one indexed query across tenants."
+      "no_schema_change": "Wire-only change; query_log schema unchanged and there is no migration."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent not keep a host table equal to a sheet?",
-      "a": "No verb registers an external source; the agent would own a puller, a token and a diff loop."
+      "q": "Why did dpb_03 get an internal error on its first SELECT?",
+      "a": "The no-such-table rusqlite error became AppError::Storage and every Storage error is swapped for the internal-error reply."
     },
     {
       "why": 2,
-      "q": "Why is there no verb?",
-      "a": "host.table.append cannot update a row and host.trigger.set only calls a published tool."
+      "q": "Why was the cause not on the wire?",
+      "a": "diagnose_sync computed candidates and a hint but filed them only in query_log."
     },
     {
       "why": 3,
-      "q": "Why start with a registry?",
-      "a": "One SourceKind enum generates the schema, docs and dispatch, so the five kinds cannot drift."
+      "q": "Why did it stay?",
+      "a": "The shipped query-diagnosis PRD had no AC on the error branch."
     }
   ],
-  "created_at": "2026-10-21T00:00:00Z",
+  "created_at": "2026-10-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "What is source.secret?",
-      "resolution": "The NAME of a host.secret (stored as secret_name), never a value, so no secret-named field exists on a Debug struct."
-    },
-    {
-      "question": "Do push and two_way modes run?",
-      "resolution": "They are accepted at create with status pending_mode (the PRD default) and the tick skips them."
+      "question": "Which tables does candidates draw from?",
+      "resolution": "The tenant's declared tables from list_table_names_sync, as today; other-namespace shared tables are not included."
     }
   ]
 }
