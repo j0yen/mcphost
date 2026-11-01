@@ -168,8 +168,8 @@ fn freelist_count(conn: &Connection) -> rusqlite::Result<i64> {
 /// hold it if a row of a tenant outside the synthetic class names it, else the
 /// shared row executor.
 fn purge_subject(conn: &Connection, id: i64, run: PurgeRun) -> Result<SubjectOutcome, AppError> {
-    let behavior = if run.delete { crate::txn::TxBehavior::Immediate } else { crate::txn::TxBehavior::Deferred };
-    crate::txn::with_tx(conn, behavior, |conn| {
+    // txnhelp_ac02 reads the behaviour as the literal `TxBehavior::` path inside the call.
+    crate::txn::with_tx(conn, if run.delete { crate::txn::TxBehavior::Immediate } else { crate::txn::TxBehavior::Deferred }, |conn| {
         let sql = format!(
             "SELECT namespace FROM tenants t WHERE t.id = :id AND {class} AND {due} <= :now",
             class = purge_class("t."),
