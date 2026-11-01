@@ -897,9 +897,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next`: object | null
 - `onboarding`: object | null
 - `tools`: array<object> (always)
+- `view`: object | null
 
 **Arguments**
 
+- `include_synthetic`: boolean
 - `limit`: integer
 - `q`: string
 - `tenant_key`: string

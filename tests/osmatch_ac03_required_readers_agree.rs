@@ -145,6 +145,10 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
     // PRD-mcphost-table-query-names-missing-table AC4: `host.table.query_diagnose`
     // gained the optional `data` block (the missing-table error's `data`).
     edited.insert("host.table.query_diagnose");
+    // PRD-mcphost-trusted-discovery-catalog-receipts AC5: `host.catalog.search`
+    // declares every emitted entry field (receipts included) and `view`, each
+    // object closed with `additionalProperties: false`.
+    edited.insert("host.catalog.search");
     // PRD-mcphost-tool-call-output-root-opaque R1: the two forwarding roots
     // type only the keys the host writes (this covers `host.tool.call`'s
     // merged tenant payload, its `id` and `rows`).

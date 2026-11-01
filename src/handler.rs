@@ -2250,6 +2250,7 @@ fn host_tools_part_03() -> Vec<Tool> {
                 json!({
                     "q": {"type": "string", "description": "Substring to match; omit for every public tool."},
                     "limit": {"type": "integer", "description": "Max results; default 20."},
+                    "include_synthetic": {"type": "boolean", "description": "List tools of synthetic-marked owners too. Default: true for a synthetic-marked caller, false otherwise; owners that offboarded are never listed."},
                 }),
                 &[],
             ),
@@ -10198,14 +10199,21 @@ impl McpHostHandler {
     async fn tool_test_stamping(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
         let name = args.get("name").and_then(Value::as_str).map(str::to_string);
         let mut out = self.tool_test(tenant, args).await?;
+        let verdict = out.get("verdict").and_then(Value::as_str).map(str::to_string);
         if let Some(name) = name
-            && out.get("verdict").and_then(Value::as_str) == Some("pass")
+            && let Some(verdict) = verdict
             && let Some(row) = self.state.db.get_tool(tenant.id, name.clone()).await?
         {
-            self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
-            if let Value::Object(map) = &mut out {
-                map.insert("tested_version".to_string(), json!(row.current_version));
-                map.insert("stale_test".to_string(), json!(false));
+            // PRD-mcphost-trusted-discovery-catalog-receipts R1: every verdict is
+            // stored with the version it judged; only `pass` stamps `tested_version`.
+            let passed = verdict == "pass";
+            self.state.db.record_test_verdict(tenant.id, name.clone(), row.current_version, verdict).await?;
+            if passed {
+                self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
+                if let Value::Object(map) = &mut out {
+                    map.insert("tested_version".to_string(), json!(row.current_version));
+                    map.insert("stale_test".to_string(), json!(false));
+                }
             }
         }
         Ok(out)

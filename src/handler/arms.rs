@@ -532,8 +532,8 @@ impl McpHostHandler {
 
     pub(crate) fn arm_host_catalog_search<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
-            let ArmCtx { args, .. } = c;
-            crate::sharing::catalog_search(&self.state, &args).await
+            let ArmCtx { tenant, args, .. } = c;
+            crate::sharing::catalog_search(&self.state, tenant, &args).await
         })
     }
 
