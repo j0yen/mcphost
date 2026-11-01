@@ -2250,6 +2250,7 @@ fn host_tools_part_03() -> Vec<Tool> {
                 json!({
                     "q": {"type": "string", "description": "Substring to match; omit for every public tool."},
                     "limit": {"type": "integer", "description": "Max results; default 20."},
+                    "include_synthetic": {"type": "boolean", "description": "List tools of synthetic-marked owners too. Default: true for a synthetic-marked caller, false otherwise; owners that offboarded are never listed."},
                 }),
                 &[],
             ),
@@ -2768,7 +2769,9 @@ fn host_tools_part_04() -> Vec<Tool> {
              each refusal names the rule or bound it hit. handle: true materialises the result \
              as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a \
              20-row sample, per-column stats over every row) naming a hdl_<id> you can later \
-             reference in FROM or a CTE through this same tool.",
+             reference in FROM or a CTE through this same tool. A table the tenant never \
+             declared answers table_not_found and an unknown column table_column_not_found \
+             (-32602), each with data.candidates and data.hint.",
             host_schema(
                 json!({
                     "sql": {
@@ -3050,14 +3053,20 @@ fn host_tools_part_05() -> Vec<Tool> {
         // the search PRD will index from -- a third data-ish store
         // alongside host.state.*'s KV namespace and host.table.*'s real SQL
         // rows, for whole documents rather than small values or table rows.
+        // PRD-mcphost-docs-import-and-stated-boundary R3: the boundary sentence
+        // (`docs::DOCS_BOUNDARY`) leads the description.
         Tool::new(
             "host.docs.put",
-            "Write (or, for an already-used name, create a new version of) a document in this \
-             tenant's document store. mime is detected from name and content when omitted; \
-             allowed mimes are text/plain, text/markdown, application/json, text/csv. content \
-             (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES \
-             (default 2 MiB). Identical content to the current version is a no-op that repeats \
-             the current version.",
+            format!(
+                "{} Write (or, for an already-used name, create a new version of) a document in \
+                 this tenant's document store. mime is detected from name and content when \
+                 omitted; allowed mimes are text/plain, text/markdown, application/json, \
+                 text/csv. content (or content_base64 for arbitrary bytes) must be at most \
+                 MCPHOST_DOC_MAX_BYTES (default 2 MiB). Identical content to the current version \
+                 is a no-op that repeats the current version. Loading many documents: \
+                 host.docs.put_many takes up to 50 per call.",
+                crate::docs::DOCS_BOUNDARY
+            ),
             host_schema_any(
                 json!({
                     "name": {"type": "string", "minLength": 1, "description": "Document name; same name on a later put creates a new version of the same id."},
@@ -3068,6 +3077,46 @@ fn host_tools_part_05() -> Vec<Tool> {
                 }),
                 &["name"],
                 &["content", "content_base64"],
+            ),
+        ),
+        // PRD-mcphost-docs-import-and-stated-boundary R1: up to 50 documents per
+        // call, each through `docs::doc_put`, one result row per input.
+        Tool::new(
+            "host.docs.put_many",
+            format!(
+                "{} Write up to {max} documents to this tenant's document store in one call. \
+                 documents is an array of 1-{max} objects, each the arguments host.docs.put takes \
+                 (name, one of content / content_base64, optional mime and metadata); on_conflict \
+                 is replace (default: an existing name gets a new version) or skip (an existing \
+                 name is left unchanged). Each document is its own write: results has one row per \
+                 input, in order, with status stored / replaced / skipped / refused (refused rows \
+                 carry the error_code and message host.docs.put would return, e.g. quota_docs), so \
+                 one refusal never undoes another and the call itself succeeds. More than {max} \
+                 documents is invalid_params and writes nothing.",
+                crate::docs::DOCS_BOUNDARY,
+                max = crate::docs::PUT_MANY_MAX
+            ),
+            host_schema(
+                json!({
+                    "documents": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": crate::docs::PUT_MANY_MAX,
+                        "description": "1-50 documents, each the arguments host.docs.put takes.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "Document name; same name on a later put creates a new version of the same id."},
+                                "content": {"type": "string", "description": "Document content as text; use content_base64 instead for arbitrary bytes."},
+                                "content_base64": {"type": "string", "description": "Document content, base64-encoded; use content instead for plain text."},
+                                "mime": {"type": "string", "enum": crate::docs::ALLOWED_MIMES, "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted."},
+                                "metadata": {"type": ANY_JSON_TYPES, "description": "Arbitrary caller metadata stored alongside the document; any JSON value."},
+                            },
+                        },
+                    },
+                    "on_conflict": {"type": "string", "enum": crate::docs::ON_CONFLICT_MODES, "description": "replace (default): an existing name gets a new version; skip: an existing name is left unchanged and reported skipped."},
+                }),
+                &["documents"],
             ),
         ),
         // PRD-mcphost-blob-put-get-signed-url R1: any file, stored in one
@@ -3313,7 +3362,10 @@ fn host_tools_part_06() -> Vec<Tool> {
             "This tenant's document store counters: documents, bytes, text_bytes, the current \
              change watermark, this plan's document/byte quotas, and an index block (mode, \
              indexed_watermark, lag_seconds, pending_documents, chunks, rebuilding, \
-             quota_chunks_reached) describing the search index's own freshness.",
+             quota_chunks_reached) describing the search index's own freshness. \
+             import_paths names how a document gets in (content, content_base64, put_many), \
+             put_many_max the most documents one host.docs.put_many takes, and doc_max_bytes \
+             the per-document byte cap.",
             host_schema(json!({}), &[]),
         ),
         // PRD-mcphost-docs-semantic-search P0 requirements 2-5, P1
@@ -10147,14 +10199,21 @@ impl McpHostHandler {
     async fn tool_test_stamping(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
         let name = args.get("name").and_then(Value::as_str).map(str::to_string);
         let mut out = self.tool_test(tenant, args).await?;
+        let verdict = out.get("verdict").and_then(Value::as_str).map(str::to_string);
         if let Some(name) = name
-            && out.get("verdict").and_then(Value::as_str) == Some("pass")
+            && let Some(verdict) = verdict
             && let Some(row) = self.state.db.get_tool(tenant.id, name.clone()).await?
         {
-            self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
-            if let Value::Object(map) = &mut out {
-                map.insert("tested_version".to_string(), json!(row.current_version));
-                map.insert("stale_test".to_string(), json!(false));
+            // PRD-mcphost-trusted-discovery-catalog-receipts R1: every verdict is
+            // stored with the version it judged; only `pass` stamps `tested_version`.
+            let passed = verdict == "pass";
+            self.state.db.record_test_verdict(tenant.id, name.clone(), row.current_version, verdict).await?;
+            if passed {
+                self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
+                if let Value::Object(map) = &mut out {
+                    map.insert("tested_version".to_string(), json!(row.current_version));
+                    map.insert("stale_test".to_string(), json!(false));
+                }
             }
         }
         Ok(out)

@@ -1239,7 +1239,7 @@ impl AppError {
                 // bound) `host.table.query` are all caller-input problems,
                 // the same INVALID_PARAMS bucket the `state_*` group above
                 // already uses for the analogous KV-store rejections.
-                "table_schema_violation" | "table_not_found" | "table_query_rejected"
+                "table_schema_violation" | "table_not_found" | "table_column_not_found" | "table_query_rejected"
                 | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
                 c if c == crate::tables::TABLE_ROW_CONFLICT => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-document-store P0 requirements 2-5: a too-large

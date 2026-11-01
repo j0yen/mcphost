@@ -706,6 +706,18 @@ mod tdf_ac04_pack_rejects_empty;
 mod tdf_ac05_example_hello_py_packs;
 #[path = "tdf_ac07_unpack_unknown_kind.rs"]
 mod tdf_ac07_unpack_unknown_kind;
+#[path = "tdisc_ac01_verdict_stored_with_version.rs"]
+mod tdisc_ac01_verdict_stored_with_version;
+#[path = "tdisc_ac02_view_by_owner_mark.rs"]
+mod tdisc_ac02_view_by_owner_mark;
+#[path = "tdisc_ac03_calls_30d_receipts.rs"]
+mod tdisc_ac03_calls_30d_receipts;
+#[path = "tdisc_ac04_order_on_receipts.rs"]
+mod tdisc_ac04_order_on_receipts;
+#[path = "tdisc_ac05_schema_two_way.rs"]
+mod tdisc_ac05_schema_two_way;
+#[path = "tdisc_ac06_catalog_search_at_scale.rs"]
+mod tdisc_ac06_catalog_search_at_scale;
 #[path = "tenant_delete_ac01_cascade_delete.rs"]
 mod tenant_delete_ac01_cascade_delete;
 #[path = "tenant_delete_ac02_forbidden.rs"]
@@ -878,6 +890,20 @@ mod tooltest_ac6_quota_and_metering;
 mod tooltest_ac7_too_many_invocations;
 #[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
 mod tooltest_ac9_ac10_listing_and_auth;
+#[path = "tqnf_ac01_missing_table_names_the_table.rs"]
+mod tqnf_ac01_missing_table_names_the_table;
+#[path = "tqnf_ac02_missing_column_names_the_column.rs"]
+mod tqnf_ac02_missing_column_names_the_column;
+#[path = "tqnf_ac03_unrecognised_sqlite_error_keeps_the_swap.rs"]
+mod tqnf_ac03_unrecognised_sqlite_error_keeps_the_swap;
+#[path = "tqnf_ac04_count_chart_and_diagnose_agree.rs"]
+mod tqnf_ac04_count_chart_and_diagnose_agree;
+#[path = "tqnf_ac05_state_query_and_sql_path_agree.rs"]
+mod tqnf_ac05_state_query_and_sql_path_agree;
+#[path = "tqnf_ac06_column_code_is_a_registry_row.rs"]
+mod tqnf_ac06_column_code_is_a_registry_row;
+#[path = "tqnf_ac07_descriptor_names_both_codes.rs"]
+mod tqnf_ac07_descriptor_names_both_codes;
 #[path = "tracecap_ac01_no_bare_tracing_default_in_tests.rs"]
 mod tracecap_ac01_no_bare_tracing_default_in_tests;
 #[path = "trigidem_ac01_webhook_set_twice_idempotent.rs"]
@@ -1012,25 +1038,3 @@ mod urltenant_ac05_browser_get_shows_explainer_page;
 mod urltenant_ac06_quickstart_url_bound_no_signup_step;
 #[path = "urltenant_ac07_header_conflict_is_auth_conflict.rs"]
 mod urltenant_ac07_header_conflict_is_auth_conflict;
-#[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
-mod vault_ac01_connect_link_redirects_to_auth_url;
-#[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]
-mod vault_ac02_callback_exchanges_code_and_stores_tokens;
-#[path = "vault_ac03_injects_bearer_overriding_tool_header.rs"]
-mod vault_ac03_injects_bearer_overriding_tool_header;
-#[path = "vault_ac04_call_log_never_contains_token.rs"]
-mod vault_ac04_call_log_never_contains_token;
-#[path = "vault_ac05_refresh_before_expiry_used_once.rs"]
-mod vault_ac05_refresh_before_expiry_used_once;
-#[path = "vault_ac06_unconnected_end_user_gets_connect_link.rs"]
-mod vault_ac06_unconnected_end_user_gets_connect_link;
-#[path = "vault_ac07_used_handoff_token_returns_410.rs"]
-mod vault_ac07_used_handoff_token_returns_410;
-#[path = "vault_ac08_disconnect_revokes_and_blocks_calls.rs"]
-mod vault_ac08_disconnect_revokes_and_blocks_calls;
-#[path = "vault_ac09_providers_hides_client_secret.rs"]
-mod vault_ac09_providers_hides_client_secret;
-#[path = "vault_ac10_refresh_401_revokes_no_retry_storm.rs"]
-mod vault_ac10_refresh_401_revokes_no_retry_storm;
-#[path = "vault_ac11_quota_vault_providers.rs"]
-mod vault_ac11_quota_vault_providers;
