@@ -104,7 +104,11 @@ async fn tenp_ac06_funnel_counts_the_synthetic_purges() {
 }
 
 fn check(override_env: Option<(&str, &str)>) -> std::process::Output {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_mcphost"));
+    // nextest archives run on another host; env! bakes the build path (leg536 ac06 ENOENT)
+    let bin = std::env::var_os("NEXTEST_BIN_EXE_mcphost")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_BIN_EXE_mcphost")));
+    let mut cmd = Command::new(bin);
     cmd.args(["contract", "dump", "--check", "--path", COMMITTED]);
     if let Some((k, v)) = override_env {
         cmd.env(k, v);
