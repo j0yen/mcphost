@@ -135,6 +135,24 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
     // PRD-mcphost-output-schema-reach-sweep-live R5: `host.doctor` gained the
     // optional `output_reach` block after the cited tree.
     edited.insert("host.doctor");
+    // PRD-mcphost-docs-import-and-stated-boundary R4: `host.docs.status` gained
+    // the optional `import_paths`/`put_many_max`/`doc_max_bytes` keys.
+    edited.insert("host.docs.status");
+    // A tenant-defined value the corpus can only sample is declared free-form
+    // (`output_schemas::OPAQUE_FIELDS`): `host.table.query` rows are the
+    // tenant's columns.
+    edited.insert("host.table.query");
+    // PRD-mcphost-table-query-names-missing-table AC4: `host.table.query_diagnose`
+    // gained the optional `data` block (the missing-table error's `data`).
+    edited.insert("host.table.query_diagnose");
+    // PRD-mcphost-trusted-discovery-catalog-receipts AC5: `host.catalog.search`
+    // declares every emitted entry field (receipts included) and `view`, each
+    // object closed with `additionalProperties: false`.
+    edited.insert("host.catalog.search");
+    // PRD-mcphost-tool-call-output-root-opaque R1: the two forwarding roots
+    // type only the keys the host writes (this covers `host.tool.call`'s
+    // merged tenant payload, its `id` and `rows`).
+    edited.extend(mcphost::output_schemas::FORWARDING_ROOTS.iter().copied());
     let (mut untouched, mut varianted) = (0, 0);
     let mut problems = Vec::new();
     for (tool, old) in cited() {
@@ -157,7 +175,11 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
             };
             let (old_keys, new_keys) = (keys(&old), keys(&new));
             let lost: Vec<_> = old_keys.difference(&new_keys).filter(|k| k.as_str() != "would").collect();
-            if !lost.is_empty() || !new_keys.is_subset(&old_keys) {
+            // PRD-mcphost-table-import-from-url R4: the import tools gained the
+            // optional `rows_imported`/`rows_skipped`/`columns`/`source` keys
+            // after the cited tree.
+            let gained = ["host.table.create", "host.table.append"].contains(&tool.as_str());
+            if !lost.is_empty() || (!gained && !new_keys.is_subset(&old_keys)) {
                 problems.push(format!("{tool}: live properties changed: lost {lost:?}"));
             }
             let first = new["anyOf"][0].get("type");

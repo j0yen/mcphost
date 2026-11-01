@@ -15,8 +15,17 @@ use std::time::{Duration, Instant};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// No single recipe may take longer (PRD AC5).
-pub const MAX_RECIPE_WALL: Duration = Duration::from_secs(60);
+/// No single recipe may take longer (PRD AC5). Derived from the scheduler
+/// tick, not typed (sync-pull live-proof R3): two polls of (tick + fetch
+/// allowance + poll overshoot) plus the non-polling steps and the margin.
+pub const MAX_RECIPE_WALL: Duration = Duration::from_secs(
+    mcphost::recipes::MAX_POLLED_STEPS as u64
+        * (mcphost::triggers::SCHEDULER_TICK.as_secs()
+            + mcphost::triggers::SYNC_FETCH_ALLOWANCE_S
+            + mcphost::recipes::RETRY_UNTIL_EXPECT_POLL_S)
+        + mcphost::recipes::RECIPE_NON_POLL_STEP_S
+        + mcphost::recipes::RECIPE_WALL_MARGIN_S,
+);
 
 #[derive(Debug)]
 pub struct Trace {

@@ -18,13 +18,27 @@ use crate::state::AppState;
 /// drafted as reserved per the PRD's own resolution.
 const RESERVED_HANDLES: &[&str] = &["admin", "host", "mcphost", "system"];
 /// Requirement 3: description ≤ 512 bytes.
-const MAX_DESCRIPTION_BYTES: usize = 512;
+pub const MAX_DESCRIPTION_BYTES: usize = 512;
 /// Requirement 3: ≤ 16 tags of ≤ 32 bytes each.
-const MAX_TAGS: usize = 16;
-const MAX_TAG_BYTES: usize = 32;
+pub const MAX_TAGS: usize = 16;
+pub const MAX_TAG_BYTES: usize = 32;
 
 fn arg_str_opt<'a>(args: &'a Value, name: &str) -> Option<&'a str> {
     args.get(name).and_then(Value::as_str)
+}
+
+/// The handle shape [`validate_handle`] accepts before lower-casing (the handler
+/// stores it lower-case, so upper-case letters are accepted and normalised).
+/// `host.agent.profile_set`'s `handle.pattern`.
+pub const HANDLE_PATTERN: &str = "^[A-Za-z][A-Za-z0-9_]{2,31}$";
+
+/// Whether `raw` matches [`HANDLE_PATTERN`] (after lower-casing, the handler's own rule).
+pub fn is_handle_shape(raw: &str) -> bool {
+    let lower = raw.to_lowercase();
+    let mut chars = lower.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase())
+        && (3..=32).contains(&lower.len())
+        && lower.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
 /// Requirement 3: `^[a-z][a-z0-9_]{2,31}$`, stored lower-case -- so
@@ -32,12 +46,7 @@ fn arg_str_opt<'a>(args: &'a Value, name: &str) -> Option<&'a str> {
 /// even though the caller's casing differs (AC3).
 fn validate_handle(raw: &str) -> Result<String, AppError> {
     let lower = raw.to_lowercase();
-    let mut chars = lower.chars();
-    let starts_lower_alpha = matches!(chars.next(), Some(c) if c.is_ascii_lowercase());
-    let valid_shape = starts_lower_alpha
-        && (3..=32).contains(&lower.len())
-        && lower.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
-    if !valid_shape {
+    if !is_handle_shape(raw) {
         return Err(AppError::InvalidArgs(format!(
             "handle: must match ^[a-z][a-z0-9_]{{2,31}}$; got '{raw}'"
         )));

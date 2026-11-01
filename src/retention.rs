@@ -96,7 +96,166 @@ pub const POLICY_TABLES: &[PolicyTable] = &[
         env_var: "MCPHOST_RETENTION_BLOBS_GRACE_DAYS",
         default_days: 1,
     },
+    // PRD-mcphost-synthetic-implicit-tenant-expiry: an idle window, not a
+    // row-DELETE; executed by `Db::prune_once` through
+    // `control::expire_idle_synthetic_tenants`. `0` switches it off.
+    PolicyTable {
+        name: SYNTHETIC_IMPLICIT_POLICY,
+        env_var: SYNTHETIC_IMPLICIT_ENV,
+        default_days: SYNTHETIC_IMPLICIT_DEFAULT_DAYS,
+    },
+    // PRD-mcphost-external-unclaimed-tenant-expiry: the idle window of the
+    // external unclaimed policy (warn at window - lead, invalidate at window,
+    // purge at window + grace); executed by `control::sweep_external_unclaimed`.
+    PolicyTable {
+        name: EXTERNAL_UNCLAIMED_POLICY,
+        env_var: EXTERNAL_UNCLAIMED_ENV,
+        default_days: EXTERNAL_UNCLAIMED_DEFAULT_DAYS,
+    },
 ];
+
+/// PRD-mcphost-external-unclaimed-tenant-expiry: the `retention_policy` row,
+/// window env var and default (Joe 2026-10-22: key invalid at idle day 30).
+pub const EXTERNAL_UNCLAIMED_POLICY: &str = "external_unclaimed_tenants";
+pub const EXTERNAL_UNCLAIMED_ENV: &str = "MCPHOST_RETENTION_EXTERNAL_UNCLAIMED_TENANT_IDLE_DAYS";
+pub const EXTERNAL_UNCLAIMED_DEFAULT_DAYS: i64 = 30;
+/// Days between the warning and the invalidation (warn at idle day 20).
+pub const WARN_LEAD_ENV: &str = "MCPHOST_EXTERNAL_UNCLAIMED_WARN_LEAD_DAYS";
+pub const WARN_LEAD_DEFAULT_DAYS: i64 = 10;
+/// Days between the invalidation and the purge (purge at idle day 44).
+pub const PURGE_GRACE_ENV: &str = "MCPHOST_EXTERNAL_UNCLAIMED_PURGE_GRACE_DAYS";
+pub const PURGE_GRACE_DEFAULT_DAYS: i64 = 14;
+/// Most warnings (and notices) one sweep sends.
+pub const WARN_BATCH_SIZE: i64 = 500;
+/// How many pre-floor rows the first sweep lists by name.
+pub const PRE_FLOOR_DRY_RUN_LIMIT: usize = 200;
+/// The stage names `tenant_lifecycle_events.stage` holds.
+pub const LIFECYCLE_STAGES: &[&str] =
+    &["warned", "warn_no_address", "warn_failed", "invalidated", "notice_failed", "restored", "purged"];
+/// `admin_events.action` of a purge.
+pub const PURGE_ACTION: &str = "tenant_purge_expired";
+/// What `host.doctor` and `admin.tenants` call the external policy.
+pub const EXTERNAL_UNCLAIMED_LABEL: &str = "external_unclaimed";
+
+/// The shared off-switch parse: the literal `off` (any case, trimmed).
+pub fn is_off_switch(raw: &str) -> bool {
+    raw.trim().eq_ignore_ascii_case("off")
+}
+
+/// `true` iff `var` is set to the literal `off`.
+pub fn env_is_off(var: &str) -> bool {
+    std::env::var(var).is_ok_and(|raw| is_off_switch(&raw))
+}
+
+/// The three windows of the external policy, read once per sweep.
+#[derive(Debug, Clone, Copy)]
+pub struct ExternalWindows {
+    pub window: i64,
+    pub lead: i64,
+    pub grace: i64,
+}
+
+impl ExternalWindows {
+    /// The window from the policy row, lead and grace from their env vars.
+    pub fn read(window: i64) -> Self {
+        Self { window, lead: warn_lead_days(), grace: purge_grace_days() }
+    }
+
+    /// `(warn_at, invalidate_at, purge_at)` in days from the idle run's start.
+    pub fn stage_days(&self) -> (i64, i64, i64) {
+        external_stage_days(self.window, self.lead, self.grace)
+    }
+}
+
+/// Days between warning and invalidation.
+pub fn warn_lead_days() -> i64 {
+    days_from_env(WARN_LEAD_ENV, WARN_LEAD_DEFAULT_DAYS)
+}
+
+/// Days between invalidation and purge.
+pub fn purge_grace_days() -> i64 {
+    days_from_env(PURGE_GRACE_ENV, PURGE_GRACE_DEFAULT_DAYS)
+}
+
+/// The three stage days of a window: `(warn_at, invalidate_at, purge_at)`,
+/// each counted from the start of the idle run.
+pub fn external_stage_days(window: i64, lead: i64, grace: i64) -> (i64, i64, i64) {
+    ((window - lead).max(0), window, window + grace)
+}
+
+/// The `retention_policy` row of the synthetic-implicit-tenant expiry.
+pub const SYNTHETIC_IMPLICIT_POLICY: &str = "synthetic_implicit_tenants";
+pub const SYNTHETIC_IMPLICIT_ENV: &str = "MCPHOST_RETENTION_SYNTHETIC_IMPLICIT_TENANT_IDLE_DAYS";
+pub const SYNTHETIC_IMPLICIT_DEFAULT_DAYS: i64 = 1;
+/// The two `tenants` values the selector names, shared by the predicate
+/// (`db.rs`) and the exported contract so neither can drift.
+pub const SELECTOR_SIGNUP_SOURCE: &str = "implicit";
+pub const SELECTOR_ORIGIN: &str = "synthetic";
+
+/// The default idle window the contract advertises. A `test-support` build
+/// reads `MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_DEFAULT_DAYS` so a test can move
+/// it and watch `contract dump --check` fail; a release build never does.
+pub fn contract_default_days() -> i64 {
+    if cfg!(feature = "test-support")
+        && let Some(days) = std::env::var("MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_DEFAULT_DAYS")
+            .ok()
+            .and_then(|raw| raw.parse::<i64>().ok())
+    {
+        return days;
+    }
+    SYNTHETIC_IMPLICIT_DEFAULT_DAYS
+}
+
+/// `host.doctor`'s `tenant_lifecycle` for one tenant: `expires_at` is
+/// [`crate::db::Db::tenant_expires_at`] (`None` = not a subject). `policy`
+/// names only the external unclaimed policy, so it is null here.
+pub fn lifecycle_view(idle_days: i64, expires_at: Option<i64>) -> serde_json::Value {
+    match expires_at {
+        Some(at) => serde_json::json!({
+            "subject": true, "policy": null, "idle_days": idle_days, "expires_at_unix": at
+        }),
+        None => serde_json::json!({"subject": false, "policy": null, "expires_at_unix": null}),
+    }
+}
+
+/// The lifecycle of an `EXT` tenant as `host.doctor` and `admin.tenants`
+/// show it. `now` is the caller's clock; the three stage stamps are
+/// `idle_since` plus the warn, invalidate and purge days.
+pub fn external_lifecycle_view(subject: &crate::db::ExternalSubject, window: i64, now: i64) -> serde_json::Value {
+    let (warn_day, expire_day, purge_day) = external_stage_days(window, warn_lead_days(), purge_grace_days());
+    let since = subject.idle_since_unix;
+    serde_json::json!({
+        "subject": true,
+        "policy": EXTERNAL_UNCLAIMED_LABEL,
+        "idle_since_unix": since,
+        "idle_days": ((now - since) / 86_400).max(0),
+        "warn_at_unix": since + warn_day * 86_400,
+        "expires_at_unix": since + expire_day * 86_400,
+        "purge_at_unix": since + purge_day * 86_400,
+        "warned_unix": subject.warned_unix,
+        "warn_address_masked": subject.address.as_deref().map(crate::claim::mask_email),
+    })
+}
+
+/// Tenants claimed and torn down per batch (measured on 6,000 subjects).
+pub const EXPIRE_BATCH_SIZE: i64 = 500;
+
+/// A policy table's window as the seed stores it. Every row ignores `0`
+/// (falls back to its default) except the synthetic tenant-expiry row, where
+/// `0` is an off switch; both tenant rows also accept the literal `off`.
+pub fn policy_days(t: &PolicyTable) -> i64 {
+    if env_is_off(t.env_var) && (t.name == SYNTHETIC_IMPLICIT_POLICY || t.name == EXTERNAL_UNCLAIMED_POLICY) {
+        return 0;
+    }
+    if t.name == SYNTHETIC_IMPLICIT_POLICY {
+        return std::env::var(t.env_var)
+            .ok()
+            .and_then(|raw| raw.parse::<i64>().ok())
+            .filter(|d| *d >= 0)
+            .unwrap_or(t.default_days);
+    }
+    days_from_env(t.env_var, t.default_days)
+}
 
 /// Reads one policy table's window from its env var, falling back to
 /// `default_days` when unset, empty, non-numeric, or non-positive.

@@ -80,6 +80,11 @@ just call it -- they read it with
 `host.tool.spec_shared(tool="<owner_namespace>.<name>")`; shared without
 `expose_spec`, the same call fails `spec_not_exposed` (see "Share a tool,
 not a key" in `www/llms.txt` for the full worked example).
+`host.tool.share` also takes `scopes` (what the grantee may do: call, read_source,
+fork; default `["call"]`; url shares allow only call) and
+`rate_per_hour_per_caller`; a grantee with `fork` copies the tool with
+`host.tool.fork(owner, tool, as)`, and after `host.tool.unshare` a past caller's
+next call fails `share_revoked`.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 
@@ -168,6 +173,16 @@ Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
 
 `host.task.post {to, payload, deadline_s, dedupe_key?}` sends a task to one agent and returns `task_id`, `thread_id` and `status`. The recipient's `host.msg.wait` returns it with `data.task.task_id`; it calls `host.task.claim {task_id}`, then `host.task.complete {task_id, result}`, and your own `host.msg.wait` returns a message whose `data.task` carries the status and the result. `host.task.get {task_id}` reads one task. A task nobody finishes by its `deadline_s` goes `dead`, a `task.dead` message from `host` lands in the thread, and `host.task.dead_letters` lists it with `reason: "deadline"`. Statuses: `posted`, `claimed`, `done`, `dead`, `cancelled`. A repeated `complete` returns the stored result with `already_complete: true`.
 
+### Sub-agents
+
+<!-- quickstart-recipe:sub_agent_key -->
+1. As the lead: `host.key.delegate` `{"can_delegate":true,"label":"helper","scopes":["tools:call"],"ttl_s":3600}` returns `key`, `label`.
+2. As the helper, with the `key` call 1 returned: `host.key.delegate` `{"scopes":["read","write","tools:write","state:read","state:write","secrets:write","keys:manage","admin"],"ttl_s":60}` fails `scope_escalation` (asking for `read`, `write`, `tools:write`, `state:read`, `state:write`, `secrets:write`, `keys:manage`, `admin`).
+3. As the lead: `host.key.revoke` `{"cascade":true,"label":"helper"}` `revoked` >= 1.
+Hand the helper the `key` call 1 returned, never your own. It holds `tools:call` only: any other scope fails `scope_escalation`, as call 2 shows.
+Call 3 revokes it and its children; the helper's next call fails `key_revoked`.
+<!-- /quickstart-recipe:sub_agent_key -->
+
 ## Contributing: naming a new `host.*` tool
 
 One rule now, written down and enforced by CI: `host.<family>.<verb>` --
@@ -202,13 +217,17 @@ that made the path matter.
 
 ## Docs Q&A in a minute
 
+Documents are text the host indexes itself; a vector index built elsewhere (LlamaIndex, Chroma, pgvector) is not importable: export its source documents and put them.
+
 Turn a folder of markdown into a checkable Q&A tool, end to end, in one
 script:
 
 1. `signup(name)` — one fresh tenant.
-2. `host.docs.put(name, content)` — once per document (this recipe's own
-   corpus: 8 documents, ~22 KiB total, well under the 2 MiB per-document
-   cap).
+2. `host.docs.put_many(documents)` — up to 50 documents per call, each
+   `{name, content}` (or `content_base64`); this recipe's own corpus is one
+   call: 8 documents, ~22 KiB total, well under the 2 MiB per-document cap.
+   Every document gets its own `stored` / `replaced` / `skipped` / `refused`
+   row, so one refusal never undoes another.
 3. `host.docs.status()` — poll until `index.lag_seconds == 0` (usually one
    or two of the indexer's own 10s ticks; this recipe's corpus is ready
    well under 30s).

@@ -404,6 +404,9 @@ pub struct AppState {
     /// In-memory only, same `Arc`-sharing rationale as
     /// [`AppState::checkout_sessions`].
     pub oauth_healthz_cache: crate::oauth_stats::HealthzCache,
+    /// PRD-mcphost-tools-call-progress-notifications P0: admin healthz's
+    /// cached `progress_7d` object, same contract as the `oauth` cache.
+    pub progress_healthz_cache: crate::oauth_stats::HealthzCache,
     /// PRD-mcphost-oauth-unverified-client-consent-warning requirement (P1):
     /// `$MCPHOST_VERIFIED_CLIENT_IDS`, parsed once at startup -- see
     /// [`VerifiedClientIds`]. A DCR client's `client_id` on this list
@@ -508,6 +511,10 @@ pub struct AppState {
     /// `resources/subscribe` entries, bounded per tenant by
     /// `Plan::resources_max`.
     pub resource_subs: crate::resources::Subscriptions,
+    /// PRD-mcphost-subscriptions-listen R3: the open `subscriptions/listen`
+    /// streams, per tenant. In shared state because rmcp builds a new handler
+    /// for every POST.
+    pub listen_hub: crate::listen::ListenHub,
 }
 
 /// requirement 6's own default: 60 calls per client IP per minute.
@@ -699,6 +706,23 @@ pub fn utc_month_start_unix(now_unix: i64) -> i64 {
     days_from_civil(y, m, 1) * 86_400
 }
 
+/// Whether `name` passes [`validate_tool_name`] (`drafter::TOOL_NAME_REGEX`).
+pub fn is_valid_tool_name(name: &str) -> bool {
+    validate_tool_name(name).is_ok()
+}
+
+/// The scope-name pattern [`validate_scope_name`] enforces; `host.oauth.scope_set`'s `name.pattern`.
+pub const SCOPE_NAME_PATTERN: &str = "^[a-z][a-z0-9_:.-]{0,40}$";
+
+/// Whether `name` passes [`validate_scope_name`].
+pub fn is_valid_scope_name(name: &str) -> bool {
+    validate_scope_name(name).is_ok()
+}
+
+/// The synthetic-label pattern [`is_valid_synthetic_label`] enforces; the `label.pattern`
+/// of `admin.tenant_set_synthetic` and `admin.tenants_set_synthetic`.
+pub const SYNTHETIC_LABEL_PATTERN: &str = "^[a-z0-9][a-z0-9:_-]{0,63}$";
+
 /// `^[a-z][a-z0-9_]{1,40}$` — a lowercase-leading identifier, 2-41 chars.
 pub fn validate_tool_name(name: &str) -> Result<(), AppError> {
     let bytes = name.as_bytes();
@@ -888,6 +912,137 @@ pub fn is_known_fleet_display_name(display_name: &str) -> bool {
 /// either.
 pub fn is_known_synthorg_client(client_name: &str) -> bool {
     client_name.to_ascii_lowercase().starts_with("synthorg")
+}
+
+/// `tenants.origin`'s synthetic verdict, as [`derive_origin`] writes it.
+pub const ORIGIN_SYNTHETIC: &str = Origin::Synthetic.as_str();
+
+/// PRD-mcphost-external-class-positive-evidence: the ONE closed set of
+/// `origin` values. Every surface that lists them (healthz
+/// `tenants_by_origin`, `mcphost funnel --json`, the funnel breakdown, the
+/// `origin-counts.py` script's keys, the drift guard behind `origin_unknown`)
+/// derives its list from [`Origin::as_str`] through [`ORIGIN_NAMES`], never
+/// from a second hand-written list. `unclassified` is deliberately not a
+/// member: it is only the schema DEFAULT a pre-0012 row carried, and the
+/// tri-state migration leaves no row on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// Header, fleet IP, loopback, or a known harness name.
+    Synthetic,
+    /// A host-internal tenant (`perf.rs` first-use `perf-*` tenants).
+    Internal,
+    /// No evidence either way: the default for unknown traffic.
+    Unattributed,
+    /// Earned by positive evidence (claimed e-mail, or a later-day return).
+    External,
+}
+
+impl Origin {
+    /// Declaration order is the order every generated surface lists them.
+    pub const ALL: [Origin; 4] =
+        [Origin::Synthetic, Origin::Internal, Origin::Unattributed, Origin::External];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Origin::Synthetic => "synthetic",
+            Origin::Internal => "internal",
+            Origin::Unattributed => "unattributed",
+            Origin::External => "external",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Origin> {
+        Origin::ALL.into_iter().find(|o| o.as_str() == s)
+    }
+}
+
+/// [`Origin::ALL`] as strings, computed at compile time from
+/// [`Origin::as_str`].
+pub const ORIGIN_NAMES: [&str; Origin::ALL.len()] = {
+    let mut names = [""; Origin::ALL.len()];
+    let mut i = 0;
+    while i < names.len() {
+        names[i] = Origin::ALL[i].as_str();
+        i += 1;
+    }
+    names
+};
+
+/// A return only counts at least this long after signup (6 h), on top of the
+/// UTC-date comparison: a call 15 s after creation across UTC midnight is not
+/// a return.
+pub const RETURN_MIN_SECS: i64 = 21_600;
+
+/// `Some(days)` when `now` is on a UTC date strictly after the tenant's
+/// `created_unix` date AND at least [`RETURN_MIN_SECS`] later (server clock
+/// both sides); `days` is the date difference.
+pub fn returned_days(created_unix: i64, now: i64) -> Option<i64> {
+    let days = now.div_euclid(86_400) - created_unix.div_euclid(86_400);
+    (days >= 1 && now - created_unix >= RETURN_MIN_SECS).then_some(days)
+}
+
+/// `origin_detail` of a tenant no positive evidence has promoted.
+pub const ORIGIN_DETAIL_NO_EVIDENCE: &str = "no-positive-evidence";
+
+/// `tenants_by_origin` for `/healthz` and the funnel: every [`ORIGIN_NAMES`]
+/// key present (0 when absent from `counts`), plus the drift guard
+/// `origin_unknown` -- rows whose origin is outside the enum.
+pub fn origin_counts_json(counts: &[(String, i64)]) -> (serde_json::Value, i64) {
+    let mut by_origin = serde_json::Map::new();
+    for name in ORIGIN_NAMES {
+        by_origin.insert(name.to_string(), serde_json::json!(0));
+    }
+    let mut unknown = 0;
+    for (origin, n) in counts {
+        match Origin::parse(origin) {
+            Some(o) => {
+                by_origin.insert(o.as_str().to_string(), serde_json::json!(*n));
+            }
+            None => unknown += n,
+        }
+    }
+    (serde_json::Value::Object(by_origin), unknown)
+}
+
+/// The keys of [`origin_report_json`], the block `/healthz`, `admin.funnel` and
+/// `mcphost funnel --json` all carry unchanged.
+pub const ORIGIN_REPORT_KEYS: [&str; 5] =
+    ["tenants_by_origin", "external_by_evidence", "tenants_real", "tenants_confirmed", "origin_unknown"];
+
+/// PRD-mcphost-external-class-positive-evidence: the one origin block every
+/// surface reports. `tenants_real` is the `external` count (earned only);
+/// `tenants_confirmed` is `external_by_evidence.claimed` -- a `returned`
+/// tenant is real-looking but never confirmed.
+pub fn origin_report_json(counts: &[(String, i64)], claimed: i64, returned: i64) -> serde_json::Map<String, serde_json::Value> {
+    use serde_json::json;
+    let (by_origin, unknown) = origin_counts_json(counts);
+    let mut out = serde_json::Map::new();
+    out.insert(ORIGIN_REPORT_KEYS[0].to_string(), json!(by_origin));
+    out.insert(ORIGIN_REPORT_KEYS[1].to_string(), json!({"claimed": claimed, "returned": returned}));
+    out.insert(ORIGIN_REPORT_KEYS[2].to_string(), by_origin[Origin::External.as_str()].clone());
+    out.insert(ORIGIN_REPORT_KEYS[3].to_string(), json!(claimed));
+    out.insert(ORIGIN_REPORT_KEYS[4].to_string(), json!(unknown));
+    out
+}
+
+/// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: the one
+/// "known synthetic tenant" predicate the per-surface funnel and the
+/// recipe-use read share, so the two cannot disagree. A tenant is known
+/// synthetic when its client name is a `synthorg` one, its `source_class`
+/// is any non-`external` class, its `origin` is synthetic, or its
+/// `funnel_origin` is `fleet`/`probe`. It never claims more: a tenant that
+/// none of those marks catches is "not known synthetic", not "confirmed
+/// real".
+pub fn is_synthetic_tenant(
+    client_name: Option<&str>,
+    source_class: Option<&str>,
+    origin: Option<&str>,
+    funnel_origin: &str,
+) -> bool {
+    client_name.is_some_and(is_known_synthorg_client)
+        || source_class.is_some_and(|c| c == SourceClass::Loopback.as_str() || c == SourceClass::Fleet.as_str())
+        || origin == Some(ORIGIN_SYNTHETIC)
+        || matches!(funnel_origin, "fleet" | "probe")
 }
 
 /// loop/mcphost-fleet-ips: one parsed entry of `$MCPHOST_FLEET_IPS` -- a
@@ -1090,8 +1245,10 @@ pub fn classify_source_class(
     SourceClass::External
 }
 
-/// PRD-mcphost-provenance-audit requirement 1/2: the two-way real/synthetic
-/// split every metrics surface now reports, derived from the same
+/// PRD-mcphost-provenance-audit requirement 1/2 (tri-state since
+/// PRD-mcphost-external-class-positive-evidence: `synthetic`, or
+/// `unattributed` -- never `external` by elimination): the origin verdict
+/// every metrics surface reports, derived from the same
 /// `SourceClass`/`synthetic` classification `classify_source_class` already
 /// computes at write time -- one function, reused by the live signup path,
 /// the migration 0012 backfill rule, and (via the tenant's own
@@ -1106,12 +1263,11 @@ pub fn derive_origin(
         let detail = synthetic_label
             .map(str::to_string)
             .unwrap_or_else(|| source_class.as_str().to_string());
-        ("synthetic", Some(detail))
+        (Origin::Synthetic.as_str(), Some(detail))
     } else {
-        let detail = synthetic_label
-            .map(str::to_string)
-            .unwrap_or_else(|| "external-unverified".to_string());
-        ("external", Some(detail))
+        // PRD-mcphost-external-class-positive-evidence: by-elimination is no
+        // evidence. `external` is earned later (`Db::promote_origin`).
+        (Origin::Unattributed.as_str(), Some(ORIGIN_DETAIL_NO_EVIDENCE.to_string()))
     }
 }
 
@@ -1221,7 +1377,8 @@ pub fn parse_date_ymd_unix(s: &str) -> Option<i64> {
 /// Unparseable input defaults to 24h (the PRD's only documented value).
 pub fn parse_window_secs(window: &str) -> i64 {
     let window = window.trim();
-    let (num_part, unit) = window.split_at(window.len().saturating_sub(1));
+    // The last character, not the last byte: a multibyte unit ("caf\u{e9}") must not split mid-char.
+    let (num_part, unit) = window.split_at(window.char_indices().next_back().map_or(0, |(i, _)| i));
     let n: i64 = num_part.parse().unwrap_or(24);
     match unit {
         "s" => n,

@@ -338,6 +338,13 @@ pub fn splice_recipe_sections(content: &str, scopes: &str, recipe: &str) -> Stri
     splice_block(&with_recipe, SCOPES_START, SCOPES_END, scopes, &[RECIPE_START])
 }
 
+/// The README's marker pair. Distinct from [`RECIPE_START`]/[`RECIPE_END`] (the
+/// `www/llms.txt` section): the README block sits inside the quickstart region
+/// that `scripts/gen-agent-docs.sh` copies into BOTH files, and `splice_block`
+/// matches the first start/end pair, so the two blocks must not share markers.
+pub const README_RECIPE_START: &str = "<!-- quickstart-recipe:sub_agent_key -->";
+pub const README_RECIPE_END: &str = "<!-- /quickstart-recipe:sub_agent_key -->";
+
 /// Heading the README block sits under on first insertion.
 pub const README_RECIPE_HEADING: &str = "### Sub-agents";
 
@@ -345,16 +352,16 @@ pub const README_RECIPE_HEADING: &str = "### Sub-agents";
 /// `### Sub-agents` plus `block` ahead of the "Contributing: naming a new"
 /// section (else append).
 pub fn splice_readme_recipe(content: &str, block: &str) -> String {
-    if content.contains(RECIPE_START) {
-        return splice_block(content, RECIPE_START, RECIPE_END, block, &[]);
+    if content.contains(README_RECIPE_START) {
+        return splice_block(content, README_RECIPE_START, README_RECIPE_END, block, &[]);
     }
     let section = format!("{README_RECIPE_HEADING}\n\n{}", block.trim_end());
-    splice_block(content, RECIPE_START, RECIPE_END, &section, &["## Contributing: naming a new"])
+    splice_block(content, README_RECIPE_START, README_RECIPE_END, &section, &["## Contributing: naming a new"])
 }
 
 /// The README block: the markers around [`render_recipe_lines`].
 pub fn render_recipe_block(recipe: &Recipe) -> String {
-    format!("{RECIPE_START}\n{}{RECIPE_END}", render_recipe_lines(recipe))
+    format!("{README_RECIPE_START}\n{}{README_RECIPE_END}", render_recipe_lines(recipe))
 }
 
 pub const DOMAIN_HINT_START: &str = "<!-- domain-hint:start -->";

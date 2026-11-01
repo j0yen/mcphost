@@ -14,7 +14,7 @@
 //! `scripts/protocol-frames-check.sh` reads the table below as text, so keep
 //! every row in the single `FrameRow { .. }` shape it parses.
 
-use rmcp::{RoleServer, service::Peer};
+use rmcp::{RoleServer, model::ProgressNotificationParam, service::Peer};
 use serde_json::Value;
 
 /// The MCP protocol version the host negotiates and `frames.json` reports.
@@ -33,9 +33,24 @@ pub const SERVER_TIMING_HEADER: &str = "Server-Timing";
 /// frame.
 pub const SERVER_TIMING_METRIC: &str = "app";
 
-/// A frame the host can put on a response body.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FrameKind {
+/// Declares [`FrameKind`] and [`FrameKind::ALL`] from one variant list, so a
+/// new kind cannot be left out of the set the contract tests walk.
+macro_rules! frame_kinds {
+    ($($(#[$meta:meta])* $variant:ident),+ $(,)?) => {
+        /// A frame the host can put on a response body.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum FrameKind {
+            $($(#[$meta])* $variant),+
+        }
+
+        impl FrameKind {
+            /// Every kind, generated with the enum.
+            pub const ALL: &'static [FrameKind] = &[$(FrameKind::$variant),+];
+        }
+    };
+}
+
+frame_kinds! {
     ListChanged,
     /// `notifications/prompts/list_changed`: a prompt-kind tool was published
     /// or removed (PRD-mcphost-prompts-from-published-tools R4).
@@ -61,7 +76,7 @@ impl FrameKind {
     /// Classify one decoded JSON-RPC frame.
     pub fn classify(frame: &Value) -> Option<FrameKind> {
         if let Some(method) = frame.get("method").and_then(Value::as_str) {
-            return [FrameKind::ListChanged, FrameKind::PromptsListChanged, FrameKind::Progress].into_iter().find(|k| k.method() == method);
+            return FrameKind::ALL.iter().copied().find(|k| k.is_notification() && k.method() == method);
         }
         if frame.get("result").is_some() {
             return Some(FrameKind::Result);
@@ -71,6 +86,31 @@ impl FrameKind {
 
     fn is_terminal(self) -> bool {
         matches!(self, FrameKind::Result | FrameKind::Error)
+    }
+
+    /// A kind the host emits ahead of the terminal frame; `Result` / `Error`
+    /// are the response itself.
+    pub fn is_notification(self) -> bool {
+        !self.is_terminal()
+    }
+}
+
+/// A notification frame with its payload: the one thing [`emit`] sends, so
+/// each [`FrameKind`] that is a notification has exactly one sender arm.
+#[derive(Debug, Clone)]
+pub enum Frame {
+    ToolListChanged,
+    PromptListChanged,
+    Progress(ProgressNotificationParam),
+}
+
+impl Frame {
+    pub fn kind(&self) -> FrameKind {
+        match self {
+            Frame::ToolListChanged => FrameKind::ListChanged,
+            Frame::PromptListChanged => FrameKind::PromptsListChanged,
+            Frame::Progress(_) => FrameKind::Progress,
+        }
     }
 }
 
@@ -135,6 +175,9 @@ pub struct FrameRow {
     pub request_type: &'static str,
     pub frames: &'static [(FrameKind, Card)],
     pub content_type_rule: ContentTypeRule,
+    /// The condition under which the row applies beyond its request type
+    /// (`None`: always); rendered as the `when` column / key.
+    pub when: Option<&'static str>,
 }
 
 /// The request types the host serves and the ordered frames each may emit.
@@ -148,11 +191,13 @@ pub const FRAME_SEQUENCES: &[FrameRow] = &[
         request_type: "initialize",
         frames: &[(FrameKind::Result, Card::ExactlyOne)],
         content_type_rule: ContentTypeRule::JsonWhenSingleFrame,
+        when: None,
     },
     FrameRow {
         request_type: "tools/list",
         frames: &[(FrameKind::Result, Card::ExactlyOne)],
         content_type_rule: ContentTypeRule::JsonWhenSingleFrame,
+        when: None,
     },
     FrameRow {
         request_type: "tools/call:keyed",
@@ -162,23 +207,36 @@ pub const FRAME_SEQUENCES: &[FrameRow] = &[
             (FrameKind::Result, Card::ExactlyOne),
         ],
         content_type_rule: ContentTypeRule::JsonWhenSingleFrame,
+        when: None,
     },
     FrameRow {
         request_type: "tools/call:keyless_signup",
         frames: &[(FrameKind::ListChanged, Card::AtMostOne), (FrameKind::Result, Card::ExactlyOne)],
         content_type_rule: ContentTypeRule::JsonWhenSingleFrame,
+        when: None,
     },
     FrameRow {
         request_type: "tools/call:error",
         frames: &[(FrameKind::Error, Card::ExactlyOne)],
         content_type_rule: ContentTypeRule::JsonWhenSingleFrame,
+        when: None,
+    },
+    FrameRow {
+        request_type: "tools/call:with_progress_token",
+        frames: &[(FrameKind::Progress, Card::ZeroOrMore), (FrameKind::Result, Card::ExactlyOne)],
+        content_type_rule: ContentTypeRule::JsonWhenSingleFrame,
+        when: Some("request _meta.progressToken present"),
     },
     FrameRow {
         request_type: "ping",
         frames: &[(FrameKind::Error, Card::ExactlyOne)],
         content_type_rule: ContentTypeRule::JsonWhenSingleFrame,
+        when: None,
     },
 ];
+
+/// Request type of a `tools/call` whose request carried `_meta.progressToken`.
+pub const REQ_WITH_PROGRESS_TOKEN: &str = "tools/call:with_progress_token";
 
 /// Request type of the signup / redeem / implicit-signup notify sites.
 pub const REQ_KEYLESS_SIGNUP: &str = "tools/call:keyless_signup";
@@ -268,12 +326,12 @@ pub fn assert_allowed(kind: FrameKind, request_type: &str) {
 /// Emit `kind` on the current request's channel, after checking the table.
 /// Best-effort like the notify calls it replaces: a send failure is the
 /// caller's to log.
-pub async fn emit(peer: &Peer<RoleServer>, kind: FrameKind, request_type: &str) -> Result<(), String> {
-    assert_allowed(kind, request_type);
-    match kind {
-        FrameKind::ListChanged => peer.notify_tool_list_changed().await.map_err(|e| e.to_string()),
-        FrameKind::PromptsListChanged => peer.notify_prompt_list_changed().await.map_err(|e| e.to_string()),
-        other => Err(format!("frames::emit has no sender for {other:?}")),
+pub async fn emit(peer: &Peer<RoleServer>, frame: Frame, request_type: &str) -> Result<(), String> {
+    assert_allowed(frame.kind(), request_type);
+    match frame {
+        Frame::ToolListChanged => peer.notify_tool_list_changed().await.map_err(|e| e.to_string()),
+        Frame::PromptListChanged => peer.notify_prompt_list_changed().await.map_err(|e| e.to_string()),
+        Frame::Progress(param) => peer.notify_progress(param).await.map_err(|e| e.to_string()),
     }
 }
 

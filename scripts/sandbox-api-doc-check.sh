@@ -328,8 +328,8 @@ PY
 # (a missing block differs); --write splices it via `mcphost llms-txt` into a
 # temp copy so a failed render never touches README.md.
 README_FILE="${MCPHOST_README:-README.md}"
-RECIPE_START="<!-- recipe:sub_agent_key -->"
-RECIPE_END="<!-- /recipe:sub_agent_key -->"
+RECIPE_START="<!-- quickstart-recipe:sub_agent_key -->"
+RECIPE_END="<!-- /quickstart-recipe:sub_agent_key -->"
 
 recipe_block_of() {
   python3 - "$1" "$RECIPE_START" "$RECIPE_END" <<'PY'
@@ -513,7 +513,7 @@ RECIPE_EXPECTED="$(mcphost_bin recipe-section)" || {
 }
 RECIPE_ACTUAL="$(recipe_block_of "$README_FILE")"
 if [ "$RECIPE_ACTUAL" != "$RECIPE_EXPECTED" ]; then
-  echo "sandbox-api-doc-check.sh: $README_FILE recipe:sub_agent_key block differs from the rendered recipe (run sandbox-api-doc-check.sh --write)" >&2
+  echo "sandbox-api-doc-check.sh: $README_FILE quickstart-recipe:sub_agent_key block differs from the rendered recipe (run sandbox-api-doc-check.sh --write)" >&2
   FAILURES=$((FAILURES + 1))
 fi
 

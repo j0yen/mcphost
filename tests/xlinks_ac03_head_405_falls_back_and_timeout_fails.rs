@@ -8,6 +8,8 @@
 //! script text); the runner sets `DOCS_LINK_TIMEOUT=1` so the hang case
 //! costs ~2 s (attempt + one retry) instead of ~20.
 
+#[allow(unused_imports)]
+use crate::common;
 use crate::xlinks;
 
 #[test]

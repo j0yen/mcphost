@@ -66,7 +66,7 @@ fn table_append_rows_is_object_or_array() {
 
 #[test]
 fn policy_attrs_set_attrs_is_object() {
-    assert_eq!(property("host.policy.set", "rule").get("type"), None, "rule is untouched");
+    assert_eq!(property("host.policy.set", "rule")["type"], "array", "rule is a typed list (shp_ac03)");
     assert_eq!(property("host.policy.attrs_set", "attrs")["type"], "object");
 }
 

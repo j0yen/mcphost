@@ -11,7 +11,8 @@
 use crate::common;
 use crate::vbd_calls;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
-use mcphost::host_args::{UNVALIDATED, handler_runs, validate_host_args};
+use mcphost::host_args::{UNVALIDATED, handler_runs};
+use mcphost::precheck::precheck_args as validate_host_args;
 use mcphost::kinds::KindRegistry;
 use serde_json::{Value, json};
 use std::time::Duration;

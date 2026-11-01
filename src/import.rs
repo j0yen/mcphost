@@ -304,6 +304,11 @@ pub async fn import(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
     tokio::spawn(async move {
         let start = std::time::Instant::now();
         let outcome = restore(&spawn_state, &spawn_tenant, &spawn_run, path, info).await;
+        // PRD-mcphost-subscriptions-listen R4: the restored tools exist now, not when
+        // the verb returned.
+        if outcome.is_ok() {
+            spawn_state.listen_hub.notify(spawn_tenant.id, crate::listen::ListChange::Tools);
+        }
         crate::export::finish_run(&spawn_state, &spawn_tenant, spawn_run, start, outcome).await;
     });
     Ok(json!({"run_id": run_id, "status": "running"}))

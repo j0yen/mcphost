@@ -240,6 +240,117 @@ pub const INCIDENT_FIELD: &str = "incident";
 pub const HOST_FAULT_CODES: &[&str] =
     &["storage", "internal", "exec_unavailable", "timeout", "rate_limited_host", "transaction_nested"];
 
+/// PRD-mcphost-named-key-refusal-not-http-401 R1: why a keyless call was
+/// refused with `tenant_key_missing`. The HTTP-status decision
+/// (`http::upgrade_for`) keys on this, never on whether `data.tenant` exists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reason {
+    /// No tenant is known for the caller (the original refusal).
+    Anonymous,
+    /// This connection already named the tenant in the payload.
+    ConnectionBound(String),
+    /// This peer (IP + User-Agent) redeemed a key in the last 10 minutes.
+    /// Carries no namespace: a different agent at the same address must
+    /// not learn another tenant's name.
+    PeerRecent,
+}
+
+impl Reason {
+    pub const ALL_WIRE: &'static [&'static str] = &["missing_key", "connection_bound", "peer_recent"];
+
+    /// The `data.reason` string this variant serializes to.
+    pub fn wire(&self) -> &'static str {
+        match self {
+            Reason::Anonymous => "missing_key",
+            Reason::ConnectionBound(_) => "connection_bound",
+            Reason::PeerRecent => "peer_recent",
+        }
+    }
+
+    /// The `message` of a `tenant_key_missing` refusal for this reason.
+    /// PRD-mcphost-implicit-signup-per-session-not-per-peer R4: only
+    /// `Anonymous` keeps the original sentence; the other two name a session
+    /// or a tenant URL, never a key to paste.
+    pub fn message(&self) -> &'static str {
+        match self {
+            Reason::Anonymous => ANONYMOUS_MESSAGE,
+            Reason::ConnectionBound(_) => CONNECTION_BOUND_MESSAGE,
+            Reason::PeerRecent => PEER_RECENT_MESSAGE,
+        }
+    }
+
+    /// Inverse of [`Reason::wire`] for the HTTP middleware, which sees only
+    /// the serialized body. Anything unrecognized (including an absent
+    /// field) is `Anonymous`, which keeps the 401.
+    pub fn from_wire(reason: Option<&str>, tenant: Option<&str>) -> Reason {
+        match reason {
+            Some("connection_bound") => Reason::ConnectionBound(tenant.unwrap_or_default().to_string()),
+            Some("peer_recent") => Reason::PeerRecent,
+            _ => Reason::Anonymous,
+        }
+    }
+}
+
+/// The `Anonymous` message, byte-identical to v0.118.8.
+pub const ANONYMOUS_MESSAGE: &str = "tenant_key is required: pass the key that signup returned as the tenant_key argument";
+/// The `PeerRecent` message (R4): a session or a tenant URL, no key.
+pub const PEER_RECENT_MESSAGE: &str = "no tenant for this call: a key was redeemed from your address in the last 10 minutes and this request presented no session of its own; send initialize first, or call your tenant URL";
+/// The `ConnectionBound` message (R4): this session's own tenant, no key.
+pub const CONNECTION_BOUND_MESSAGE: &str = "no tenant for this call: this session already belongs to a tenant; keep calling on the same session or call its tenant URL";
+
+/// `data` key on a named refusal that points at the ways to get a key.
+pub const GET_A_KEY: &str = "get_a_key";
+pub const GET_A_KEY_TEXT: &str = "call signup for your own key (host.quickstart explains the flow)";
+/// PRD-mcphost-implicit-signup-per-session-not-per-peer R3: the PeerRecent hint
+/// names two remedies, a session or a tenant URL, and no key or namespace.
+pub const PEER_RECENT_HINT: &str = "a key was redeemed from your address in the last 10 minutes and this request presented no session of its own; send initialize first (a session of your own gets its own tenant on its first host.* call) or, if that tenant is yours, call its tenant URL: https://mcphost.dev/t/<namespace>/mcp";
+
+/// The ConnectionBound hint (R3).
+pub fn connection_hint(namespace: &str) -> String {
+    format!(
+        "this connection authenticated as {namespace}; keep calling on the same session (send its Mcp-Session-Id) \
+         or call its tenant URL: https://mcphost.dev/t/{namespace}/mcp"
+    )
+}
+
+/// One `{reason, hint}` row per [`Reason`], for the registry's
+/// `tenant_key_missing.reasons`. `Anonymous` has no separate hint, so its row
+/// lists its message; the namespace in the `ConnectionBound` hint is the
+/// placeholder word.
+pub fn reason_hints() -> Value {
+    json!([
+        {"reason": Reason::Anonymous.wire(), "hint": ANONYMOUS_MESSAGE},
+        {"reason": "connection_bound", "hint": connection_hint("<namespace>")},
+        {"reason": Reason::PeerRecent.wire(), "hint": PEER_RECENT_HINT},
+    ])
+}
+
+/// `data.reason` of a `tool_not_found` raised on a young implicit tenant.
+pub const TOOL_NOT_FOUND_ON_IMPLICIT_TENANT: &str = "tool_not_found_on_implicit_tenant";
+
+/// How long after implicit sign-up a `tool_not_found` carries the hint.
+pub const IMPLICIT_TENANT_HINT_WINDOW_S: i64 = 600;
+
+/// The `tool_not_found_on_implicit_tenant` hint text.
+pub fn implicit_tenant_hint(created_unix: i64) -> String {
+    format!(
+        "this connection is a new tenant made by implicit sign-up at {created_unix}; if you published this tool \
+         under another tenant, pass that tenant's tenant_key (or Authorization: Bearer) on this call"
+    )
+}
+
+/// Every key a serialized `tool_not_found` refusal's `data` may carry.
+pub const TOOL_NOT_FOUND_FIELDS: &[&str] = &[
+    "error_code", "reason", "tenant", "signup_source", "created_unix", "hint", "anchor", "docs", "request_id",
+    "next_call", "class", "family", "feedback_hint", "help_url", "remedy", "retry",
+];
+
+/// Every key a serialized `tenant_key_missing` refusal's `data` may carry.
+pub const REFUSAL_FIELDS: &[&str] = &[
+    "error_code", "reason", "tenant", "hint", "session_presented", GET_A_KEY, "anchor", "field", "expected", "docs", "example", "request_id",
+    "next_call", "class", "family", "feedback_hint", "help_url", "remedy", "retry",
+];
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     #[error("missing or invalid Authorization: Bearer key")]
@@ -269,8 +380,8 @@ pub enum AppError {
     /// missing. `None` keeps the original, unnamed refusal for every other
     /// `host.*`/`billing.*` call with neither header nor argument on a
     /// connection with no memory at all.
-    #[error("tenant_key is required: pass the key that signup returned as the tenant_key argument")]
-    TenantKeyMissing(Option<String>),
+    #[error("{}", .0.message())]
+    TenantKeyMissing(Reason),
     /// PRD-mcphost-auth-error-names-argument requirement 2 / AC2-3: a
     /// `tenant_key` argument present but matching no tenant (or a disabled
     /// one, which stays [`AppError::TenantDisabled`] -- unchanged, see
@@ -280,11 +391,18 @@ pub enum AppError {
     #[error("forbidden")]
     Forbidden,
     #[error("tenant is disabled")]
-    TenantDisabled { disabled_reason: Option<String> },
+    TenantDisabled { disabled_reason: Option<String>, claim_url: Option<String> },
     #[error("signup rate limit exceeded for this source; try again later")]
     RateLimited,
     #[error("tool not found: {0}")]
     ToolNotFound(String),
+    /// PRD-mcphost-refusals-name-their-cause R4: a [`AppError::ToolNotFound`]
+    /// raised for a connection whose own tenant was made by implicit sign-up
+    /// under [`IMPLICIT_TENANT_HINT_WINDOW_S`] ago. Same code, JSON-RPC code and
+    /// message as `ToolNotFound`; `data` adds the connection's OWN tenant and
+    /// the hint, never anything about a tenant that owns the name.
+    #[error("tool not found: {name}")]
+    ToolNotFoundOnImplicitTenant { name: String, tenant: String, created_unix: i64 },
     /// PRD-mcphost-tenant-delete AC7: distinct from [`AppError::ToolNotFound`]
     /// so `admin.tenant_delete` on an unknown tenant reads as
     /// `tenant_not_found`, not `tool_not_found`.
@@ -490,6 +608,7 @@ pub fn all_variants_for_test() -> Vec<AppError> {
             | AppError::TenantDisabled { .. }
             | AppError::RateLimited
             | AppError::ToolNotFound(_)
+            | AppError::ToolNotFoundOnImplicitTenant { .. }
             | AppError::TenantNotFound(_)
             | AppError::InvalidParams(_)
             | AppError::UnknownKind { .. }
@@ -527,12 +646,13 @@ pub fn all_variants_for_test() -> Vec<AppError> {
     let s = || "x".to_string();
     let mut all = vec![
         AppError::Unauthorized,
-        AppError::TenantKeyMissing(None),
+        AppError::TenantKeyMissing(Reason::Anonymous),
         AppError::TenantKeyInvalid,
         AppError::Forbidden,
-        AppError::TenantDisabled { disabled_reason: None },
+        AppError::TenantDisabled { disabled_reason: None, claim_url: None },
         AppError::RateLimited,
         AppError::ToolNotFound("t.no_such".into()),
+        AppError::ToolNotFoundOnImplicitTenant { name: s(), tenant: s(), created_unix: 1 },
         AppError::TenantNotFound(s()),
         AppError::InvalidParams(s()),
         AppError::UnknownKind { requested: s(), registered: vec!["http"], aliases: vec![] },
@@ -575,6 +695,14 @@ pub fn all_variants_for_test() -> Vec<AppError> {
     all
 }
 
+/// The header a client echoes to be recognised across calls (`data.session_header`).
+pub const SESSION_HEADER: &str = "Mcp-Session-Id";
+/// `data.get_a_key.signup`: the explicit way to a key (R2 of
+/// PRD-mcphost-implicit-signup-mints-only-on-success).
+pub const GET_A_KEY_SIGNUP: &str = "signup";
+/// `data.get_a_key.quickstart`: the verb that explains onboarding.
+pub const GET_A_KEY_QUICKSTART: &str = "host.quickstart";
+
 impl AppError {
     /// PRD-mcphost-error-responses-invite-feedback R4: a kind-level error
     /// that does not know which tool it ran for (`tool_exception`,
@@ -598,6 +726,33 @@ impl AppError {
         }
     }
 
+    /// PRD-mcphost-implicit-signup-mints-only-on-success R2: this error with
+    /// `data.get_a_key` -- the two ways to get a key (`signup`,
+    /// `host.quickstart`) -- for a keyless first call whose tenant was rolled
+    /// back. A non-`Structured` variant is carried as a `Structured` with its own
+    /// code, message and data.
+    pub fn with_get_a_key(self, base_url: &str) -> Self {
+        let get_a_key = json!({
+            "signup": GET_A_KEY_SIGNUP,
+            "quickstart": GET_A_KEY_QUICKSTART,
+        });
+        let (code, message, mut data) = match self {
+            AppError::Structured { code, message, data } => (code, message, data),
+            other => {
+                let code = other.code();
+                let e = other.into_error_data_at(Some(base_url));
+                (code, e.message.to_string(), e.data.unwrap_or(Value::Null))
+            }
+        };
+        let mut obj = match data.take() {
+            Value::Object(m) => m,
+            Value::Null => Map::new(),
+            other => Map::from_iter([("detail".to_string(), other)]),
+        };
+        obj.insert("get_a_key".to_string(), get_a_key);
+        AppError::Structured { code, message, data: Value::Object(obj) }
+    }
+
     /// The machine-readable code every AC-facing test matches on.
     pub fn code(&self) -> &'static str {
         match self {
@@ -611,7 +766,7 @@ impl AppError {
             AppError::Forbidden => FORBIDDEN,
             AppError::TenantDisabled { .. } => TENANT_DISABLED,
             AppError::RateLimited => RATE_LIMITED,
-            AppError::ToolNotFound(_) => TOOL_NOT_FOUND,
+            AppError::ToolNotFound(_) | AppError::ToolNotFoundOnImplicitTenant { .. } => TOOL_NOT_FOUND,
             AppError::TenantNotFound(_) => TENANT_NOT_FOUND,
             AppError::InvalidParams(_) => INVALID_PARAMS,
             AppError::UnknownKind { .. } => UNKNOWN_KIND,
@@ -841,12 +996,20 @@ crate::err_code! {
     pub TENANT_KEY_MISSING => "tenant_key_missing",
     Auth, AgentFault, false,
     "Pass tenant_key, or reconnect through your onboarding url; data.tenant names the tenant when known.",
+    reasons: reason_hints,
 }
 
 crate::err_code! {
     pub TENANT_NOT_FOUND => "tenant_not_found",
     Auth, AgentFault, false,
     "Check the namespace spelling and use a tenant that exists.",
+}
+
+crate::err_code! {
+    pub REQUEST_BODY_TOO_LARGE => "request_body_too_large",
+    Call, AgentFault, false,
+    "Send less than data.limit_bytes per call; store a large payload with host.blob_put and pass its blob id.",
+    data_keys: &["limit_bytes", "content_length", "hint"],
 }
 
 crate::err_code! {
@@ -876,7 +1039,10 @@ crate::err_code! {
 impl AppError {
     fn jsonrpc_code(&self) -> ErrorCode {
         match self {
-            AppError::ToolNotFound(_) | AppError::TenantNotFound(_) | AppError::GroupNotFound(_) => {
+            AppError::ToolNotFound(_)
+            | AppError::ToolNotFoundOnImplicitTenant { .. }
+            | AppError::TenantNotFound(_)
+            | AppError::GroupNotFound(_) => {
                 ErrorCode::RESOURCE_NOT_FOUND
             }
             AppError::UnknownKind { .. }
@@ -944,7 +1110,9 @@ impl AppError {
                 // PRD-mcphost-implicit-signup requirement 3: the implicit-
                 // signup path's own rate-limit refusal is the same
                 // caller-state gate as `rate_limited` right above it.
-                "rate_limited" | "signup_rate_limited" | "signup_paused" | "banned"
+                // PRD-mcphost-refusals-name-their-cause R1: the body-limit
+                // refusal is JSON-RPC Invalid Request, the `rate_limited` bucket.
+                "rate_limited" | "signup_rate_limited" | "signup_paused" | "banned" | "request_body_too_large"
                 // PRD-mcphost-key-scoped-to-tools R3: a sub-key calling
                 // outside its allowlist is the same caller-credential
                 // problem as `insufficient_scope`.
@@ -956,7 +1124,7 @@ impl AppError {
                 // caller-input-quota class as `state_quota_exceeded` above.
                 // PRD-mcphost-paged-trait-on-every-list-verb requirement 2: a
                 // cursor this process did not mint is a bad parameter.
-                "invites_quota_exceeded" | "org_members_max" | "resources_max" | "org_member_already" | "org_name_taken"
+                "invites_quota_exceeded" | "org_members_max" | "resources_max" | "listen_streams_max" | "org_member_already" | "org_name_taken"
                 | "not_in_org" | "last_client" | "client_not_found" | "cursor_invalid" | "field_unknown" | "idempotency_conflict" => {
                     ErrorCode::INVALID_PARAMS
                 }
@@ -1071,8 +1239,9 @@ impl AppError {
                 // bound) `host.table.query` are all caller-input problems,
                 // the same INVALID_PARAMS bucket the `state_*` group above
                 // already uses for the analogous KV-store rejections.
-                "table_schema_violation" | "table_not_found" | "table_query_rejected"
+                "table_schema_violation" | "table_not_found" | "table_column_not_found" | "table_query_rejected"
                 | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
+                c if c == crate::tables::TABLE_ROW_CONFLICT => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-document-store P0 requirements 2-5: a too-large
                 // put, an unsupported mime, or either quota overrun are all
                 // caller-input problems, same INVALID_PARAMS bucket as the
@@ -1291,6 +1460,24 @@ impl AppError {
         }
     }
 
+    /// PRD-mcphost-refusals-name-their-cause R4: a [`AppError::ToolNotFound`]
+    /// for a tenant made by implicit sign-up at most
+    /// [`IMPLICIT_TENANT_HINT_WINDOW_S`] before `now` becomes
+    /// [`AppError::ToolNotFoundOnImplicitTenant`]; everything else (an older or
+    /// explicit tenant, any other error) is returned unchanged. The caller
+    /// passes the connection's own tenant row fields, so no tool-name lookup
+    /// across tenants exists.
+    pub fn on_implicit_tenant(self, namespace: &str, signup_source: Option<&str>, created_unix: Option<i64>, now: i64) -> Self {
+        match (self, signup_source, created_unix) {
+            (AppError::ToolNotFound(name), Some("implicit"), Some(created))
+                if now.saturating_sub(created) <= IMPLICIT_TENANT_HINT_WINDOW_S =>
+            {
+                AppError::ToolNotFoundOnImplicitTenant { name, tenant: namespace.to_string(), created_unix: created }
+            }
+            (other, _, _) => other,
+        }
+    }
+
     /// Zero-arg convenience for the many call sites with no request-scoped
     /// base URL in hand (hermetic unit tests, `kinds::conformance`'s shape
     /// checks, the free function [`crate::handler::get_parts`]'s own
@@ -1393,29 +1580,45 @@ impl AppError {
         // PRD-mcphost-error-envelope-schema-contract AC6: the machine-readable
         // reason a tenant-key rejection carries, so a client branches on
         // `data.reason` rather than the message, on every verb alike.
-        match &self {
-            AppError::TenantKeyInvalid => {
-                obj.insert("reason".to_string(), json!("unknown_key"));
-            }
-            AppError::TenantKeyMissing(_) => {
-                obj.insert("reason".to_string(), json!("missing_key"));
-            }
-            _ => {}
+        if matches!(self, AppError::TenantKeyInvalid) {
+            obj.insert("reason".to_string(), json!("unknown_key"));
         }
-        if let AppError::TenantKeyMissing(Some(namespace)) = &self {
-            obj.insert("tenant".to_string(), json!(namespace));
-            obj.insert(
-                "hint".to_string(),
-                json!(format!(
-                    "this connection authenticated as {namespace}; pass its tenant_key"
-                )),
-            );
+        if let AppError::TenantKeyMissing(reason) = &self {
+            obj.insert("reason".to_string(), json!(reason.wire()));
+            match reason {
+                Reason::Anonymous => {}
+                Reason::ConnectionBound(namespace) => {
+                    obj.insert("tenant".to_string(), json!(namespace));
+                    obj.insert("hint".to_string(), json!(connection_hint(namespace)));
+                    obj.insert(GET_A_KEY.to_string(), json!(GET_A_KEY_TEXT));
+                }
+                Reason::PeerRecent => {
+                    obj.insert("hint".to_string(), json!(PEER_RECENT_HINT));
+                    obj.insert("session_presented".to_string(), json!(false));
+                    obj.insert("session_header".to_string(), json!(SESSION_HEADER));
+                    obj.insert(GET_A_KEY.to_string(), json!(GET_A_KEY_TEXT));
+                }
+            }
+        }
+        // PRD-mcphost-refusals-name-their-cause R4: the connection's own new
+        // tenant, from the bound tenant row only.
+        if let AppError::ToolNotFoundOnImplicitTenant { tenant, created_unix, .. } = &self {
+            obj.insert("reason".to_string(), json!(TOOL_NOT_FOUND_ON_IMPLICIT_TENANT));
+            obj.insert("tenant".to_string(), json!(tenant));
+            obj.insert("signup_source".to_string(), json!("implicit"));
+            obj.insert("created_unix".to_string(), json!(created_unix));
+            obj.insert("hint".to_string(), json!(implicit_tenant_hint(*created_unix)));
         }
         // R6 (PRD-mcphost-self-offboard-success-envelope): a disabled tenant
         // error carries its reason so callers can distinguish self_offboard
         // from admin_disable.
-        if let AppError::TenantDisabled { disabled_reason: Some(reason) } = &self {
+        if let AppError::TenantDisabled { disabled_reason: Some(reason), claim_url } = &self {
             obj.insert("disabled_reason".to_string(), json!(reason));
+            // PRD-mcphost-external-unclaimed-tenant-expiry: the claim link of
+            // a tenant invalidated as unclaimed, for its credential's holder.
+            if let Some(claim_url) = claim_url {
+                obj.insert("claim_url".to_string(), json!(claim_url));
+            }
         }
         // PRD-mcphost-unknown-kind-routes-to-recipe requirement 4 (AC4):
         // `registered`/`aliases` ride straight through from the variant;
@@ -1491,7 +1694,7 @@ impl AppError {
         // tool is the one the error names (`ToolNotFound`) or `data.tool`.
         if !obj.contains_key("feedback_hint") {
             let tool = match &self {
-                AppError::ToolNotFound(name) => Some(name.clone()),
+                AppError::ToolNotFound(name) | AppError::ToolNotFoundOnImplicitTenant { name, .. } => Some(name.clone()),
                 _ => obj.get("tool").and_then(Value::as_str).map(str::to_string),
             };
             let id = matches!(
@@ -2241,6 +2444,11 @@ impl From<rusqlite::Error> for AppError {
         // error stays exactly what it was (AC5: "the caller receives the
         // existing structured error").
         crate::db::note_rusqlite_error(&e);
+        if let rusqlite::Error::SqliteFailure(f, msg) = &e
+            && f.code == rusqlite::ffi::ErrorCode::ConstraintViolation
+        {
+            return constraint_conflict(f.extended_code, msg.as_deref().unwrap_or(""));
+        }
         // PRD-mcphost-dry-run-inside-savepoint-for-transactional-verbs R5:
         // the one refusal SQLite gives a raw `BEGIN` inside an open
         // transaction. rusqlite 0.32 has no `ErrorCode` for SQLITE_ERROR
@@ -2259,6 +2467,34 @@ impl From<rusqlite::Error> for AppError {
             };
         }
         AppError::Storage(e.to_string())
+    }
+}
+
+/// PRD-mcphost-table-conflict-structured-error: a SQLite constraint violation
+/// is the caller's data, never a host fault. The extended result code names
+/// the constraint; SQLite's stable `<KIND> constraint failed: <table>.<column>`
+/// text supplies table and column (either may be absent, e.g. a CHECK).
+fn constraint_conflict(extended_code: i32, sqlite_msg: &str) -> AppError {
+    let constraint = match extended_code {
+        2067 => "unique",
+        1555 => "primary_key",
+        1299 => "not_null",
+        275 => "check",
+        _ => "other",
+    };
+    let target = sqlite_msg
+        .split_once("constraint failed: ")
+        .map(|(_, t)| t.split(',').next().unwrap_or(t).trim())
+        .unwrap_or("");
+    let (table, column) = match target.rsplit_once('.') {
+        Some((t, c)) => (Some(t), Some(c)),
+        None => (None, None),
+    };
+    let on = column.map(|c| format!(" on {c}")).unwrap_or_default();
+    AppError::Structured {
+        code: crate::tables::TABLE_ROW_CONFLICT,
+        message: format!("row conflicts{on} ({constraint})"),
+        data: serde_json::json!({"constraint": constraint, "table": table, "column": column}),
     }
 }
 

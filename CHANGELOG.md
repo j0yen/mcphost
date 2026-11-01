@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.123.0 — 2026-11-01
+
+Released by wm-build land: loop: mcphost-trusted-discovery-catalog-receipts.
+
+## v0.122.0 — 2026-10-30
+
+Released by wm-build land: loop: mcphost-table-query-names-missing-table.
+
+## v0.121.0 — 2026-10-30
+
+Released by wm-build land: loop: mcphost-docs-import-and-stated-boundary.
+
+## v0.120.0 — 2026-10-30
+
+Released by wm-build land: loop: mcphost-implicit-signup-per-session-not-per-peer.
+
+## v0.119.0 — 2026-10-30
+
+Released by wm-build land: loop: mcphost-chain-near-miss-mapping-refused.
+
+## v0.118.0 — 2026-10-25
+
+Released by wm-build land: loop: mcphost-resource-listing-shape-in-contract.
+
+## v0.117.0 — 2026-10-24
+
+Released by wm-build land: loop: mcphost-external-unclaimed-tenant-expiry.
+
+## v0.115.0 — 2026-10-24
+
+Released by wm-build land: loop: mcphost-synthetic-implicit-tenant-expiry.
+
+## v0.114.2 — 2026-10-23
+
+Released by wm-build land: loop: mcphost-admin-funnel-real-surface-recipe-counter.
+
 ## v0.113.0 — 2026-10-23
 
 Released by wm-build land: loop: mcphost-output-envelope-fields-generated.

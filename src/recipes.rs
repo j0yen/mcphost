@@ -85,6 +85,11 @@ pub struct Step {
     /// sync receipt), where the first answer is legitimately not ready.
     #[serde(default)]
     pub retry_until_expect: bool,
+    /// The step waits on a result the scheduler tick produces (a sync
+    /// receipt): its `retry_s` must outlast one tick plus the fetch, i.e. be at
+    /// least [`awaits_tick_min_retry_s`].
+    #[serde(default)]
+    pub awaits_tick: bool,
     /// Replaces the call text of this step in the `www/llms.txt` block only
     /// (the golden test and the proof still use `args`). For a call whose
     /// literal args would repeat a token the contract tests count once in
@@ -98,10 +103,24 @@ pub struct Step {
 /// result moves at tick granularity, so polling faster only adds calls).
 pub const RETRY_UNTIL_EXPECT_POLL_S: u64 = 5;
 
+/// Most `retry_until_expect` steps one recipe may hold (the data-sync recipe
+/// polls twice: the first receipt and the "no change" re-sync).
+pub const MAX_POLLED_STEPS: usize = 2;
+
+/// Smallest `retry_s` of an `awaits_tick` step: one scheduler tick plus the fetch.
+pub const fn awaits_tick_min_retry_s() -> u64 {
+    crate::triggers::SCHEDULER_TICK.as_secs() + crate::triggers::SYNC_FETCH_ALLOWANCE_S
+}
+
 /// `tests/support/rgpt.rs` `MAX_RECIPE_WALL`: the in-process runner kills any
-/// recipe at this many seconds whatever its `wall_s`. A test reads the real
-/// constant out of that file and fails if the two differ.
-pub const RGPT_MAX_RECIPE_WALL_S: u64 = 60;
+/// recipe at this many seconds whatever its `wall_s`. Derived from the
+/// scheduler tick, not typed: `MAX_POLLED_STEPS` polls of (tick + fetch
+/// allowance + one poll of overshoot), plus the non-polling steps and the
+/// margin. A test reads the derivation out of that file and fails on drift.
+pub const RGPT_MAX_RECIPE_WALL_S: u64 = MAX_POLLED_STEPS as u64
+    * (crate::triggers::SCHEDULER_TICK.as_secs() + crate::triggers::SYNC_FETCH_ALLOWANCE_S + RETRY_UNTIL_EXPECT_POLL_S)
+    + RECIPE_NON_POLL_STEP_S
+    + RECIPE_WALL_MARGIN_S;
 /// Seconds the non-polling steps of a recipe take (measured: the data-sync
 /// proof's signup, create, run_now, list and delete ran in ~2 s on the
 /// in-process server).
@@ -273,6 +292,22 @@ pub fn validate(recipes: &[Recipe]) -> Result<(), RecipeError> {
             if s.llms_call.as_deref().is_some_and(|t| t.trim().is_empty()) {
                 return Err(invalid(n, "llms_call", "`llms_call` must not be empty (omit the key to render the call from `args`)".to_string()));
             }
+            // A polled step with no retry_s is reported by the retry_until_expect check below.
+            if s.awaits_tick && !(s.retry_until_expect && s.retry_s.is_none()) {
+                let min = awaits_tick_min_retry_s();
+                match s.retry_s {
+                    Some(t) if t >= min => {}
+                    other => {
+                        return Err(invalid(
+                            n,
+                            "retry_s",
+                            format!(
+                                "an `awaits_tick` step must poll for at least one scheduler tick plus the fetch ({min} s = SCHEDULER_TICK + SYNC_FETCH_ALLOWANCE_S), got retry_s {other:?}"
+                            ),
+                        ));
+                    }
+                }
+            }
             if s.retry_until_expect {
                 if s.retry_s.is_none() {
                     return Err(invalid(n, "retry_until_expect", "`retry_until_expect` requires `retry_s`".to_string()));
@@ -286,6 +321,14 @@ pub fn validate(recipes: &[Recipe]) -> Result<(), RecipeError> {
                         format!("retry_until_expect steps must share one retry_s (the proof has one deadline variable), got {deadlines:?}"),
                     ));
                 }
+                let polled = r.steps.iter().filter(|x| x.retry_until_expect).count();
+                if polled > MAX_POLLED_STEPS {
+                    return Err(invalid(
+                        n,
+                        "retry_until_expect",
+                        format!("{polled} retry_until_expect steps, more than MAX_POLLED_STEPS ({MAX_POLLED_STEPS})"),
+                    ));
+                }
                 let worst = retry_until_expect_worst_case_s(r);
                 if worst + RECIPE_WALL_MARGIN_S > RGPT_MAX_RECIPE_WALL_S {
                     return Err(invalid(
@@ -294,6 +337,13 @@ pub fn validate(recipes: &[Recipe]) -> Result<(), RecipeError> {
                         format!(
                             "worst case {worst} s (retry_s + {RETRY_UNTIL_EXPECT_POLL_S} s poll + {RECIPE_NON_POLL_STEP_S} s other steps) leaves under {RECIPE_WALL_MARGIN_S} s below the {RGPT_MAX_RECIPE_WALL_S} s in-process cap"
                         ),
+                    ));
+                }
+                if u64::from(r.budget.wall_s) < worst {
+                    return Err(invalid(
+                        n,
+                        "budget.wall_s",
+                        format!("budget.wall_s {} is below the polling worst case {worst} s", r.budget.wall_s),
                     ));
                 }
                 let deadline = s.retry_s.unwrap_or(0).to_string();

@@ -78,6 +78,6 @@ async fn checkout_with_an_unknown_source_is_rejected() {
         )
         .await
         .expect_err("an unknown source must be rejected");
-    assert_eq!(err.error_code.as_deref(), Some("invalid_params"));
+    assert_eq!(err.error_code.as_deref(), Some("args_invalid"));
     assert_eq!(fake.call_count(), 0, "no session must be created for a rejected source");
 }

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OptionalExtension, Row, params};
+use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -353,6 +353,21 @@ const MIGRATION_0129: &str = include_str!("../migrations/0129_logs_key_id.sql");
 const MIGRATION_0130: &str = include_str!("../migrations/0130_syncs.sql");
 /// PRD-mcphost-sync-pull-with-change-detection R1/R3: `sync_runs.provider_calls` and `sync_cursors`.
 const MIGRATION_0131: &str = include_str!("../migrations/0131_sync_pull.sql");
+const MIGRATION_0132: &str = include_str!("../migrations/0132_recipe_uses.sql");
+const MIGRATION_0133: &str = include_str!("../migrations/0133_retention_floor.sql");
+/// PRD-mcphost-implicit-signup-mints-only-on-success R4: `signup_events.tenant_id`.
+const MIGRATION_0134: &str = include_str!("../migrations/0134_signup_events_tenant_id.sql");
+/// PRD-mcphost-external-unclaimed-tenant-expiry: `tenant_lifecycle_events` and `tenants.claim_bound_email`.
+const MIGRATION_0135: &str = include_str!("../migrations/0135_tenant_lifecycle_events.sql");
+/// PRD-mcphost-tools-call-progress-notifications P0: `calls.progress_token` / `progress_frames`.
+const MIGRATION_0136: &str = include_str!("../migrations/0136_calls_progress.sql");
+/// PRD-mcphost-external-class-positive-evidence: `tenants.origin_tainted_unix`,
+/// `origin_counters`, and the one-shot tri-state backfill with its journal.
+const MIGRATION_0137: &str = include_str!("../migrations/0137_origin_tristate.sql");
+/// PRD-mcphost-trusted-discovery-catalog-receipts R1: `tools.test_verdict` / `test_verdict_version`.
+const MIGRATION_0138: &str = include_str!("../migrations/0138_tool_test_verdict.sql");
+/// PRD-mcphost-trusted-discovery-catalog-receipts AC6: the index, receipts cache and triggers behind `calls_30d`.
+const MIGRATION_0139: &str = include_str!("../migrations/0139_catalog_receipts.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -542,7 +557,8 @@ pub struct ObservedOutputs {
 
 const TOOL_COLUMNS: &str = "id, tenant_id, name, kind, spec, created_at, visibility, \
     share_description, shared_unix, shared_group, unshared_by, current_version, scopes, \
-    expose_spec, spec_exposed_unix, spec_reads, tags, tested_version";
+    expose_spec, spec_exposed_unix, spec_reads, tags, tested_version, test_verdict, \
+    test_verdict_version";
 
 fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
     let spec_text: String = r.get(4)?;
@@ -566,6 +582,8 @@ fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
         spec_reads: r.get(15)?,
         tags: parse_tags(&r.get::<_, String>(16)?),
         tested_version: r.get(17)?,
+        test_verdict: r.get(18)?,
+        test_verdict_version: r.get(19)?,
     })
 }
 
@@ -756,10 +774,23 @@ pub struct SurfaceFunnelTenant {
     pub namespace: String,
     pub client_name: Option<String>,
     pub funnel_origin: String,
+    pub source_class: Option<String>,
+    pub origin: Option<String>,
     pub created_unix: i64,
     pub claimed_unix: Option<i64>,
     pub first_publish_unix: Option<i64>,
     pub has_tool: bool,
+}
+
+/// One `recipe_uses` row with its tenant's classification columns
+/// ([`Db::recipe_uses_since`]); no tenant identifier.
+#[derive(Debug, Clone)]
+pub struct RecipeUseRow {
+    pub recipe: String,
+    pub client_name: Option<String>,
+    pub source_class: Option<String>,
+    pub origin: Option<String>,
+    pub funnel_origin: String,
 }
 
 /// PRD-mcphost-activation-funnel requirement 3: one tenant's window-scoped
@@ -932,10 +963,11 @@ pub struct Tenant {
     /// signup-to-first-call latency. `None` only for a row the backfill
     /// couldn't parse (never true for a `created_at` this crate wrote).
     pub created_unix: Option<i64>,
-    /// PRD-mcphost-provenance-audit requirement 1: the two-way real/synthetic
-    /// verdict every metrics surface reports, derived at write time via
-    /// `state::derive_origin` -- `'synthetic'` or `'external'`, never NULL
-    /// (migration 0012).
+    /// PRD-mcphost-provenance-audit requirement 1: the origin verdict every
+    /// metrics surface reports, one of `state::Origin` (`synthetic`,
+    /// `internal`, `unattributed`, `external`), never NULL (migration 0012).
+    /// Written at signup via `state::derive_origin`; `external` is only ever
+    /// earned later (`Db::promote_origin`).
     pub origin: String,
     /// The synthorg run-id / key-class / source_class value that justified
     /// `origin`'s verdict, or `None` for a signup with no explicit marker.
@@ -1083,6 +1115,23 @@ pub struct Tenant {
     pub last_seen_version: Option<String>,
 }
 
+impl Tenant {
+    /// PRD-mcphost-trusted-discovery-catalog-receipts R2: the owner mark the
+    /// catalog view selects on -- a `tenants.synthetic` label or
+    /// `origin = 'synthetic'`.
+    pub fn is_synthetic_marked(&self) -> bool {
+        self.synthetic.is_some() || self.origin == "synthetic"
+    }
+}
+
+/// Which table [`Db::origin_counts`] groups by `origin`.
+#[derive(Debug, Clone, Copy)]
+pub enum OriginCountTable {
+    Tenants,
+    SignupEvents,
+    Calls,
+}
+
 /// PRD-mcphost-funnel-truth: the three tables migration 0078 added
 /// `funnel_origin` to -- [`Db::funnel_origin_counts`]'s only valid inputs,
 /// so that query is never built from a caller-controlled table name.
@@ -1167,6 +1216,105 @@ pub struct ToolRow {
     pub tags: Vec<String>,
     /// The `current_version` whose dry run last passed; `None` = never.
     pub tested_version: Option<i64>,
+    /// The verdict string the last host-run `host.tool_test` returned
+    /// (migration 0138); only meaningful while `test_verdict_version`
+    /// equals `current_version` -- read it through [`ToolRow::current_verdict`].
+    pub test_verdict: Option<String>,
+    /// The `current_version` that verdict judged.
+    pub test_verdict_version: Option<i64>,
+}
+
+impl ToolRow {
+    /// The stored test verdict, but only when it judged the current version.
+    pub fn current_verdict(&self) -> Option<&str> {
+        (self.test_verdict_version == Some(self.current_version))
+            .then_some(self.test_verdict.as_deref())
+            .flatten()
+    }
+}
+
+/// PRD-mcphost-trusted-discovery-catalog-receipts R3: the window of the
+/// `calls_30d` receipt.
+pub const CATALOG_RECEIPT_WINDOW_SECS: i64 = 30 * 86_400;
+
+/// One public tool as the catalog reads it: the owner namespace, the row, and
+/// the cross-tenant call receipts of the last 30 days (`calls_n` calls, of
+/// which `calls_ok` succeeded).
+#[derive(Debug, Clone)]
+pub struct CatalogHit {
+    pub namespace: String,
+    pub tool: ToolRow,
+    pub calls_n: i64,
+    pub calls_ok: i64,
+}
+
+/// One catalog page: the ranked hits and, of the whole matching view (before
+/// `limit`), how many distinct owners it ranked (`view.owners`).
+#[derive(Debug, Clone)]
+pub struct CatalogPage {
+    pub hits: Vec<CatalogHit>,
+    pub owners: i64,
+}
+
+/// The `tools`/`tenants` filter every catalog read shares: `?1` the escaped
+/// LIKE pattern or NULL, `?3` the `include_synthetic` flag. Public tools of
+/// enabled owners only; synthetic-marked owners only when `?3 = 1`.
+const CATALOG_VIEW_WHERE: &str = "tools.visibility = 'public' \
+     AND (?1 IS NULL OR tools.name LIKE ?1 ESCAPE '\\' OR tools.share_description LIKE ?1 ESCAPE '\\') \
+     AND tenants.disabled = 0 \
+     AND (?3 = 1 OR (tenants.synthetic IS NULL AND tenants.origin != 'synthetic'))";
+
+/// R4: the one catalog order, over the columns `search_catalog`'s `ranked`
+/// layer exposes: verdict tier of the current version (`pass` 0, untested or
+/// `unverifiable` 1, `will_fail` 2) ascending, the smoothed ok ratio
+/// `(ok + 1) / (n + 2)` descending, `n` descending, newest-shared, then
+/// namespace and tool name as the total-order tail.
+const CATALOG_ORDER: &str = "r_tier ASC, (r_ok + 1.0) / (r_n + 2) DESC, r_n DESC, r_shared DESC, ns ASC, nm ASC";
+
+/// The `calls` rows a `calls_30d` receipt counts: a call by another tenant at
+/// or after `?4`; `?3 = 1` counts every such caller, else callers carrying the
+/// synthetic mark (a `tenants.synthetic` label or `origin = 'synthetic'`) are
+/// left out. Reads `calls` alone: the mark is a set probe, not a per-row join.
+const CATALOG_RECEIPT_WHERE: &str = "calls.started_unix >= ?4 AND calls.caller_tenant_id IS NOT NULL \
+     AND calls.caller_tenant_id != calls.tenant_id \
+     AND (?3 = 1 OR calls.caller_tenant_id NOT IN \
+          (SELECT id FROM tenants WHERE synthetic IS NOT NULL OR origin = 'synthetic'))";
+
+/// How long a `catalog_receipts` build is trusted when no cross-tenant call
+/// moved the generation: the 30-day window slides, and a caller's synthetic
+/// mark can change without touching `calls`.
+const CATALOG_RECEIPTS_TTL_SECS: i64 = 60;
+
+/// Brings `catalog_receipts` for one view up to date (see migration 0139): a
+/// no-op while the generation is unchanged and the build is fresh, else one
+/// transaction that rebuilds the view's aggregate from `calls`.
+fn refresh_catalog_receipts(conn: &Connection, include_synthetic: bool, now: i64) -> Result<(), AppError> {
+    let view = include_synthetic as i64;
+    let generation: i64 = conn.query_row("SELECT gen FROM catalog_receipts_gen WHERE id = 1", [], |r| r.get(0))?;
+    let built: Option<(i64, i64)> = conn
+        .query_row("SELECT gen, built_unix FROM catalog_receipts_built WHERE view = ?1", [view], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .optional()?;
+    if built.is_some_and(|(g, at)| g == generation && (0..CATALOG_RECEIPTS_TTL_SECS).contains(&(now - at))) {
+        return Ok(());
+    }
+    crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+        conn.execute("DELETE FROM catalog_receipts WHERE view = ?1", [view])?;
+        conn.execute(
+            &format!(
+                "INSERT INTO catalog_receipts (view, tenant_id, tool_name, n, ok) \
+                 SELECT ?3, calls.tenant_id, calls.tool_name, COUNT(*), SUM(calls.ok = 1) FROM calls \
+                 WHERE {CATALOG_RECEIPT_WHERE} GROUP BY calls.tenant_id, calls.tool_name"
+            ),
+            params![Option::<i64>::None, Option::<i64>::None, view, now - CATALOG_RECEIPT_WINDOW_SECS],
+        )?;
+        conn.execute(
+            "INSERT OR REPLACE INTO catalog_receipts_built (view, gen, built_unix) VALUES (?1, ?2, ?3)",
+            params![view, generation, now],
+        )?;
+        Ok(())
+    })
 }
 
 /// `tools.tags` is a JSON array text column.
@@ -1947,8 +2095,12 @@ pub enum OwnerVerifyOutcome {
 
 /// [`Db::verify_claim_code`]'s outcome (PRD-mcphost-human-claim-magic-link
 /// requirement 3 / AC3, AC7).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimVerifyOutcome {
     Verified { tenant_id: i64, email: String },
+    /// The tenant is mid-invalidation (`unclaimed_expiring`): nothing was
+    /// consumed, the same link works a moment later.
+    TryAgain,
     NotFound,
     Expired,
     AlreadyConsumed,
@@ -2097,6 +2249,104 @@ fn backfill_activation_claims_and_plans_sync(conn: &Connection) -> Result<(i64, 
     Ok((claimed as i64, paid))
 }
 
+/// The positive evidence that earns `origin='external'`
+/// (PRD-mcphost-external-class-positive-evidence).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OriginEvidence {
+    /// `owner_verified_at` is set (claim e-mail or another owner proof).
+    ClaimedEmail,
+    /// A later-UTC-day call from a non-fleet, header-less source;
+    /// `ip_hash` is the salted hash of that source, kept in the audit row so
+    /// a later fleet reclassify can demote.
+    Returned { days: i64, ip_hash: String },
+}
+
+impl OriginEvidence {
+    /// The `origin_detail` the promoted row carries.
+    pub fn detail(&self) -> String {
+        match self {
+            OriginEvidence::ClaimedEmail => "claimed-email".to_string(),
+            OriginEvidence::Returned { days, .. } => format!("returned:{days}d"),
+        }
+    }
+}
+
+/// What [`Db::promote_origin`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromoteOutcome {
+    /// This call changed the one row and wrote the one audit row.
+    Promoted,
+    /// The row was not `unattributed` (or lacked the evidence): no write.
+    NotPromoted,
+    /// The tenant is `synthetic`: refused, never promoted.
+    SyntheticRefused,
+}
+
+/// `origin_counters` row (and `/healthz` key) counting promotion attempts a
+/// `synthetic` tenant refused.
+pub const SYNTHETIC_PROMOTION_REFUSED: &str = "synthetic_promotion_refused";
+
+/// Action name of the `admin_audit` row a promotion writes.
+pub const ORIGIN_PROMOTED_ACTION: &str = "origin_promoted";
+
+/// One single-row `UPDATE ... WHERE origin='unattributed'`; the
+/// `admin_audit` row is written only when that update changed one row, so a
+/// race between two qualifying events yields exactly one row. The claim
+/// predicate is conjunctive (`origin='unattributed' AND owner_verified_at IS
+/// NOT NULL`): `owner_verified_at` alone never promotes (6 prod `synthetic`
+/// rows carry it). Runs inside the caller's transaction.
+pub(crate) fn promote_origin_sync(
+    conn: &Connection,
+    tenant_id: i64,
+    evidence: &OriginEvidence,
+    now: i64,
+) -> Result<PromoteOutcome, AppError> {
+    let detail = evidence.detail();
+    let from = crate::state::Origin::Unattributed.as_str();
+    let to = crate::state::Origin::External.as_str();
+    let changed = match evidence {
+        OriginEvidence::ClaimedEmail => conn.execute(
+            "UPDATE tenants SET origin = ?2, origin_detail = ?3 \
+             WHERE id = ?1 AND origin = ?4 AND owner_verified_at IS NOT NULL",
+            params![tenant_id, to, detail, from],
+        )?,
+        OriginEvidence::Returned { .. } => conn.execute(
+            "UPDATE tenants SET origin = ?2, origin_detail = ?3 \
+             WHERE id = ?1 AND origin = ?4 AND origin_tainted_unix IS NULL",
+            params![tenant_id, to, detail, from],
+        )?,
+    };
+    if changed == 1 {
+        let mut audit = serde_json::json!({"from": from, "to": to, "detail": detail});
+        if let OriginEvidence::Returned { ip_hash, .. } = evidence {
+            audit["ip_hash"] = serde_json::json!(ip_hash);
+        }
+        conn.execute(
+            "INSERT INTO admin_audit (actor_key_id, action, target, detail, created_unix) \
+             SELECT 'host', ?2, namespace, ?3, ?4 FROM tenants WHERE id = ?1",
+            params![tenant_id, ORIGIN_PROMOTED_ACTION, audit.to_string(), now],
+        )?;
+        return Ok(PromoteOutcome::Promoted);
+    }
+    let is_synthetic: bool = conn
+        .query_row(
+            "SELECT 1 FROM tenants WHERE id = ?1 AND origin = ?2",
+            params![tenant_id, crate::state::Origin::Synthetic.as_str()],
+            |_| Ok(true),
+        )
+        .optional()?
+        .unwrap_or(false);
+    if is_synthetic {
+        conn.execute(
+            "INSERT INTO origin_counters (name, value) VALUES (?1, 1) \
+             ON CONFLICT(name) DO UPDATE SET value = value + 1",
+            params![SYNTHETIC_PROMOTION_REFUSED],
+        )?;
+        return Ok(PromoteOutcome::SyntheticRefused);
+    }
+    Ok(PromoteOutcome::NotPromoted)
+}
+
 fn backfill_provenance_sync(conn: &Connection) -> Result<ProvenanceBackfillCounts, AppError> {
     let mut counts = ProvenanceBackfillCounts::default();
 
@@ -2201,7 +2451,7 @@ fn reclassify_fleet_ips_sync(
     // 1. `signup_events` rows from a fleet IP, still `external`.
     let candidates: Vec<(i64, String, i64)> = {
         let mut stmt = conn.prepare(
-            "SELECT id, source_ip, created_unix FROM signup_events WHERE origin = 'external'",
+            "SELECT id, source_ip, created_unix FROM signup_events WHERE origin IN ('external', 'unattributed')",
         )?;
         stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<rusqlite::Result<Vec<_>>>()?
@@ -2231,7 +2481,7 @@ fn reclassify_fleet_ips_sync(
     if !created_unixes.is_empty() {
         let placeholders = created_unixes.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
-            "SELECT id FROM tenants WHERE origin = 'external' AND created_unix IN ({placeholders})"
+            "SELECT id FROM tenants WHERE origin IN ('external', 'unattributed') AND created_unix IN ({placeholders})"
         );
         let mut stmt = conn.prepare(&sql)?;
         let bound: Vec<&dyn rusqlite::ToSql> =
@@ -2256,7 +2506,7 @@ fn reclassify_fleet_ips_sync(
         let placeholders = tenant_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
             "UPDATE calls SET origin = 'synthetic', origin_detail = 'fleet' \
-             WHERE origin = 'external' AND tenant_id IN ({placeholders})"
+             WHERE origin IN ('external', 'unattributed') AND tenant_id IN ({placeholders})"
         );
         let bound: Vec<&dyn rusqlite::ToSql> =
             tenant_ids.iter().map(|c| c as &dyn rusqlite::ToSql).collect();
@@ -2516,6 +2766,15 @@ pub const ROLE_TENANT_TABLE: DbRole = "tenant_table";
 pub const ALL_ROLES: [DbRole; 3] = [ROLE_SERVER, ROLE_PRUNE, ROLE_TENANT_TABLE];
 
 const DEFAULT_BUSY_TIMEOUT_MS: u64 = 5000;
+
+/// One origin's row of [`Db::progress_counts_by_origin`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OriginProgress {
+    pub origin: String,
+    pub calls: i64,
+    pub with_token: i64,
+    pub frames: i64,
+}
 
 /// `$MCPHOST_DB_BUSY_TIMEOUT_MS` (default 5000) -- the one env-configurable
 /// pragma; `journal_mode=WAL`, `synchronous=NORMAL`, and `foreign_keys=ON`
@@ -2940,7 +3199,36 @@ pub struct Db {
     /// the prune applies per plan; `None` until [`Db::set_plan_calls_retention`]
     /// runs (the default catalog's numbers apply meanwhile).
     plan_calls_days: Arc<std::sync::RwLock<PlanCallsDays>>,
+    /// PRD-mcphost-synthetic-implicit-tenant-expiry: the control-layer
+    /// teardown the idle sweep runs on each tenant it claims; installed by
+    /// `control::install_tenant_teardown` when the server starts.
+    tenant_teardown: Arc<std::sync::RwLock<Option<TenantTeardown>>>,
+    /// PRD-mcphost-external-unclaimed-tenant-expiry: the control-layer sweep
+    /// (warn, invalidate, purge) `prune_once` runs; installed with the
+    /// teardown above.
+    external_sweep: Arc<std::sync::RwLock<Option<ExternalSweep>>>,
+    /// Test-only: awaited between the invalidation's two phases with the ids
+    /// phase 1 marked ([`Db::set_external_phase_hook_for_test`]).
+    external_phase_hook: Arc<std::sync::RwLock<Option<ExternalPhaseHook>>>,
 }
+
+/// See [`Db::set_external_phase_hook_for_test`].
+pub type ExternalPhaseHook = Arc<
+    dyn Fn(Vec<i64>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync,
+>;
+
+/// The external unclaimed sweep, run with the sweep's clock; returns its
+/// `prune_log` block.
+pub type ExternalSweep = Arc<
+    dyn Fn(i64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, AppError>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// One claimed tenant's teardown (session release, kind hooks, billing).
+pub type TenantTeardown = Arc<
+    dyn Fn(i64) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync,
+>;
 
 impl Clone for Db {
     fn clone(&self) -> Self {
@@ -2951,6 +3239,9 @@ impl Clone for Db {
             counters: self.counters.clone(),
             last_checkpoint_unix: self.last_checkpoint_unix.clone(),
             plan_calls_days: self.plan_calls_days.clone(),
+            tenant_teardown: self.tenant_teardown.clone(),
+            external_sweep: self.external_sweep.clone(),
+            external_phase_hook: self.external_phase_hook.clone(),
         }
     }
 }
@@ -2991,8 +3282,17 @@ impl Db {
             counters: DbCounters::new(),
             last_checkpoint_unix: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             plan_calls_days: Arc::new(std::sync::RwLock::new(None)),
+            tenant_teardown: Arc::new(std::sync::RwLock::new(None)),
+            external_sweep: Arc::new(std::sync::RwLock::new(None)),
+            external_phase_hook: Arc::new(std::sync::RwLock::new(None)),
         };
         db.migrate_sync()?;
+        // PRD-mcphost-subscriptions-listen R5: debug builds check every tool-list write.
+        #[cfg(debug_assertions)]
+        {
+            let conn = db.conn.lock().map_err(|_| AppError::Storage("db lock poisoned".into()))?;
+            crate::listen::install_write_check(&conn).map_err(AppError::from)?;
+        }
         Ok(db)
     }
 
@@ -3295,6 +3595,88 @@ impl Db {
         // Wholly new tables, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0130)?;
         Self::migrate_0131_sync_pull(&conn)?;
+        // Wholly new table, `IF NOT EXISTS`: idempotent as-is.
+        conn.execute_batch(MIGRATION_0132)?;
+        Self::migrate_0133_retention_floor(&conn)?;
+        Self::migrate_0134_signup_events_tenant_id(&conn)?;
+        Self::migrate_0135_tenant_lifecycle_events(&conn)?;
+        Self::migrate_0136_calls_progress(&conn)?;
+        Self::migrate_0137_origin_tristate(&conn)?;
+        Self::migrate_0138_tool_test_verdict(&conn)?;
+        // `IF NOT EXISTS` / `INSERT OR IGNORE` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0139)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-trusted-discovery-catalog-receipts R1: gated on
+    /// `tools.test_verdict` (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0138_tool_test_verdict(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tools') WHERE name = 'test_verdict'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0138)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-external-class-positive-evidence: gated on
+    /// `tenants.origin_tainted_unix` (the batch starts with an `ALTER`, so a
+    /// rerun must skip it).
+    fn migrate_0137_origin_tristate(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'origin_tainted_unix'")?
+            .exists([])?;
+        if !has_column {
+            // One transaction: the ALTER, the journal and the backfill land together or not at all.
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |conn| {
+                conn.execute_batch(MIGRATION_0137)?;
+                Ok(())
+            })?;
+            let (before, after): (i64, i64) = conn.query_row(
+                "SELECT COALESCE(SUM(CASE WHEN phase = 'before' THEN n END), 0), \
+                        COALESCE(SUM(CASE WHEN phase = 'after' THEN n END), 0) FROM origin_migration_journal",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            // The post-backfill value list is `ORIGIN_NAMES` (derived from
+            // `Origin::as_str`), never a hand-written SQL list: rows outside the enum
+            // are counted, not rewritten.
+            let marks = vec!["?"; crate::state::ORIGIN_NAMES.len()].join(",");
+            let outside_enum: i64 = conn.query_row(
+                &format!(
+                    "SELECT (SELECT COUNT(*) FROM tenants WHERE origin NOT IN ({marks})) \
+                          + (SELECT COUNT(*) FROM signup_events WHERE origin NOT IN ({marks}))"
+                ),
+                rusqlite::params_from_iter(crate::state::ORIGIN_NAMES.iter().chain(crate::state::ORIGIN_NAMES.iter())),
+                |r| r.get(0),
+            )?;
+            tracing::info!(before, after, outside_enum, "origin tri-state backfill complete");
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-external-unclaimed-tenant-expiry: gated on
+    /// `tenants.claim_bound_email` (the batch ends in an `ALTER`).
+    fn migrate_0135_tenant_lifecycle_events(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'claim_bound_email'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0135)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-synthetic-implicit-tenant-expiry: gated on
+    /// `retention_policy.floor_unix` (the batch is an `ALTER`).
+    fn migrate_0133_retention_floor(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('retention_policy') WHERE name = 'floor_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0133)?;
+        }
         Ok(())
     }
 
@@ -3306,6 +3688,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0131)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-tools-call-progress-notifications P0: gated on the first
+    /// new column (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0136_calls_progress(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'progress_token'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0136)?;
         }
         Ok(())
     }
@@ -3488,6 +3882,16 @@ impl Db {
 
     /// PRD-mcphost-acting-for-in-ledger-and-audit R5: gated on the column
     /// (the batch is a single `ALTER`, so a rerun must skip it).
+    fn migrate_0134_signup_events_tenant_id(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('signup_events') WHERE name = 'tenant_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0134)?;
+        }
+        Ok(())
+    }
+
     fn migrate_0129_logs_key_id(conn: &Connection) -> Result<(), AppError> {
         let has_column: bool = conn
             .prepare("SELECT 1 FROM pragma_table_info('logs') WHERE name = 'key_id'")?
@@ -4990,16 +5394,37 @@ impl Db {
             }
             None => {
                 let conn = self.conn.clone();
-                tokio::task::spawn_blocking(move || {
-                    instrument_stmt(&counters, ROLE_SERVER, move || {
+                // PRD-mcphost-subscriptions-listen R5: the verb running this write.
+                #[cfg(debug_assertions)]
+                let verb = crate::listen::current_verb();
+                let joined = tokio::task::spawn_blocking(move || {
+                    #[cfg(debug_assertions)]
+                    let scope = crate::listen::WriteScope::enter(verb);
+                    let out = instrument_stmt(&counters, ROLE_SERVER, move || {
                         let guard = conn
                             .lock()
                             .map_err(|_| AppError::Storage("db lock poisoned".into()))?;
                         f(&guard)
-                    })
+                    });
+                    #[cfg(debug_assertions)]
+                    return (out, scope.take_violation());
+                    #[cfg(not(debug_assertions))]
+                    out
                 })
                 .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+                // Raised here, not in the blocking closure: a panic there would poison the
+                // connection mutex.
+                #[cfg(debug_assertions)]
+                {
+                    let (out, violation) = joined;
+                    if let Some(message) = violation {
+                        panic!("{message}");
+                    }
+                    out
+                }
+                #[cfg(not(debug_assertions))]
+                joined
             }
         }
     }
@@ -7056,58 +7481,92 @@ impl Db {
     pub async fn verify_claim_code(&self, code_hash: String) -> Result<ClaimVerifyOutcome, AppError> {
         let now = crate::state::now_unix();
         self.with_conn(move |conn| {
-            struct Row {
-                tenant_id: i64,
-                email: String,
-                expires_unix: i64,
-                consumed_unix: Option<i64>,
-            }
-            let row: Option<Row> = conn
-                .query_row(
-                    "SELECT tenant_id, email, expires_unix, consumed_unix FROM claim_codes \
-                     WHERE code_hash = ?1",
-                    params![code_hash],
-                    |r| {
-                        Ok(Row {
-                            tenant_id: r.get(0)?,
-                            email: r.get(1)?,
-                            expires_unix: r.get(2)?,
-                            consumed_unix: r.get(3)?,
-                        })
-                    },
-                )
-                .optional()?;
-            let Some(Row { tenant_id, email, expires_unix, consumed_unix }) = row else {
-                return Ok(ClaimVerifyOutcome::NotFound);
-            };
-            if consumed_unix.is_some() {
-                return Ok(ClaimVerifyOutcome::AlreadyConsumed);
-            }
-            if now > expires_unix {
-                return Ok(ClaimVerifyOutcome::Expired);
-            }
-            let claimed = conn.execute(
-                "UPDATE claim_codes SET consumed_unix = ?1 WHERE code_hash = ?2 AND consumed_unix IS NULL",
-                params![now, code_hash],
-            )?;
-            if claimed == 0 {
-                return Ok(ClaimVerifyOutcome::AlreadyConsumed);
-            }
-            let set = conn.execute(
-                "UPDATE tenants SET owner_email = ?1, owner_verified_at = ?2, owner_method = 'email', \
-                 claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL \
-                 WHERE id = ?3 AND owner_verified_at IS NULL",
-                params![email, now, tenant_id],
-            )?;
-            if set == 0 {
-                return Ok(ClaimVerifyOutcome::Conflict);
-            }
-            conn.execute(
-                "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
-                 VALUES (?1, 'owner', 'claim.email', NULL, ?2)",
-                params![tenant_id, now],
-            )?;
-            Ok(ClaimVerifyOutcome::Verified { tenant_id, email })
+            // PRD-mcphost-external-unclaimed-tenant-expiry: one immediate
+            // transaction, so a verification and the invalidation's second
+            // phase never interleave.
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                struct Row {
+                    tenant_id: i64,
+                    email: String,
+                    expires_unix: i64,
+                    consumed_unix: Option<i64>,
+                }
+                let row: Option<Row> = conn
+                    .query_row(
+                        "SELECT tenant_id, email, expires_unix, consumed_unix FROM claim_codes \
+                         WHERE code_hash = ?1",
+                        params![code_hash],
+                        |r| {
+                            Ok(Row {
+                                tenant_id: r.get(0)?,
+                                email: r.get(1)?,
+                                expires_unix: r.get(2)?,
+                                consumed_unix: r.get(3)?,
+                            })
+                        },
+                    )
+                    .optional()?;
+                let Some(Row { tenant_id, email, expires_unix, consumed_unix }) = row else {
+                    return Ok(ClaimVerifyOutcome::NotFound);
+                };
+                if consumed_unix.is_some() {
+                    return Ok(ClaimVerifyOutcome::AlreadyConsumed);
+                }
+                if now > expires_unix {
+                    return Ok(ClaimVerifyOutcome::Expired);
+                }
+                // A tenant mid-invalidation (`unclaimed_expiring`, teardown still
+                // running) is told to retry; the code stays unconsumed.
+                let reason: Option<String> = conn
+                    .query_row("SELECT disabled_reason FROM tenants WHERE id = ?1", params![tenant_id], |r| r.get(0))
+                    .optional()?
+                    .flatten();
+                if reason.as_deref() == Some(crate::auth_shape::UNCLAIMED_EXPIRING_REASON) {
+                    return Ok(ClaimVerifyOutcome::TryAgain);
+                }
+                let claimed = conn.execute(
+                    "UPDATE claim_codes SET consumed_unix = ?1 WHERE code_hash = ?2 AND consumed_unix IS NULL",
+                    params![now, code_hash],
+                )?;
+                if claimed == 0 {
+                    return Ok(ClaimVerifyOutcome::AlreadyConsumed);
+                }
+                // A tenant the unclaimed policy invalidated is enabled in the
+                // same statement that marks the claim; any other disabled tenant
+                // keeps its state.
+                let set = conn.execute(
+                    "UPDATE tenants SET owner_email = ?1, owner_verified_at = ?2, owner_method = 'email', \
+                     claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL, \
+                     claim_bound_email = NULL, \
+                     disabled = CASE WHEN disabled_reason = ?4 THEN 0 ELSE disabled END, \
+                     disabled_reason = CASE WHEN disabled_reason = ?4 THEN NULL ELSE disabled_reason END \
+                     WHERE id = ?3 AND owner_verified_at IS NULL",
+                    params![email, now, tenant_id, crate::auth_shape::UNCLAIMED_EXPIRED_REASON],
+                )?;
+                if set == 0 {
+                    return Ok(ClaimVerifyOutcome::Conflict);
+                }
+                // PRD-mcphost-external-class-positive-evidence: a verified claim
+                // e-mail is positive evidence; same transaction as the claim.
+                promote_origin_sync(conn, tenant_id, &OriginEvidence::ClaimedEmail, now)?;
+                if reason.as_deref() == Some(crate::auth_shape::UNCLAIMED_EXPIRED_REASON) {
+                    conn.execute(
+                        &format!(
+                            "INSERT INTO tenant_lifecycle_events \
+                             (tenant_id, policy, stage, idle_since_unix, created_unix) \
+                             SELECT t.id, ?2, 'restored', {}, ?3 FROM tenants t WHERE t.id = ?1",
+                            external_idle_since("t.")
+                        ),
+                        params![tenant_id, crate::retention::EXTERNAL_UNCLAIMED_POLICY, now],
+                    )?;
+                }
+                conn.execute(
+                    "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
+                     VALUES (?1, 'owner', 'claim.email', NULL, ?2)",
+                    params![tenant_id, now],
+                )?;
+                Ok(ClaimVerifyOutcome::Verified { tenant_id, email })
+            })
         })
         .await
     }
@@ -7282,17 +7741,16 @@ impl Db {
         .await
     }
 
-    /// PRD-mcphost-provenance-audit requirement 3: `/healthz`'s
-    /// `tenants.{external,synthetic}` split, keyed off migration 0012's
-    /// `origin` column (not `source_class`, which [`Self::count_external_tenants`]
-    /// still uses for its own, narrower, pre-existing purpose). Returns
-    /// `(external, synthetic)`.
-    pub async fn count_tenants_by_origin(&self) -> Result<(i64, i64), AppError> {
+    /// PRD-mcphost-external-class-positive-evidence: how the `external`
+    /// tenants earned it, `(claimed, returned)`: detail `claimed-email`, or
+    /// `returned:<n>d`.
+    pub async fn external_evidence_counts(&self) -> Result<(i64, i64), AppError> {
         self.with_conn(|conn| {
             conn.query_row(
-                "SELECT (SELECT COUNT(*) FROM tenants WHERE origin = 'external'), \
-                        (SELECT COUNT(*) FROM tenants WHERE origin = 'synthetic')",
-                [],
+                "SELECT COALESCE(SUM(origin_detail = 'claimed-email'), 0), \
+                        COALESCE(SUM(origin_detail LIKE 'returned:%'), 0) \
+                 FROM tenants WHERE origin = ?1",
+                params![crate::state::Origin::External.as_str()],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(AppError::from)
@@ -7300,17 +7758,28 @@ impl Db {
         .await
     }
 
-    /// PRD-mcphost-provenance-audit requirement 3: `/healthz`'s
-    /// `signups.{external,synthetic}` split. Returns `(external, synthetic)`.
-    pub async fn count_signup_events_by_origin(&self) -> Result<(i64, i64), AppError> {
-        self.with_conn(|conn| {
-            conn.query_row(
-                "SELECT (SELECT COUNT(*) FROM signup_events WHERE origin = 'external'), \
-                        (SELECT COUNT(*) FROM signup_events WHERE origin = 'synthetic')",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .map_err(AppError::from)
+    /// PRD-mcphost-external-class-positive-evidence: row counts per stored
+    /// `origin` of one table, for `/healthz`'s `tenants_by_origin` and the
+    /// `signups`/`calls` splits (the caller folds them through
+    /// `state::origin_counts_json`, so a value outside `state::Origin` lands
+    /// in `origin_unknown` instead of vanishing). `Calls` leaves out the
+    /// reserved `perf-*` tenants (PRD-mcphost-performance-guarantees-measured
+    /// R3: never customers).
+    pub async fn origin_counts(&self, table: OriginCountTable) -> Result<Vec<(String, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = match table {
+                OriginCountTable::Tenants => "SELECT origin, COUNT(*) FROM tenants GROUP BY origin",
+                OriginCountTable::SignupEvents => "SELECT origin, COUNT(*) FROM signup_events GROUP BY origin",
+                OriginCountTable::Calls => {
+                    "SELECT origin, COUNT(*) FROM calls \
+                     WHERE tenant_id NOT IN (SELECT id FROM tenants WHERE origin = 'internal') GROUP BY origin"
+                }
+            };
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+                .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+            Ok(rows)
         })
         .await
     }
@@ -7329,7 +7798,7 @@ impl Db {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT signup_source, COUNT(*) FROM tenants \
-                 WHERE origin = 'external' AND signup_source IS NOT NULL \
+                 WHERE origin IN ('external', 'unattributed') AND signup_source IS NOT NULL \
                    AND (?1 IS NULL OR created_unix >= ?1) \
                  GROUP BY signup_source",
             )?;
@@ -7428,6 +7897,38 @@ impl Db {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tools-call-progress-notifications P0: per tenant origin
+    /// (`unknown` for a NULL), `(origin, tools/call rows, rows carrying a
+    /// progressToken, progress frames sent)` for rows started at or after
+    /// `since_unix`.
+    pub async fn progress_counts_by_origin(&self, since_unix: i64) -> Result<Vec<OriginProgress>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT COALESCE(t.origin, 'unknown'), COUNT(*), COALESCE(SUM(c.progress_token), 0), COALESCE(SUM(c.progress_frames), 0) \
+                 FROM calls c LEFT JOIN tenants t ON t.id = c.tenant_id \
+                 WHERE c.started_unix >= ?1 GROUP BY 1 ORDER BY 1",
+            )?;
+            let rows = stmt
+                .query_map([since_unix], |r| {
+                    Ok(OriginProgress { origin: r.get(0)?, calls: r.get(1)?, with_token: r.get(2)?, frames: r.get(3)? })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tools-call-progress-notifications P0: the unix time migration
+    /// 0136 ran (`progress_7d.since`); `0` only on a database that skipped it.
+    pub async fn progress_epoch(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            let since: Option<i64> =
+                conn.query_row("SELECT MIN(since_unix) FROM progress_epoch", [], |r| r.get(0))?;
+            Ok(since.unwrap_or(0))
         })
         .await
     }
@@ -7649,7 +8150,8 @@ impl Db {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, namespace, client_name, funnel_origin, created_unix, claimed_unix, \
-                        first_publish_unix, EXISTS(SELECT 1 FROM tools WHERE tools.tenant_id = tenants.id) \
+                        first_publish_unix, EXISTS(SELECT 1 FROM tools WHERE tools.tenant_id = tenants.id), \
+                        source_class, origin \
                  FROM tenants WHERE created_unix IS NOT NULL AND created_unix >= ?1",
             )?;
             let rows = stmt
@@ -7663,6 +8165,8 @@ impl Db {
                         claimed_unix: r.get(5)?,
                         first_publish_unix: r.get(6)?,
                         has_tool: r.get::<_, i64>(7)? != 0,
+                        source_class: r.get(8)?,
+                        origin: r.get(9)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -7948,13 +8452,17 @@ impl Db {
     /// `admin_events` audit row. `None` if no such tenant exists --
     /// `admin.rs` turns that into `tenant_not_found`.
     ///
-    /// Uses a hand-rolled `BEGIN IMMEDIATE` / `COMMIT` (rather than
+    /// Runs the delete inside [`crate::txn::with_tx`] (rather than
     /// `Connection::transaction`, which needs `&mut Connection`) because
     /// this runs inside `with_conn`'s `&Connection` closure, behind the
     /// single shared connection's mutex.
+    ///
+    /// `action` is the `admin_events.action` it records: an implicit signup's
+    /// rollback is `implicit_signup_rolled_back`, not a delete an operator made.
     pub async fn delete_tenant(
         &self,
         namespace: String,
+        action: &'static str,
     ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
         self.with_conn(move |conn| {
             let tenant = match Self::query_tenant_by_namespace(conn, &namespace)? {
@@ -7962,24 +8470,99 @@ impl Db {
                 None => return Ok(None),
             };
             let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
-
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
-                conn.execute("DELETE FROM tenants WHERE id = ?1", params![tenant.id])?;
-                let detail = json!({
-                    "namespace": tenant.namespace,
-                    "tools_removed": counts.tools_removed,
-                    "secrets_removed": counts.secrets_removed,
-                    "calls_removed": counts.calls_removed,
-                    "logs_removed": counts.logs_removed,
-                })
-                .to_string();
-                conn.execute(
-                    "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
-                    params![now_rfc3339(), "tenant_delete", tenant.namespace, detail],
-                )?;
-                Ok(())
+                Self::delete_tenant_rows(conn, &tenant, &counts, action)
             })?;
             Ok(Some((tenant, counts)))
+        })
+        .await
+    }
+
+    /// [`Self::delete_tenant`] with the `admin_events.action` it journals: the
+    /// unclaimed-expiry purge records `tenant_purge_expired`.
+    pub async fn delete_tenant_as(
+        &self,
+        namespace: String,
+        action: &'static str,
+    ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
+        self.with_conn(move |conn| {
+            let tenant = match Self::query_tenant_by_namespace(conn, &namespace)? {
+                Some(t) => t,
+                None => return Ok(None),
+            };
+            let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                Self::delete_tenant_rows(conn, &tenant, &counts, action)
+            })?;
+            Ok(Some((tenant, counts)))
+        })
+        .await
+    }
+
+    /// Row deletes and the `admin_events` journal line, run inside the caller's
+    /// transaction. PRD-mcphost-external-unclaimed-tenant-expiry: the lifecycle
+    /// events go explicitly, so the purge behaves the same with or without
+    /// `foreign_keys`.
+    fn delete_tenant_rows(
+        conn: &rusqlite::Connection,
+        tenant: &Tenant,
+        counts: &TenantDeleteCounts,
+        action: &str,
+    ) -> Result<(), AppError> {
+        conn.execute("DELETE FROM tenant_lifecycle_events WHERE tenant_id = ?1", params![tenant.id])?;
+        conn.execute("DELETE FROM tenants WHERE id = ?1", params![tenant.id])?;
+        let detail = json!({
+            "namespace": tenant.namespace,
+            "tools_removed": counts.tools_removed,
+            "secrets_removed": counts.secrets_removed,
+            "calls_removed": counts.calls_removed,
+            "logs_removed": counts.logs_removed,
+        })
+        .to_string();
+        conn.execute(
+            "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
+            params![now_rfc3339(), action, tenant.namespace, detail],
+        )?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-external-class-positive-evidence: earn `external` for one
+    /// tenant from one piece of evidence. See [`promote_origin_sync`].
+    pub async fn promote_origin(&self, tenant_id: i64, evidence: OriginEvidence) -> Result<PromoteOutcome, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                promote_origin_sync(conn, tenant_id, &evidence, now)
+            })
+        })
+        .await
+    }
+
+    /// PRD-mcphost-external-class-positive-evidence: one `origin_counters`
+    /// value (0 when never incremented).
+    pub async fn origin_counter(&self, name: &'static str) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row("SELECT value FROM origin_counters WHERE name = ?1", params![name], |r| r.get(0))
+                .optional()?
+                .unwrap_or(0))
+        })
+        .await
+    }
+
+    /// PRD-mcphost-external-class-positive-evidence: record that an
+    /// `unattributed` tenant made a fleet-IP, loopback or header-stamped
+    /// authenticated call. Once set it never clears, so `Returned` evidence
+    /// can never promote this tenant.
+    pub async fn stamp_origin_taint(&self, tenant_id: i64) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET origin_tainted_unix = ?2 \
+                 WHERE id = ?1 AND origin = ?3 AND origin_tainted_unix IS NULL",
+                params![tenant_id, now, crate::state::Origin::Unattributed.as_str()],
+            )?;
+            Ok(())
         })
         .await
     }
@@ -8106,7 +8689,7 @@ impl Db {
         origin: String,
         origin_detail: Option<String>,
         ip_class: String,
-    ) -> Result<bool, AppError> {
+    ) -> Result<Option<i64>, AppError> {
         let ts = now_unix();
         self.with_conn(move |conn| {
             // PRD-mcphost-session-bound-tenant-key requirement 3: same
@@ -8121,7 +8704,7 @@ impl Db {
                         WHERE source_ip = ?1 AND created_unix >= ?5 AND kind = 'signup') < ?6",
                 params![source_ip, ts, synthetic, user_agent, since_unix, limit, origin, origin_detail, ip_class],
             )?;
-            Ok(inserted > 0)
+            Ok((inserted > 0).then(|| conn.last_insert_rowid()))
         })
         .await
     }
@@ -8263,6 +8846,121 @@ impl Db {
                 params![source_ip, ts],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-implicit-signup-mints-only-on-success R4: stamp the tenant an
+    /// implicit signup created onto the `signup_events` row that admitted it.
+    pub async fn set_signup_event_tenant(&self, event_id: i64, tenant_id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE signup_events SET tenant_id = ?2 WHERE id = ?1",
+                params![event_id, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4: a fleet-bypassed implicit signup writes no admit row, so it writes
+    /// this one (kind `implicit_signup_bypassed`, which the limiter never
+    /// counts), already carrying the created tenant.
+    pub async fn record_implicit_signup_bypassed(
+        &self,
+        source_ip: String,
+        user_agent: Option<String>,
+        ip_class: String,
+        tenant_id: i64,
+    ) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO signup_events (source_ip, created_unix, user_agent, ip_class, kind, tenant_id) \
+                 VALUES (?1, ?2, ?3, ?4, 'implicit_signup_bypassed', ?5)",
+                params![source_ip, ts, user_agent, ip_class, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4: an R3 refusal (the peer already holds an implicit tenant), kind
+    /// `implicit_peer_refused` so the limiter, which counts only `signup`, never
+    /// charges it.
+    pub async fn record_implicit_peer_refused(&self, source_ip: String, ip_class: String) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO signup_events (source_ip, created_unix, ip_class, kind) \
+                 VALUES (?1, ?2, ?3, 'implicit_peer_refused')",
+                params![source_ip, ts, ip_class],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4: the source IP of every R3 refusal in the window (`admin.funnel` splits
+    /// them into `fleet` and `external` against the configured fleet IPs).
+    pub async fn implicit_peer_refused_ips(&self, since_unix: i64) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT source_ip FROM signup_events WHERE kind = 'implicit_peer_refused' AND created_unix >= ?1",
+            )?;
+            let ips = stmt.query_map(params![since_unix], |r| r.get(0))?.collect::<Result<_, _>>()?;
+            Ok(ips)
+        })
+        .await
+    }
+
+    /// R4: `admin.funnel`'s `implicit_signup_rolled_back`.
+    pub async fn count_implicit_signup_rolled_back(&self, since_unix: i64) -> Result<i64, AppError> {
+        // `admin_events.ts` is `now_rfc3339`'s sortable `unix:<secs>.<nanos>` stamp.
+        let since = format!("unix:{since_unix}.000000000");
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM admin_events WHERE action = 'implicit_signup_rolled_back' AND ts >= ?1",
+                params![since],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// R4: `admin.funnel`'s `implicit_zero_ok_calls`: implicit, not disabled,
+    /// with no `calls` row where `ok = 1` and no `host_tool_usage` row.
+    pub async fn count_implicit_zero_ok_calls(&self) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tenants t WHERE t.signup_source = 'implicit' AND t.disabled = 0 \
+                 AND NOT EXISTS (SELECT 1 FROM calls c WHERE c.tenant_id = t.id AND c.ok = 1) \
+                 AND NOT EXISTS (SELECT 1 FROM host_tool_usage h WHERE h.tenant_id = t.id)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// R4: implicit tenants created in the window per `(source_ip, user_agent)`
+    /// peer, as `(max, p50, peers above 1)`. Reads only rows carrying a
+    /// `tenant_id` (post-fix); `(0, 0, 0)` when there are none.
+    pub async fn implicit_tenants_per_peer(&self, since_unix: i64) -> Result<(i64, i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT COUNT(*) FROM signup_events WHERE tenant_id IS NOT NULL AND created_unix >= ?1 \
+                 GROUP BY source_ip, COALESCE(user_agent, '') ORDER BY 1",
+            )?;
+            let counts: Vec<i64> = stmt
+                .query_map(params![since_unix], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            let max = counts.last().copied().unwrap_or(0);
+            let p50 = counts.get(counts.len().saturating_sub(1) / 2).copied().unwrap_or(0);
+            let above_one = counts.iter().filter(|c| **c > 1).count() as i64;
+            Ok((max, p50, above_one))
         })
         .await
     }
@@ -8911,6 +9609,29 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-trusted-discovery-catalog-receipts R1: stores the verdict a
+    /// host-run test returned together with the version it judged, but only
+    /// while `version` is still the tool's `current_version` (a republish
+    /// that raced the dry run must not be judged by the old version's run).
+    /// The verdict is data: any string the test produced is stored as is.
+    pub async fn record_test_verdict(
+        &self,
+        tenant_id: i64,
+        name: String,
+        version: i64,
+        verdict: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tools SET test_verdict = ?1, test_verdict_version = ?2 \
+                 WHERE tenant_id = ?3 AND name = ?4 AND current_version = ?2",
+                params![verdict, version, tenant_id, name],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// PRD-mcphost-scoped-tool-share: the share-scope columns of one tool row
     /// (`None` when there is no such row).
     pub async fn get_share_meta(&self, tenant_id: i64, name: String) -> Result<Option<ShareMeta>, AppError> {
@@ -9226,40 +9947,68 @@ impl Db {
     /// `host.catalog.search(q, limit)` (AC7): a `LIKE` over name and
     /// `share_description` among `visibility = 'public'` tools, joined to
     /// the owner's namespace. `q` of `None` (or empty) returns every public
-    /// tool, newest-shared first.
+    /// tool. Owners with `disabled = 1` are never listed; owners carrying the
+    /// synthetic mark are listed only when `include_synthetic`
+    /// (PRD-mcphost-trusted-discovery-catalog-receipts R2). Each hit carries
+    /// its 30-day cross-tenant call receipts as of `now` (R3). R4, the one
+    /// order every catalog reader shares: verdict tier of the current version
+    /// (`pass` 0, untested or `unverifiable` 1, `will_fail` 2), then the
+    /// smoothed ok ratio `(ok + 1) / (n + 2)` descending, then `n`
+    /// descending, then newest-shared, then namespace and name; `limit`
+    /// applies after the order.
     pub async fn search_catalog(
         &self,
         q: Option<String>,
         limit: i64,
-    ) -> Result<Vec<(String, ToolRow)>, AppError> {
+        include_synthetic: bool,
+        now: i64,
+    ) -> Result<CatalogPage, AppError> {
         self.with_conn(move |conn| {
+            // `%` and `_` in `q` are literal characters, not wildcards.
             let pattern = q
                 .as_deref()
                 .filter(|s| !s.is_empty())
-                .map(|s| format!("%{s}%"));
+                .map(|s| format!("%{}%", s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")));
             let cols: Vec<String> = TOOL_COLUMNS
                 .split(", ")
                 .map(|c| format!("tools.{c}"))
                 .collect();
+            // R3: the receipts are the owner's tool's calls by OTHER tenants in
+            // the last 30 days; the plain view leaves out synthetic-marked callers.
+            // The ranking keys are computed once, in `ranked`, over the narrow
+            // columns only, and cut to `limit` there; the wide row (spec, scopes)
+            // is fetched for the survivors alone. Both layers order by
+            // `CATALOG_ORDER`, so the outer sort is of at most `limit` rows.
             let sql = format!(
-                "SELECT tenants.namespace, {} FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
-                 WHERE tools.visibility = 'public' \
-                 AND (?1 IS NULL OR tools.name LIKE ?1 OR tools.share_description LIKE ?1) \
-                 ORDER BY tools.shared_unix DESC LIMIT ?2",
+                "SELECT ranked.ns, {}, ranked.r_n, ranked.r_ok \
+                 FROM (SELECT tools.id AS r_id, tenants.namespace AS ns, tools.name AS nm, \
+                              tools.shared_unix AS r_shared, \
+                              COALESCE(rc.n, 0) AS r_n, COALESCE(rc.ok, 0) AS r_ok, \
+                              CASE WHEN tools.test_verdict_version = tools.current_version \
+                                   THEN CASE tools.test_verdict WHEN 'pass' THEN 0 WHEN 'will_fail' THEN 2 ELSE 1 END \
+                                   ELSE 1 END AS r_tier \
+                       FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
+                       LEFT JOIN catalog_receipts AS rc \
+                              ON rc.view = ?3 AND rc.tenant_id = tools.tenant_id AND rc.tool_name = tools.name \
+                       WHERE {CATALOG_VIEW_WHERE} \
+                       ORDER BY {CATALOG_ORDER} LIMIT ?2) AS ranked \
+                 JOIN tools ON tools.id = ranked.r_id \
+                 ORDER BY {CATALOG_ORDER}",
                 cols.join(", ")
             );
+            refresh_catalog_receipts(conn, include_synthetic, now)?;
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
-                .query_map(params![pattern, limit], |r| {
+                .query_map(params![pattern, limit, include_synthetic], |r| {
                     let namespace: String = r.get(0)?;
                     // tool_from_row expects the TOOL_COLUMNS to start at
                     // index 0; here they start at index 1 because of the
                     // leading `tenants.namespace` column, so build a
                     // one-off Row-shifted reader instead of reusing it.
                     let spec_text: String = r.get(5)?;
-                    Ok((
+                    Ok(CatalogHit {
                         namespace,
-                        ToolRow {
+                        tool: ToolRow {
                             id: r.get(1)?,
                             tenant_id: r.get(2)?,
                             name: r.get(3)?,
@@ -9281,11 +10030,49 @@ impl Db {
                             spec_reads: r.get(16)?,
                             tags: parse_tags(&r.get::<_, String>(17)?),
                             tested_version: r.get(18)?,
+                            test_verdict: r.get(19)?,
+                            test_verdict_version: r.get(20)?,
                         },
-                    ))
+                        calls_n: r.get(21)?,
+                        calls_ok: r.get(22)?,
+                    })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(rows)
+            // R2: the owners the whole matching view holds, before `limit`.
+            let owners: i64 = conn.query_row(
+                &format!(
+                    "SELECT COUNT(DISTINCT tools.tenant_id) FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
+                     WHERE {CATALOG_VIEW_WHERE}"
+                ),
+                // `?2` (the limit) is the listing's alone; the shared filter skips it.
+                params![pattern, limit, include_synthetic],
+                |r| r.get(0),
+            )?;
+            Ok(CatalogPage { hits: rows, owners })
+        })
+        .await
+    }
+
+    /// PRD-mcphost-trusted-discovery-catalog-receipts R7: the `calls_30d`
+    /// receipt of one tool, `(n, ok)`, read by the same rule `search_catalog`
+    /// uses for the listing.
+    pub async fn tool_receipts(
+        &self,
+        owner_tenant_id: i64,
+        tool_name: String,
+        include_synthetic: bool,
+        now: i64,
+    ) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT COUNT(*), COALESCE(SUM(calls.ok = 1), 0) \
+                     FROM calls WHERE calls.tenant_id = ?1 AND calls.tool_name = ?2 AND {CATALOG_RECEIPT_WHERE}"
+                ),
+                params![owner_tenant_id, tool_name, include_synthetic, now - CATALOG_RECEIPT_WINDOW_SECS],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
         })
         .await
     }
@@ -9533,6 +10320,8 @@ impl Db {
                         spec_reads: r.get(16)?,
                         tags: parse_tags(&r.get::<_, String>(17)?),
                         tested_version: r.get(18)?,
+                        test_verdict: r.get(19)?,
+                        test_verdict_version: r.get(20)?,
                     };
                     Ok((namespace, tool))
                 })?
@@ -11347,6 +12136,8 @@ impl Db {
         // PRD-mcphost-call-audit-export R1: the credential kind, resolved on
         // the request's own task for the same reason.
         let credential = crate::calllog::resolve(Some(auth_method.as_str()), key_id, caller_tenant_id).as_str();
+        // PRD-mcphost-tools-call-progress-notifications P0: same reason.
+        let (progress_token, progress_frames) = crate::progress::call_columns().await;
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
@@ -11379,9 +12170,9 @@ impl Db {
         self.with_conn(move |conn| {
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
                 tx.execute(
-                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
-                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential],
+                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames],
                 )?;
                 let call_id = tx.last_insert_rowid();
                 tx.execute(
@@ -11922,6 +12713,78 @@ impl Db {
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: one
+    /// `recipe_uses` row for an alias-resolved response. `via` is
+    /// `quickstart` or `publish`.
+    pub async fn insert_recipe_use(
+        &self,
+        tenant_id: i64,
+        recipe: String,
+        via: &'static str,
+        created_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO recipe_uses (tenant_id, recipe, via, created_unix) VALUES (?1, ?2, ?3, ?4)",
+                params![tenant_id, recipe, via, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The `recipe_uses` rows at or after `since_unix`, each with the
+    /// classification columns of its tenant (`client_name`, `source_class`,
+    /// `origin`, `funnel_origin`) -- one indexed range read, joined to
+    /// `tenants` at read time so a later reclassification corrects the
+    /// counts retroactively.
+    pub async fn recipe_uses_since(&self, since_unix: i64) -> Result<Vec<RecipeUseRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT u.recipe, t.client_name, t.source_class, t.origin, t.funnel_origin \
+                 FROM recipe_uses u JOIN tenants t ON t.id = u.tenant_id \
+                 WHERE u.created_unix >= ?1",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| {
+                    Ok(RecipeUseRow {
+                        recipe: r.get(0)?,
+                        client_name: r.get(1)?,
+                        source_class: r.get(2)?,
+                        origin: r.get(3)?,
+                        funnel_origin: r.get(4)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Test seam: every `recipe_uses` row as `(tenant_id, recipe, via,
+    /// created_unix)`, oldest first.
+    pub async fn recipe_uses_for_test(&self) -> Result<Vec<(i64, String, String, i64)>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT tenant_id, recipe, via, created_unix FROM recipe_uses ORDER BY id")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Test seam: drops `recipe_uses`, so every later insert fails (the
+    /// injected failure of the best-effort recording).
+    pub async fn drop_recipe_uses_for_test(&self) -> Result<(), AppError> {
+        self.with_conn(|conn| {
+            conn.execute_batch("DROP TABLE recipe_uses")?;
+            Ok(())
         })
         .await
     }
@@ -15833,16 +16696,22 @@ impl Db {
         let now = crate::state::now_unix();
         let windows: Vec<(&'static str, i64)> = crate::retention::POLICY_TABLES
             .iter()
-            .map(|t| (t.name, crate::retention::days_from_env(t.env_var, t.default_days)))
+            .map(|t| (t.name, crate::retention::policy_days(t)))
             .collect();
         self.with_conn(move |conn| {
             for (name, days) in &windows {
+                // PRD-mcphost-synthetic-implicit-tenant-expiry: the expiry
+                // row's `floor_unix` is the first seed time and is never
+                // overwritten (`COALESCE` keeps the stored value); every
+                // other row leaves it NULL.
+                let floor = (*name == crate::retention::SYNTHETIC_IMPLICIT_POLICY).then_some(now);
                 conn.execute(
-                    "INSERT INTO retention_policy (table_name, days, updated_unix) \
-                     VALUES (?1, ?2, ?3) \
+                    "INSERT INTO retention_policy (table_name, days, updated_unix, floor_unix) \
+                     VALUES (?1, ?2, ?3, ?4) \
                      ON CONFLICT(table_name) DO UPDATE SET days = excluded.days, \
-                     updated_unix = excluded.updated_unix",
-                    params![name, days, now],
+                     updated_unix = excluded.updated_unix, \
+                     floor_unix = COALESCE(retention_policy.floor_unix, excluded.floor_unix)",
+                    params![name, days, now, floor],
                 )?;
             }
             Ok(())
@@ -16006,6 +16875,628 @@ impl Db {
         catalog.plans.iter().map(|p| (p.name.clone(), p.calls_retention_days)).collect()
     }
 
+    /// Test-only: SQLite gives no deterministic concurrent schedule, so a
+    /// test installs a hook that runs between the invalidation's phase 1
+    /// (marked `unclaimed_expiring`) and its teardown and phase 2.
+    pub fn set_external_phase_hook_for_test(&self, hook: ExternalPhaseHook) {
+        *self.external_phase_hook.write().unwrap_or_else(|e| e.into_inner()) = Some(hook);
+    }
+
+    /// Runs the test hook, if any, with the ids phase 1 marked.
+    pub(crate) async fn run_external_phase_hook(&self, ids: &[i64]) {
+        let hook = self.external_phase_hook.read().unwrap_or_else(|e| e.into_inner()).clone();
+        if let Some(hook) = hook {
+            hook(ids.to_vec()).await;
+        }
+    }
+
+    /// The address a warn-issued claim token is bound to, if any.
+    pub async fn claim_bound_email(&self, tenant_id: i64) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row("SELECT claim_bound_email FROM tenants WHERE id = ?1", params![tenant_id], |r| {
+                    r.get::<_, Option<String>>(0)
+                })
+                .optional()?
+                .flatten())
+        })
+        .await
+    }
+
+    /// Installs the external unclaimed sweep `prune_once` runs.
+    pub fn set_external_sweep(&self, sweep: ExternalSweep) {
+        *self.external_sweep.write().unwrap_or_else(|e| e.into_inner()) = Some(sweep);
+    }
+
+    /// Installs the teardown the idle sweep runs on each claimed tenant.
+    pub fn set_tenant_teardown(&self, teardown: TenantTeardown) {
+        *self.tenant_teardown.write().unwrap_or_else(|e| e.into_inner()) = Some(teardown);
+    }
+
+    // ---- synthetic implicit tenant expiry (PRD-mcphost-synthetic-implicit-tenant-expiry) ----
+
+    /// Claims one batch of idle subjects (`UPDATE ... WHERE id IN (SELECT
+    /// ... LIMIT)` -- the bundled SQLite lacks `UPDATE ... LIMIT`) and
+    /// returns the ids this very statement flipped: a tenant is torn down
+    /// only by the sweep whose UPDATE returned it.
+    pub(crate) async fn claim_idle_synthetic_tenants(
+        &self,
+        now_unix: i64,
+        window_days: i64,
+        batch: i64,
+    ) -> Result<Vec<i64>, AppError> {
+        let cutoff = now_unix - window_days.saturating_mul(86_400);
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "UPDATE tenants SET disabled = 1, disabled_reason = '{reason}' WHERE id IN \
+                 (SELECT id FROM tenants WHERE {pred} LIMIT :batch) RETURNING id",
+                reason = crate::auth_shape::IDLE_EXPIRED_REASON,
+                pred = synthetic_expiry_predicate(ExpiryTerms::SWEEP),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let ids = stmt
+                .query_map(named_params! {":cutoff": cutoff, ":batch": batch}, |r| r.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ids)
+        })
+        .await
+    }
+
+    /// The tenant-expiry idle window in days; `0` when the policy is off or
+    /// not yet seeded (then nothing is a subject, `IDLE` is never composed).
+    pub(crate) async fn synthetic_expiry_window_days(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            let days: Option<i64> = conn
+                .query_row(
+                    "SELECT days FROM retention_policy WHERE table_name = ?1",
+                    params![crate::retention::SYNTHETIC_IMPLICIT_POLICY],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(days.unwrap_or(0).max(0))
+        })
+        .await
+    }
+
+    /// When `tenant_id` expires if it stays idle: `COALESCE(last_seen_unix,
+    /// created_unix) + window` for a row that is `CLASS AND FLOOR`, `None`
+    /// for any other row or a window of 0 (no idle term: a subject is a
+    /// subject whether or not it is idle yet).
+    pub(crate) async fn tenant_expires_at(&self, tenant_id: i64) -> Result<Option<i64>, AppError> {
+        let days = self.synthetic_expiry_window_days().await?;
+        if days <= 0 {
+            return Ok(None);
+        }
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT COALESCE(last_seen_unix, created_unix) + :window FROM tenants \
+                 WHERE id = :id AND {}",
+                synthetic_expiry_predicate(ExpiryTerms::SUBJECT)
+            );
+            Ok(conn
+                .query_row(&sql, named_params! {":window": days * 86_400, ":id": tenant_id}, |r| r.get(0))
+                .optional()?)
+        })
+        .await
+    }
+
+    /// `admin.tenants`: every subject's expiry (`CLASS AND FLOOR`) by tenant
+    /// id; empty while the window is 0.
+    pub(crate) async fn subject_expiries(&self) -> Result<std::collections::HashMap<i64, i64>, AppError> {
+        let days = self.synthetic_expiry_window_days().await?;
+        if days <= 0 {
+            return Ok(Default::default());
+        }
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT id, COALESCE(last_seen_unix, created_unix) + :window FROM tenants WHERE {}",
+                synthetic_expiry_predicate(ExpiryTerms::SUBJECT)
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(named_params! {":window": days * 86_400}, |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<_, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `admin.funnel`'s `tenants_idle_expired`: a `COUNT` of the rows the
+    /// sweep disabled, so it survives a restart (never an in-memory counter).
+    pub async fn count_tenants_idle_expired(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE disabled_reason = ?1",
+                params![crate::auth_shape::IDLE_EXPIRED_REASON],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    // ---- external unclaimed tenant expiry (PRD-mcphost-external-unclaimed-tenant-expiry) ----
+
+    /// The external policy's window in days: `0` when the env var reads
+    /// `off`, when the policy is unseeded or when the stored window is not
+    /// positive (then nothing is a subject and no SQL runs).
+    pub(crate) async fn external_expiry_window_days(&self) -> Result<i64, AppError> {
+        if crate::retention::env_is_off(crate::retention::EXTERNAL_UNCLAIMED_ENV) {
+            return Ok(0);
+        }
+        self.with_conn(|conn| {
+            let days: Option<i64> = conn
+                .query_row(
+                    "SELECT days FROM retention_policy WHERE table_name = ?1",
+                    params![crate::retention::EXTERNAL_UNCLAIMED_POLICY],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(days.unwrap_or(0).max(0))
+        })
+        .await
+    }
+
+    /// Every `EXT` tenant (or just `only`) with the facts its lifecycle view
+    /// needs, keyed by tenant id; empty while the window is 0.
+    pub(crate) async fn external_subjects(
+        &self,
+        only: Option<i64>,
+    ) -> Result<std::collections::HashMap<i64, ExternalSubject>, AppError> {
+        if self.external_expiry_window_days().await? <= 0 {
+            return Ok(Default::default());
+        }
+        self.with_conn(move |conn| {
+            let idle = external_idle_since("t.");
+            let sql = format!(
+                "SELECT t.id, {idle}, \
+                 (SELECT MAX(e.created_unix) FROM tenant_lifecycle_events e \
+                   WHERE e.tenant_id = t.id AND e.stage = 'warned' AND e.created_unix > {idle}), \
+                 COALESCE(t.owner_email, (SELECT c.email FROM claim_codes c WHERE c.tenant_id = t.id \
+                   ORDER BY c.created_unix DESC, c.id DESC LIMIT 1)) \
+                 FROM tenants t WHERE {class} AND (:only IS NULL OR t.id = :only)",
+                class = external_class("t."),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(named_params! {":only": only}, |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        ExternalSubject { idle_since_unix: r.get(1)?, warned_unix: r.get(2)?, address: r.get(3)? },
+                    ))
+                })?
+                .collect::<Result<_, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Writes one `tenant_lifecycle_events` row.
+    pub(crate) async fn record_lifecycle_event(&self, event: LifecycleEvent) -> Result<(), AppError> {
+        let LifecycleEvent { tenant_id, stage, idle_since_unix, status_code, created_unix } = event;
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tenant_lifecycle_events \
+                 (tenant_id, policy, stage, idle_since_unix, status_code, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    tenant_id,
+                    crate::retention::EXTERNAL_UNCLAIMED_POLICY,
+                    stage,
+                    idle_since_unix,
+                    status_code.map(i64::from),
+                    created_unix
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `EXT` tenants due a warning at `now` and not warned yet in their
+    /// current idle run: idle since `warn_days` ago, no `warned` event newer
+    /// than `idle_since`, and no warn attempt in the last day.
+    pub(crate) async fn external_warn_candidates(
+        &self,
+        now: i64,
+        warn_days: i64,
+        batch: i64,
+    ) -> Result<Vec<WarnCandidate>, AppError> {
+        self.with_conn(move |conn| {
+            let idle = external_idle_since("t.");
+            let sql = format!(
+                "SELECT t.id, t.namespace, t.display_name, {idle}, \
+                 COALESCE(t.owner_email, (SELECT c.email FROM claim_codes c WHERE c.tenant_id = t.id \
+                   ORDER BY c.created_unix DESC, c.id DESC LIMIT 1)), \
+                 (SELECT MIN(e.created_unix) FROM tenant_lifecycle_events e WHERE e.tenant_id = t.id \
+                   AND e.stage IN ('warned', 'warn_no_address', 'warn_failed') AND e.created_unix > {idle}) \
+                 FROM tenants t WHERE {class} AND {idle} <= :warn_cut \
+                 AND NOT EXISTS (SELECT 1 FROM tenant_lifecycle_events e WHERE e.tenant_id = t.id \
+                   AND e.stage = 'warned' AND e.created_unix > {idle}) \
+                 AND NOT EXISTS (SELECT 1 FROM tenant_lifecycle_events e WHERE e.tenant_id = t.id \
+                   AND e.stage IN ('warned', 'warn_no_address', 'warn_failed') AND e.created_unix > :day_ago) \
+                 ORDER BY t.id LIMIT :batch",
+                class = external_class("t."),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(
+                    named_params! {
+                        ":warn_cut": now - warn_days.saturating_mul(86_400),
+                        ":day_ago": now - 86_400,
+                        ":batch": batch,
+                    },
+                    |r| {
+                        Ok(WarnCandidate {
+                            id: r.get(0)?,
+                            namespace: r.get(1)?,
+                            display_name: r.get(2)?,
+                            idle_since_unix: r.get(3)?,
+                            address: r.get(4)?,
+                            first_attempt_unix: r.get(5)?,
+                        })
+                    },
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// The warn step's token write: one UPDATE that replaces the claim token,
+    /// stretches its expiry to `expires_unix` and binds it to `bound_email`
+    /// (`None` = unbound). Refuses a tenant that has been claimed meanwhile.
+    pub(crate) async fn set_warn_claim_token(&self, token: WarnClaimToken) -> Result<bool, AppError> {
+        let WarnClaimToken { tenant_id, token_hash, token_plain, expires_unix, bound_email } = token;
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tenants SET claim_token_hash = ?1, claim_token_plain = ?2, claim_expires_at = ?3, \
+                 claim_bound_email = ?4 WHERE id = ?5 AND owner_verified_at IS NULL",
+                params![token_hash, token_plain, expires_unix, bound_email, tenant_id],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// Keeps an existing claim token alive through `expires_unix` without
+    /// rotating it (the address-less warn: a link already relayed stays good).
+    pub(crate) async fn extend_claim_token(&self, tenant_id: i64, expires_unix: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tenants SET claim_expires_at = MAX(COALESCE(claim_expires_at, 0), ?1) \
+                 WHERE id = ?2 AND owner_verified_at IS NULL AND claim_token_hash IS NOT NULL",
+                params![expires_unix, tenant_id],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// Invalidation phase 1: one statement flips every `EXT` tenant that is
+    /// idle `window_days` and has a warn-stage event of its current run at
+    /// least `lead_days` old to `unclaimed_expiring`, and returns the ids
+    /// this very statement flipped (the only ones this sweep tears down).
+    pub(crate) async fn mark_external_expiring(
+        &self,
+        now: i64,
+        windows: crate::retention::ExternalWindows,
+        batch: i64,
+    ) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let idle = external_idle_since("t.");
+            let sql = format!(
+                "UPDATE tenants SET disabled = 1, disabled_reason = '{expiring}' WHERE id IN \
+                 (SELECT t.id FROM tenants t WHERE {class} AND {idle} <= :cut AND EXISTS \
+                   (SELECT 1 FROM tenant_lifecycle_events e WHERE e.tenant_id = t.id \
+                    AND e.stage IN ('warned', 'warn_no_address', 'warn_failed') \
+                    AND e.created_unix > {idle} AND e.created_unix <= :lead_cut) \
+                  ORDER BY t.id LIMIT :batch) RETURNING id",
+                expiring = crate::auth_shape::UNCLAIMED_EXPIRING_REASON,
+                class = external_class("t."),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let ids = stmt
+                .query_map(
+                    named_params! {
+                        ":cut": now - windows.window.saturating_mul(86_400),
+                        ":lead_cut": now - windows.lead.saturating_mul(86_400),
+                        ":batch": batch,
+                    },
+                    |r| r.get::<_, i64>(0),
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ids)
+        })
+        .await
+    }
+
+    /// Invalidation phase 2, after the teardown: the terminal reason and the
+    /// `invalidated` event in one immediate transaction. A tenant claimed in
+    /// between (any claim path) is enabled again instead, with a `restored`
+    /// event, so it is never claimed and disabled at once.
+    pub(crate) async fn finish_external_invalidation(
+        &self,
+        tenant_id: i64,
+        now: i64,
+    ) -> Result<InvalidationOutcome, AppError> {
+        self.with_conn(move |conn| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                let idle = external_idle_since("t.");
+                let n = conn.execute(
+                    "UPDATE tenants SET disabled_reason = ?2 WHERE id = ?1 AND disabled = 1 \
+                     AND disabled_reason = ?3 AND owner_verified_at IS NULL AND claimed_unix IS NULL",
+                    params![
+                        tenant_id,
+                        crate::auth_shape::UNCLAIMED_EXPIRED_REASON,
+                        crate::auth_shape::UNCLAIMED_EXPIRING_REASON
+                    ],
+                )?;
+                let event_sql = |stage: &str| {
+                    format!(
+                        "INSERT INTO tenant_lifecycle_events \
+                         (tenant_id, policy, stage, idle_since_unix, created_unix) \
+                         SELECT t.id, ?2, '{stage}', {idle}, ?3 FROM tenants t WHERE t.id = ?1"
+                    )
+                };
+                if n == 1 {
+                    let idle_since: i64 = conn.query_row(
+                        &format!("SELECT {idle} FROM tenants t WHERE t.id = ?1"),
+                        params![tenant_id],
+                        |r| r.get(0),
+                    )?;
+                    conn.execute(
+                        &event_sql("invalidated"),
+                        params![tenant_id, crate::retention::EXTERNAL_UNCLAIMED_POLICY, now],
+                    )?;
+                    return Ok(InvalidationOutcome::Expired { idle_since_unix: idle_since });
+                }
+                let m = conn.execute(
+                    "UPDATE tenants SET disabled = 0, disabled_reason = NULL, claim_bound_email = NULL \
+                     WHERE id = ?1 AND disabled_reason = ?2",
+                    params![tenant_id, crate::auth_shape::UNCLAIMED_EXPIRING_REASON],
+                )?;
+                if m == 1 {
+                    conn.execute(
+                        &event_sql("restored"),
+                        params![tenant_id, crate::retention::EXTERNAL_UNCLAIMED_POLICY, now],
+                    )?;
+                    return Ok(InvalidationOutcome::ClaimedMeanwhile);
+                }
+                Ok(InvalidationOutcome::Gone)
+            })
+        })
+        .await
+    }
+
+    /// Where the notice goes: `owner_email`, else the newest claim attempt.
+    pub(crate) async fn external_notice_address(&self, tenant_id: i64) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT COALESCE(t.owner_email, (SELECT c.email FROM claim_codes c \
+                       WHERE c.tenant_id = t.id ORDER BY c.created_unix DESC, c.id DESC LIMIT 1)) \
+                     FROM tenants t WHERE t.id = ?1",
+                    params![tenant_id],
+                    |r| r.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten())
+        })
+        .await
+    }
+
+    /// Namespaces of tenants the purge is due for: still disabled with the
+    /// terminal reason, still unclaimed and unpaid, and whose newest
+    /// `invalidated` event is at least `grace_days` old. A row re-enabled by
+    /// an admin is no longer disabled, so it never appears.
+    pub(crate) async fn external_purge_candidates(
+        &self,
+        now: i64,
+        grace_days: i64,
+        batch: i64,
+    ) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.namespace FROM tenants t WHERE t.disabled = 1 AND t.disabled_reason = ?1 \
+                 AND t.owner_verified_at IS NULL AND t.claimed_unix IS NULL AND t.paid_unix IS NULL \
+                 AND t.billing_ref IS NULL AND t.stripe_customer_id IS NULL \
+                 AND (SELECT MAX(e.created_unix) FROM tenant_lifecycle_events e \
+                       WHERE e.tenant_id = t.id AND e.stage = 'invalidated') <= ?2 \
+                 ORDER BY t.id LIMIT ?3",
+            )?;
+            let rows = stmt
+                .query_map(
+                    params![
+                        crate::auth_shape::UNCLAIMED_EXPIRED_REASON,
+                        now - grace_days.saturating_mul(86_400),
+                        batch
+                    ],
+                    |r| r.get::<_, String>(0),
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `admin.tenant_enable` on a tenant the unclaimed policy invalidated:
+    /// clears the reason, starts a fresh idle run (`last_seen_unix = now`, so
+    /// the old `warned` event cannot re-invalidate it) and journals
+    /// `restored`. `false` when the tenant is not in that state.
+    pub(crate) async fn enable_unclaimed_expired(&self, namespace: String, now: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                let n = conn.execute(
+                    "UPDATE tenants SET disabled = 0, disabled_reason = NULL, last_seen_unix = ?2 \
+                     WHERE namespace = ?1 AND disabled = 1 AND disabled_reason IN (?3, ?4)",
+                    params![
+                        namespace,
+                        now,
+                        crate::auth_shape::UNCLAIMED_EXPIRED_REASON,
+                        crate::auth_shape::UNCLAIMED_EXPIRING_REASON
+                    ],
+                )?;
+                if n == 0 {
+                    return Ok(false);
+                }
+                conn.execute(
+                    "INSERT INTO tenant_lifecycle_events \
+                     (tenant_id, policy, stage, idle_since_unix, created_unix) \
+                     SELECT id, ?2, 'restored', ?3, ?3 FROM tenants WHERE namespace = ?1",
+                    params![namespace, crate::retention::EXTERNAL_UNCLAIMED_POLICY, now],
+                )?;
+                Ok(true)
+            })
+        })
+        .await
+    }
+
+    /// `admin.funnel`'s `tenants_unclaimed_expired`: rows currently disabled
+    /// by the unclaimed policy (shrinks as purges run). A COUNT, so it
+    /// survives a restart.
+    pub async fn count_tenants_unclaimed_expired(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE disabled_reason = ?1",
+                params![crate::auth_shape::UNCLAIMED_EXPIRED_REASON],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// `admin.funnel`'s `tenants_unclaimed_purged`: cumulative purges, a COUNT
+    /// over `admin_events` (which the tenant delete does not cascade into).
+    pub async fn count_tenants_unclaimed_purged(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM admin_events WHERE action = ?1",
+                params![crate::retention::PURGE_ACTION],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// `restored` events written since `since_unix` (the previous sweep).
+    pub(crate) async fn count_restored_since(&self, since_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM tenant_lifecycle_events WHERE stage = 'restored' AND created_unix > ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// Start of the newest `prune_log` row, `0` when there is none.
+    pub(crate) async fn previous_sweep_started_unix(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn
+                .query_row("SELECT COALESCE(MAX(started_unix), 0) FROM prune_log", [], |r| r.get(0))?)
+        })
+        .await
+    }
+
+    /// The pre-floor backlog: `EXT` tenants minted before `floor_unix`
+    /// (their clock starts at the floor). Returns the floor, the count and
+    /// the first `limit` rows (`limit` 0 skips the list).
+    pub(crate) async fn external_pre_floor(&self, limit: i64) -> Result<PreFloor, AppError> {
+        self.with_conn(move |conn| {
+            let floor: i64 = conn.query_row(EXTERNAL_FLOOR_SQL_SELECT, [], |r| r.get(0))?;
+            let class = external_class("t.");
+            let count: i64 = conn.query_row(
+                &format!("SELECT COUNT(*) FROM tenants t WHERE {class} AND t.created_unix < ?1"),
+                params![floor],
+                |r| r.get(0),
+            )?;
+            let mut stmt = conn.prepare(&format!(
+                "SELECT t.id, t.display_name, t.created_unix, t.last_seen_unix FROM tenants t \
+                 WHERE {class} AND t.created_unix < ?1 ORDER BY t.id LIMIT ?2"
+            ))?;
+            let rows = stmt
+                .query_map(params![floor, limit], |r| {
+                    Ok(PreFloorRow {
+                        tenant_id: r.get(0)?,
+                        display_name: r.get(1)?,
+                        created_unix: r.get(2)?,
+                        last_seen_unix: r.get(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(PreFloor { floor_unix: floor, count, rows })
+        })
+        .await
+    }
+
+    /// `true` once any `prune_log` row carries the external policy's block:
+    /// the first sweep after deploy writes the pre-floor list in full.
+    pub(crate) async fn external_block_logged(&self) -> Result<bool, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn
+                .prepare("SELECT 1 FROM prune_log WHERE deleted_json LIKE ?1 LIMIT 1")?
+                .exists(params![format!("%\"{}\"%", crate::retention::EXTERNAL_UNCLAIMED_POLICY)])?)
+        })
+        .await
+    }
+
+    /// `(skipped_billing, would_expire)` for one sweep.
+    pub(crate) async fn synthetic_expiry_counts(
+        &self,
+        now_unix: i64,
+        window_days: i64,
+    ) -> Result<(i64, i64), AppError> {
+        let cutoff = now_unix - window_days.saturating_mul(86_400);
+        self.with_conn(move |conn| {
+            let count = |terms: ExpiryTerms| -> Result<i64, AppError> {
+                let sql =
+                    format!("SELECT COUNT(*) FROM tenants WHERE {}", synthetic_expiry_predicate(terms));
+                Ok(conn.query_row(&sql, named_params! {":cutoff": cutoff}, |r| r.get(0))?)
+            };
+            Ok((count(ExpiryTerms::SKIPPED_BILLING)?, count(ExpiryTerms::WOULD_EXPIRE)?))
+        })
+        .await
+    }
+
+    /// The expiry pass of one `prune_once`: no-op for window 0 (stated once
+    /// here: `IDLE` with a zero window would match every subject, so `0`
+    /// short-circuits before any SQL). Returns the journal entries.
+    async fn expire_synthetic_implicit_tenants(
+        &self,
+        windows: &[(String, i64)],
+        now_unix: i64,
+        deleted: &mut std::collections::BTreeMap<String, i64>,
+    ) -> Result<(), AppError> {
+        let policy = crate::retention::SYNTHETIC_IMPLICIT_POLICY;
+        let Some(&(_, days)) = windows.iter().find(|(n, _)| n == policy) else {
+            return Ok(());
+        };
+        if days <= 0 {
+            return Ok(());
+        }
+        let teardown = self.tenant_teardown.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let batch = crate::retention::EXPIRE_BATCH_SIZE;
+        let mut expired = 0i64;
+        loop {
+            let ids = self.claim_idle_synthetic_tenants(now_unix, days, batch).await?;
+            for id in &ids {
+                if let Some(teardown) = &teardown {
+                    teardown(*id).await;
+                }
+            }
+            expired += ids.len() as i64;
+            if (ids.len() as i64) < batch {
+                break;
+            }
+        }
+        let (skipped_billing, would_expire) = self.synthetic_expiry_counts(now_unix, days).await?;
+        deleted.insert(format!("{policy}.expired"), expired);
+        deleted.insert(format!("{policy}.skipped_billing"), skipped_billing);
+        deleted.insert(format!("{policy}.would_expire"), would_expire);
+        Ok(())
+    }
+
     /// Runs one full prune cycle -- the nightly scheduler and every AC1-4
     /// test funnel through this one method (a later admin-triggered
     /// on-demand cycle and `/healthz`/`admin.usage` reads of its outcome
@@ -16017,6 +17508,7 @@ impl Db {
     /// shared connection.
     pub async fn prune_once(&self) -> Result<PruneReport, AppError> {
         let windows = self.retention_windows().await?;
+        let windows_for_expiry = windows.clone();
         let plan_calls_days = self.plan_calls_retention();
         let path = self.path.clone();
         let cfg = self.cfg;
@@ -16027,10 +17519,37 @@ impl Db {
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+        let mut outcome = outcome;
+        if outcome.error.is_none()
+            && let Err(e) = self
+                .expire_synthetic_implicit_tenants(&windows_for_expiry, started, &mut outcome.deleted)
+                .await
+        {
+            outcome.error = Some(format!("{}: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
+        }
+        // PRD-mcphost-external-unclaimed-tenant-expiry: the external policy's
+        // block rides in `deleted_json` under its policy name.
+        let mut external_block = None;
+        if outcome.error.is_none() {
+            let sweep = self.external_sweep.read().unwrap_or_else(|e| e.into_inner()).clone();
+            if let Some(sweep) = sweep {
+                match sweep(started).await {
+                    Ok(block) => external_block = Some(block),
+                    Err(e) => {
+                        outcome.error = Some(format!("{}: {e}", crate::retention::EXTERNAL_UNCLAIMED_POLICY));
+                    }
+                }
+            }
+        }
         let finished = crate::state::now_unix();
         let ok = outcome.error.is_none();
-        let deleted_json = serde_json::to_string(&outcome.deleted)
-            .unwrap_or_else(|_| "{}".to_string());
+        let mut deleted_value = serde_json::to_value(&outcome.deleted).unwrap_or_else(|_| json!({}));
+        if let (Some(block), Some(obj)) = (external_block, deleted_value.as_object_mut())
+            && !block.is_null()
+        {
+            obj.insert(crate::retention::EXTERNAL_UNCLAIMED_POLICY.to_string(), block);
+        }
+        let deleted_json = serde_json::to_string(&deleted_value).unwrap_or_else(|_| "{}".to_string());
         self.with_conn({
             let error = outcome.error.clone();
             move |conn| {
@@ -16108,8 +17627,14 @@ impl Db {
                 )
                 .optional()?
                 .map(|(at_unix, ok, deleted_json)| {
+                    // Only the flat integer counts; the external policy's nested
+                    // block is read from `prune_log.deleted_json` directly.
                     let deleted: std::collections::BTreeMap<String, i64> =
-                        serde_json::from_str(&deleted_json).unwrap_or_default();
+                        serde_json::from_str::<std::collections::BTreeMap<String, Value>>(&deleted_json)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter_map(|(k, v)| v.as_i64().map(|n| (k, n)))
+                            .collect();
                     LastPrune {
                         at_unix,
                         ok,
@@ -21199,6 +22724,7 @@ impl Db {
                         .flatten();
                     return Ok(OwnerVerifyOutcome::Already { method: seen.unwrap_or_else(|| "email".to_string()) });
                 }
+                promote_origin_sync(tx, tenant_id, &OriginEvidence::ClaimedEmail, now)?;
                 tx.execute(
                     "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
                      VALUES (?1, ?5, ?2, ?3, ?4)",
@@ -22931,6 +24457,165 @@ pub struct ChunkVecRow {
     pub len: i64,
     pub text: String,
     pub vector: Vec<u8>,
+}
+
+/// PRD-mcphost-synthetic-implicit-tenant-expiry: the subject predicate as
+/// three named terms written once. `CLASS` is what a tenant IS (two
+/// independent synthetic markers so one mislabeled column never selects a
+/// real user); `FLOOR` is "minted at or after the policy was first seeded";
+/// `IDLE` is "unseen since `:cutoff`" (`now - window`). Callers
+/// compose them with [`synthetic_expiry_predicate`].
+fn expiry_class(billed: bool) -> String {
+    format!(
+        "disabled = 0 AND signup_source = '{}' AND origin = '{}' \
+         AND synthetic IS NOT NULL AND claimed_unix IS NULL AND owner_verified_at IS NULL \
+         AND paid_unix IS NULL AND billing_ref IS {}NULL",
+        crate::retention::SELECTOR_SIGNUP_SOURCE,
+        crate::retention::SELECTOR_ORIGIN,
+        if billed { "NOT " } else { "" },
+    )
+}
+const EXPIRY_FLOOR: &str = "created_unix >= (SELECT floor_unix FROM retention_policy \
+    WHERE table_name = 'synthetic_implicit_tenants')";
+const EXPIRY_BEFORE_FLOOR: &str = "created_unix < (SELECT floor_unix FROM retention_policy \
+    WHERE table_name = 'synthetic_implicit_tenants')";
+const EXPIRY_IDLE: &str = "COALESCE(last_seen_unix, created_unix) < :cutoff";
+
+/// Which terms one caller composes.
+#[derive(Clone, Copy)]
+pub(crate) struct ExpiryTerms {
+    billed: bool,
+    floor: Floor,
+    idle: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Floor {
+    After,
+    Before,
+}
+
+impl ExpiryTerms {
+    /// The sweep's claim: `CLASS AND FLOOR AND IDLE`.
+    pub(crate) const SWEEP: Self = Self { billed: false, floor: Floor::After, idle: true };
+    /// What `host.doctor` / `admin.tenants` read: `CLASS AND FLOOR`.
+    pub(crate) const SUBJECT: Self = Self { billed: false, floor: Floor::After, idle: false };
+    /// `CLASS` minus `billing_ref`, with `billing_ref IS NOT NULL`, `AND FLOOR AND IDLE`.
+    pub(crate) const SKIPPED_BILLING: Self = Self { billed: true, floor: Floor::After, idle: true };
+    /// The backlog: `CLASS AND IDLE AND NOT FLOOR`.
+    pub(crate) const WOULD_EXPIRE: Self = Self { billed: false, floor: Floor::Before, idle: true };
+}
+
+/// Composes `CLASS`, `FLOOR` and `IDLE` per caller. The idle term binds
+/// `:cutoff` when present.
+pub(crate) fn synthetic_expiry_predicate(terms: ExpiryTerms) -> String {
+    let mut parts = vec![expiry_class(terms.billed)];
+    match terms.floor {
+        Floor::After => parts.push(EXPIRY_FLOOR.to_string()),
+        Floor::Before => parts.push(EXPIRY_BEFORE_FLOOR.to_string()),
+    }
+    if terms.idle {
+        parts.push(EXPIRY_IDLE.to_string());
+    }
+    parts.join(" AND ")
+}
+
+/// PRD-mcphost-external-unclaimed-tenant-expiry `EXT`: an unclaimed, unpaid,
+/// enabled, non-synthetic external-origin tenant. Written once here; `prefix`
+/// is the table alias (`"t."`) or empty.
+pub(crate) fn external_class(prefix: &str) -> String {
+    let p = prefix;
+    format!(
+        "{p}disabled = 0 AND {p}origin IN ('external', 'unattributed') AND {p}synthetic IS NULL \
+         AND {p}owner_verified_at IS NULL AND {p}claimed_unix IS NULL AND {p}paid_unix IS NULL \
+         AND {p}billing_ref IS NULL AND {p}stripe_customer_id IS NULL AND {p}plan = 'free'"
+    )
+}
+
+/// The policy floor (the sibling's `floor_unix`; `0` while unseeded, since a
+/// bare `MAX(x, NULL)` is NULL in SQLite).
+const EXTERNAL_FLOOR_SQL: &str = "COALESCE((SELECT floor_unix FROM retention_policy \
+    WHERE table_name = 'synthetic_implicit_tenants'), 0)";
+
+const EXTERNAL_FLOOR_SQL_SELECT: &str = "SELECT COALESCE((SELECT floor_unix FROM retention_policy \
+    WHERE table_name = 'synthetic_implicit_tenants'), 0)";
+
+/// The pre-floor backlog of the external policy.
+#[derive(Debug, Clone)]
+pub struct PreFloor {
+    pub floor_unix: i64,
+    pub count: i64,
+    pub rows: Vec<PreFloorRow>,
+}
+
+/// One pre-floor tenant as the dry-run list names it: never a key, secret or address.
+#[derive(Debug, Clone)]
+pub struct PreFloorRow {
+    pub tenant_id: i64,
+    pub display_name: String,
+    pub created_unix: i64,
+    pub last_seen_unix: Option<i64>,
+}
+
+/// `idle_since` = `MAX(COALESCE(last_seen_unix, created_unix), floor_unix)`:
+/// the start of the idle run, no earlier than the deploy day.
+pub(crate) fn external_idle_since(prefix: &str) -> String {
+    format!("MAX(COALESCE({prefix}last_seen_unix, {prefix}created_unix), {EXTERNAL_FLOOR_SQL})")
+}
+
+/// How [`Db::finish_external_invalidation`] ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidationOutcome {
+    /// Terminal `unclaimed_expired`; the idle run that earned it began here.
+    Expired { idle_since_unix: i64 },
+    /// Claimed between the phases: enabled again.
+    ClaimedMeanwhile,
+    /// No longer in the expiring state (deleted or changed by an admin).
+    Gone,
+}
+
+/// One `tenant_lifecycle_events` row to write.
+#[derive(Debug, Clone)]
+pub struct LifecycleEvent {
+    pub tenant_id: i64,
+    pub stage: &'static str,
+    pub idle_since_unix: i64,
+    pub status_code: Option<u16>,
+    pub created_unix: i64,
+}
+
+/// A replacement claim token for [`Db::set_warn_claim_token`].
+#[derive(Debug, Clone)]
+pub struct WarnClaimToken {
+    pub tenant_id: i64,
+    pub token_hash: String,
+    pub token_plain: String,
+    pub expires_unix: i64,
+    /// `Some` binds the token to one address (case-insensitive).
+    pub bound_email: Option<String>,
+}
+
+/// One `EXT` tenant due a warning (see [`Db::external_warn_candidates`]).
+#[derive(Debug, Clone)]
+pub struct WarnCandidate {
+    pub id: i64,
+    pub namespace: String,
+    pub display_name: String,
+    pub idle_since_unix: i64,
+    /// `owner_email`, else the newest claim attempt's address.
+    pub address: Option<String>,
+    /// Oldest warn-stage event of this idle run, if any.
+    pub first_attempt_unix: Option<i64>,
+}
+
+/// What `host.doctor` / `admin.tenants` read for one `EXT` tenant.
+#[derive(Debug, Clone)]
+pub struct ExternalSubject {
+    pub idle_since_unix: i64,
+    /// Newest `warned` event of the current idle run.
+    pub warned_unix: Option<i64>,
+    /// `owner_email`, else the newest claim attempt's address.
+    pub address: Option<String>,
 }
 
 /// [`Db::prune_once`]'s return shape: one cycle's per-physical-table

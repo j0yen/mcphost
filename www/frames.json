@@ -91,6 +91,25 @@
       }
     },
     {
+      "request_type": "tools/call:with_progress_token",
+      "frames": [
+        {
+          "method": "notifications/progress",
+          "card": "{0,n}"
+        },
+        {
+          "method": "result",
+          "card": "{1}"
+        }
+      ],
+      "content_type": {
+        "rule": "json_when_single_frame",
+        "single_frame": "application/json",
+        "multi_frame": "text/event-stream"
+      },
+      "when": "request _meta.progressToken present"
+    },
+    {
       "request_type": "ping",
       "frames": [
         {

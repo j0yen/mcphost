@@ -102,6 +102,18 @@ pub fn from_address(sender: &str, slug: &str, domain: &str) -> String {
     }
 }
 
+/// The structural address shape [`valid_address`] accepts (before the handler trims it).
+/// `host.email.send`'s `to` and `to.items` `pattern`.
+pub const ADDRESS_PATTERN: &str = "^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$";
+
+/// A non-empty single line (no CR or LF); `reply_to_message_id`'s `pattern`.
+pub const ONE_LINE_PATTERN: &str = "^[^\\r\\n]+$";
+
+/// Whether `s` matches [`ONE_LINE_PATTERN`].
+pub fn is_one_line(s: &str) -> bool {
+    !s.is_empty() && !s.contains(['\r', '\n'])
+}
+
 /// One address, checked structurally: a single `@`, a short printable local
 /// part, a dotted domain of plain labels.
 pub fn valid_address(addr: &str) -> bool {
@@ -189,7 +201,7 @@ fn parse_args(args: &Value) -> Result<SendArgs, AppError> {
     };
     let reply_to_message_id = match args.get("reply_to_message_id") {
         None | Some(Value::Null) => None,
-        Some(Value::String(s)) if !s.is_empty() && s.len() <= 998 && !s.contains(['\r', '\n']) => Some(s.clone()),
+        Some(Value::String(s)) if s.len() <= 998 && is_one_line(s) => Some(s.clone()),
         Some(_) => return Err(AppError::InvalidArgs("reply_to_message_id: must be a one-line string".to_string())),
     };
     Ok(SendArgs { to: deduped, subject, text, html, reply_to_message_id })

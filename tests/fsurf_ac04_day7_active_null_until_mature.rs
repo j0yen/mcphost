@@ -32,7 +32,7 @@ async fn human(db: &Db, name: &str, client: &str, created_unix: i64) -> Tenant {
 }
 
 async fn report(db: &Db, now: i64) -> Value {
-    let (by_surface, _probe) = mcphost::funnel::surface_report(db, now, 30).await.expect("surface_report");
+    let (by_surface, _probe, _excluded) = mcphost::funnel::surface_report(db, now, 30).await.expect("surface_report");
     by_surface
 }
 

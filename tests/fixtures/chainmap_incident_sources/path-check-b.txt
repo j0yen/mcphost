@@ -1,0 +1,4 @@
+# vendored once by the builder for PRD-mcphost-chain-near-miss-mapping-refused; lines copied verbatim
+# resolved: /home/jsy/Documents/PRDs/built-prds/PRD-mcphost-chain-publish-time-path-check-b.md
+# lines: 84
+1. P0 — Given a 3-step chain whose step 3 maps `$.steps[0].result.count` and step 1 has observed keys `{items, count}`, When published, Then it passes; and Given step 2 maps `$.steps[2].result.x`, Then `will_fail` with `reason: "forward reference"`.

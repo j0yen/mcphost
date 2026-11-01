@@ -52,7 +52,12 @@ fn state_key(name: &str) -> String {
     format!("uptime:{name}")
 }
 
-fn is_ident(s: &str) -> bool {
+/// The probe-name pattern [`is_ident`] enforces; `host.uptime.create`'s
+/// `name.pattern` is this string.
+pub const NAME_PATTERN: &str = "^[A-Za-z_][A-Za-z0-9_]{0,39}$";
+
+/// Whether `s` matches [`NAME_PATTERN`].
+pub fn is_ident(s: &str) -> bool {
     let mut chars = s.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
         && s.len() <= 40
@@ -107,7 +112,7 @@ pub fn parse_create(
         .to_string();
     if !is_ident(&name) {
         return Err(AppError::InvalidArgs(format!(
-            "name: must match ^[A-Za-z_][A-Za-z0-9_]{{0,39}}$; got '{name}'"
+            "name: must match {NAME_PATTERN}; got '{name}'"
         )));
     }
     let urls_val = args

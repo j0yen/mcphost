@@ -44,6 +44,10 @@ fn the_diff_reports_nothing_removed_nothing_narrowed_and_only_the_named_dropped_
             Violation::Narrowed { path, detail } if detail == "no longer always present" => {
                 dropped.insert(path.clone());
             }
+            // PRD-mcphost-tool-call-output-root-opaque R1: the forwarding roots
+            // dropped their sampled keys on purpose.
+            Violation::OpaqueRoot { path, .. }
+                if mcphost::output_schemas::FORWARDING_ROOTS.iter().any(|t| path == &format!("{t}.output")) => {}
             other => problems.push(format!("{other:?}")),
         }
     }

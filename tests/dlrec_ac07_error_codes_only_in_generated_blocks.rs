@@ -2,7 +2,7 @@
 //! AC7 (P0) — Given `grep -rn 'scope_escalation\|key_revoked' www README.md`,
 //! When run after landing, Then every hit lies inside a generated marker block.
 
-use mcphost::llms_txt::{RECIPE_END, RECIPE_START};
+use mcphost::llms_txt::{README_RECIPE_END, README_RECIPE_START, RECIPE_END, RECIPE_START};
 use std::path::{Path, PathBuf};
 
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");
@@ -24,13 +24,13 @@ fn stray_hits(text: &str) -> Vec<(usize, String)> {
     let mut inside = false;
     let mut hits = Vec::new();
     for (i, line) in text.lines().enumerate() {
-        if line.contains(RECIPE_START) {
+        if line.contains(RECIPE_START) || line.contains(README_RECIPE_START) {
             inside = true;
         }
         if !inside && (line.contains("scope_escalation") || line.contains("key_revoked")) {
             hits.push((i + 1, line.to_string()));
         }
-        if line.contains(RECIPE_END) {
+        if line.contains(RECIPE_END) || line.contains(README_RECIPE_END) {
             inside = false;
         }
     }

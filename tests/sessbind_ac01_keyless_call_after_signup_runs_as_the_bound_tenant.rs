@@ -107,6 +107,8 @@ async fn a_client_invented_session_id_never_addresses_a_binding() {
             .header("Mcp-Method", "tools/call")
             .header("Mcp-Name", "host.catalog.search")
             .header("Mcp-Session-Id", &forged)
+            // One peer per forged id (PRD-mcphost-implicit-signup-mints-only-on-success R3).
+            .header("User-Agent", format!("sessbind-ac01-{forged}"))
             .json(&json!({
                 "jsonrpc": "2.0",
                 "id": 1,

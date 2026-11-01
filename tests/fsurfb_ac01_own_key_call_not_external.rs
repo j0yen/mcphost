@@ -53,7 +53,7 @@ async fn only_foreign_key_or_anonymous_calls_count_as_first_external_call() {
         .await
         .unwrap();
 
-    let (by_surface, _probe) = mcphost::funnel::surface_report(&db, now, 7).await.expect("report");
+    let (by_surface, _probe, _excluded) = mcphost::funnel::surface_report(&db, now, 7).await.expect("report");
     // own_only does not count; foreign and anon do.
     assert_eq!(by_surface["cursor"]["signed_up"], 4, "{by_surface}");
     assert_eq!(by_surface["cursor"]["first_external_call"], 2, "{by_surface}");

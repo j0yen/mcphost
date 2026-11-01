@@ -26,7 +26,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.113.1"
+version = "0.123.0"
 edition = "2024"
 rust-version = "1.95"
 description = "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working."
@@ -55,7 +55,7 @@ rmcp = { version = "3.2.0", features = ["server", "transport-streamable-http-ser
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["limit", "timeout", "trace"] }
-rusqlite = { version = "0.32", features = ["bundled", "trace"] }
+rusqlite = { version = "0.32", features = ["bundled", "trace", "functions"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 linkme = "0.3"
@@ -110,7 +110,7 @@ sqlparser = { version = "0.62", features = ["visitor"] }
 # specific release (recorded in `/healthz` via `kinds::wasm::WASM_RUNTIME_VERSION`)
 # rather than a floating range, matching this crate's other embedded-runtime
 # dependencies.
-wasmtime = "48.0.4"
+wasmtime = { version = "48.0.4", default-features = false, features = ["anyhow", "async", "backtrace", "gc", "gc-copying", "gc-drc", "gc-null", "wat", "profiling", "parallel-compilation", "cranelift", "pooling-allocator", "demangle", "addr2line", "coredump", "debug-builtins", "runtime", "component-model", "component-model-async", "threads", "stack-switching", "std", "debug", "compile-time-builtins", "wit-parser"] }
 # A conforming component built by the expected guest toolchain
 # (`cargo component build` against `wasm32-wasip1`/`wasip2`) links wasi:cli
 # imports (exit/environment) even for pure-compute code, purely as an
@@ -247,6 +247,10 @@ name = "suite_contracts_core_01"
 path = "tests/suite_contracts_core_01.rs"
 
 [[test]]
+name = "suite_contracts_core_02"
+path = "tests/suite_contracts_core_02.rs"
+
+[[test]]
 name = "suite_contracts_sandbox_01"
 path = "tests/suite_contracts_sandbox_01.rs"
 
@@ -293,6 +297,14 @@ path = "tests/suite_core_10.rs"
 [[test]]
 name = "suite_core_11"
 path = "tests/suite_core_11.rs"
+
+[[test]]
+name = "suite_core_12"
+path = "tests/suite_core_12.rs"
+
+[[test]]
+name = "suite_core_13"
+path = "tests/suite_core_13.rs"
 
 [[test]]
 name = "suite_env_core_01"

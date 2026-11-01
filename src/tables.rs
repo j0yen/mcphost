@@ -244,7 +244,7 @@ pub(crate) fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
-fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppError> {
+pub(crate) fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppError> {
     state.plans.get(plan_name).ok_or_else(|| {
         AppError::Internal(format!(
             "tenant's plan '{plan_name}' is not in the loaded plan catalog"
@@ -262,7 +262,7 @@ fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppErro
 /// `name.pattern` is this string.
 pub const IDENT_PATTERN: &str = "^[A-Za-z_][A-Za-z0-9_]{0,63}$";
 
-pub(crate) fn is_valid_ident(s: &str) -> bool {
+pub fn is_valid_ident(s: &str) -> bool {
     let mut chars = s.chars();
     let Some(first) = chars.next() else {
         return false;
@@ -627,6 +627,15 @@ pub(crate) fn list_table_names_sync(conn: &Connection) -> Result<Vec<String>, Ap
 /// `table_tables_max`, naming `billing.checkout` (the same upgrade-path
 /// shape every other plan quota in this crate already uses).
 pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    if let Some(source) = crate::table::import::source_arg(args)? {
+        return crate::table::import::create_from_source(state, tenant, args, source).await;
+    }
+    table_create_declared(state, tenant, args).await
+}
+
+/// `table_create` for a table that declares its own `columns`: the path an
+/// import takes once it has inferred them.
+pub(crate) async fn table_create_declared(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     if !is_valid_ident(&name) {
         return Err(AppError::InvalidArgs(format!(
@@ -1075,7 +1084,33 @@ fn validate_rows(
     Ok(coerced)
 }
 
-fn insert_rows_sync(
+/// PRD-mcphost-table-conflict-structured-error: a constraint violation that
+/// `From<rusqlite::Error>` classified as `table_row_conflict` gets the table
+/// (each tenant has its own DB, so the caller's name beats SQLite's text),
+/// the 0-based `row_index` of the failing row, and the agent-facing message.
+/// Any other error passes through unchanged.
+fn row_conflict_at(err: AppError, table: &str, row_index: usize) -> AppError {
+    match err {
+        AppError::Structured { code, data, .. } if code == TABLE_ROW_CONFLICT => {
+            let column = data.get("column").cloned().unwrap_or(Value::Null);
+            let constraint = data.get("constraint").and_then(Value::as_str).unwrap_or("other").to_string();
+            let on = column.as_str().map(|c| format!(" on {c}")).unwrap_or_default();
+            AppError::Structured {
+                code,
+                message: format!("row {row_index} conflicts{on} ({constraint}) in table {table}"),
+                data: json!({
+                    "table": table,
+                    "column": column,
+                    "constraint": constraint,
+                    "row_index": row_index,
+                }),
+            }
+        }
+        other => other,
+    }
+}
+
+pub(crate) fn insert_rows_sync(
     conn: &Connection,
     table: &str,
     schema: &LoadedSchema,
@@ -1086,7 +1121,7 @@ fn insert_rows_sync(
     // connection's open `SAVEPOINT test_run`.
     crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
         let mut ids = Vec::with_capacity(rows.len());
-        for row in rows {
+        for (row_index, row) in rows.iter().enumerate() {
             let mut cols = Vec::with_capacity(row.len());
             let mut placeholders = Vec::with_capacity(row.len());
             let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(row.len());
@@ -1103,7 +1138,8 @@ fn insert_rows_sync(
                 placeholders.join(", "),
             );
             let params_ref: Vec<&dyn rusqlite::ToSql> = values.iter().map(|b| b.as_ref()).collect();
-            conn.execute(&sql, params_ref.as_slice())?;
+            conn.execute(&sql, params_ref.as_slice())
+                .map_err(|e| row_conflict_at(AppError::from(e), table, row_index))?;
             ids.push(conn.last_insert_rowid());
         }
         Ok(ids)
@@ -1291,6 +1327,9 @@ pub(crate) fn upsert_rows_sync(
 /// inside the same connection/transaction as the insert so the check and
 /// the write can never race against a second call to this same tenant.
 pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    if let Some(source) = crate::table::import::source_arg(args)? {
+        return crate::table::import::append_from_source(state, tenant, args, source).await;
+    }
     let table = arg_str(args, "table")?;
     let mut rows = parse_rows_arg(args)?;
 
@@ -1502,7 +1541,7 @@ fn truncate_sql_for_log(sql: &str) -> (String, bool) {
 ///
 /// PRD-mcphost-query-diagnosis P0 requirement 3 / P1 requirement 7:
 /// `diagnosis`/`hint` (identifier-coverage diagnosis, computed by
-/// [`diagnose_sync`]) and `result_bytes`/`est_tokens` (the result's
+/// [`identifier_diagnosis`]) and `result_bytes`/`est_tokens` (the result's
 /// footprint) join the original fields here.
 struct QueryLogOutcome<'a> {
     duration_ms: i64,
@@ -1666,11 +1705,32 @@ fn withheld_count_sync(
 /// `table_query_rejected` case PRD-mcphost-table-context-and-sql-passthrough's
 /// own AC5 covers; a zero-row result with no text-column equality filter
 /// to check).
-fn diagnose_sync(conn: &Connection, ctx: &QueryDiagContext, result: &Result<Vec<Value>, AppError>) -> (Option<Value>, Option<String>) {
+///
+/// Split in two so the wire error ([`missing_identifier_error`]) and the log
+/// row read one diagnosis: [`identifier_diagnosis`] scores it,
+/// `render_diagnosis` renders `(diagnosis_json, hint)` from it.
+fn render_diagnosis(
+    ctx: &QueryDiagContext,
+    diag: Option<&crate::query_diag::IdentifierDiagnosis>,
+) -> (Option<Value>, Option<String>) {
+    let Some(diag) = diag else {
+        return (None, None);
+    };
+    let hint = crate::query_diag::build_hint(diag, ctx.from_table.as_deref());
+    let diagnosis_json = json!({"identifiers": [diag.to_json()], "band": diag.band.as_str()});
+    (Some(diagnosis_json), hint)
+}
+
+/// [`identifier_diagnosis`]'s scoring half, kept apart so the wire error
+/// ([`missing_identifier_error`]) and the log row read one diagnosis.
+fn identifier_diagnosis(
+    conn: &Connection,
+    ctx: &QueryDiagContext,
+    result: &Result<Vec<Value>, AppError>,
+) -> Option<crate::query_diag::IdentifierDiagnosis> {
     // Wrapped in an inner closure purely so every early-exit below can use
-    // `?` on `Option` ("no diagnosis for this case") without fighting this
-    // function's own `(Option<Value>, Option<String>)` return type.
-    let diag: Option<crate::query_diag::IdentifierDiagnosis> = (|| {
+    // `?` on `Option` ("no diagnosis for this case").
+    (|| {
         match result {
             Err(e) => {
                 let message = e.to_string();
@@ -1717,15 +1777,103 @@ fn diagnose_sync(conn: &Connection, ctx: &QueryDiagContext, result: &Result<Vec<
             }
             Ok(_) => None,
         }
-    })();
-
-    let Some(diag) = diag else {
-        return (None, None);
-    };
-    let hint = crate::query_diag::build_hint(&diag, ctx.from_table.as_deref());
-    let diagnosis_json = json!({"identifiers": [diag.to_json()], "band": diag.band.as_str()});
-    (Some(diagnosis_json), hint)
+    })()
 }
+
+/// PRD-mcphost-table-query-names-missing-table R1/R2/R4: the wire error for
+/// a `Storage` failure whose message names an undeclared table, built from
+/// the same diagnosis the `query_log` row keeps. `None` for every other
+/// error (R3), so a genuine storage fault keeps the internal-error swap.
+fn missing_identifier_error(
+    conn: &Connection,
+    ctx: &QueryDiagContext,
+    err: &AppError,
+    diag: Option<&crate::query_diag::IdentifierDiagnosis>,
+) -> Option<AppError> {
+    if !matches!(err, AppError::Storage(_)) {
+        return None;
+    }
+    missing_identifier_parts(conn, ctx, diag?).map(|(code, message, data)| AppError::Structured { code, message, data })
+}
+
+/// `(code, message, data)` of the structured error [`missing_identifier_error`]
+/// answers with; `host.table.query_diagnose` reuses `data` as its result block.
+fn missing_identifier_parts(
+    conn: &Connection,
+    ctx: &QueryDiagContext,
+    diag: &crate::query_diag::IdentifierDiagnosis,
+) -> Option<(&'static str, String, Value)> {
+    let declared = list_table_names_sync(conn).unwrap_or_default();
+    // The wire list is ranked for the missing-table case (see
+    // `rank_table_names`); the hint and the `; closest:` suffix read that
+    // same first entry so the three never disagree.
+    let mut wire = diag.clone();
+    if diag.kind == "table" {
+        wire.top_candidates = crate::query_diag::rank_table_names(&diag.term, &declared, MISSING_IDENT_CANDIDATES_MAX);
+    }
+    let hint = crate::query_diag::build_hint(&wire, ctx.from_table.as_deref())
+        .unwrap_or_else(|| format!("`{}` not found", diag.term));
+    let candidates: Vec<&str> =
+        wire.top_candidates.iter().take(MISSING_IDENT_CANDIDATES_MAX).map(|c| c.name.as_str()).collect();
+    // `; closest: x` only when the diagnosis puts a candidate in a near band.
+    let closest = match diag.band {
+        crate::query_diag::Band::Absent => String::new(),
+        _ => wire.top_candidates.first().map(|c| format!("; closest: {}", c.name)).unwrap_or_default(),
+    };
+    match diag.kind {
+        "table" => Some((
+            TABLE_NOT_FOUND,
+            format!("no table '{}' is declared for this tenant{closest}", diag.term),
+            json!({
+                "table": diag.term,
+                "candidates": candidates,
+                "hint": hint,
+                "declared_tables_count": declared.len(),
+            }),
+        )),
+        "column" => {
+            let table = ctx.from_table.as_ref()?;
+            Some((
+                TABLE_COLUMN_NOT_FOUND,
+                format!("no column '{}' in table '{table}'{closest}", diag.term),
+                json!({
+                    "column": diag.term,
+                    "table": table,
+                    "candidates": candidates,
+                    "hint": hint,
+                    "declared_tables_count": declared.len(),
+                }),
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// [`load_schema_sync`] for the SQL-shaped table tools (`host.table.count`):
+/// an undeclared table answers the same `table_not_found` as
+/// `host.table.query` -- diagnosis, candidates and hint included.
+fn declared_schema_or_diagnosed_sync(conn: &Connection, table: &str) -> Result<LoadedSchema, AppError> {
+    load_schema_sync(conn, table).map_err(|e| {
+        if e.code() != TABLE_NOT_FOUND {
+            return e;
+        }
+        let declared = list_table_names_sync(conn).unwrap_or_default();
+        let candidates: Vec<(String, String)> = declared.iter().map(|t| (t.clone(), t.clone())).collect();
+        let diag = crate::query_diag::score_identifier(table, "table", &candidates);
+        let ctx = QueryDiagContext {
+            from_table: None,
+            where_equalities: Vec::new(),
+            column_annotation_candidates: Vec::new(),
+        };
+        match missing_identifier_parts(conn, &ctx, &diag) {
+            Some((code, message, data)) => AppError::Structured { code, message, data },
+            None => e,
+        }
+    })
+}
+
+/// R2: how many scored names ride in `data.candidates`.
+const MISSING_IDENT_CANDIDATES_MAX: usize = 5;
 
 /// PRD-mcphost-query-diagnosis requirement 4: distinct-value sample bound
 /// for value diagnosis, re-exported here (rather than imported per call
@@ -1833,12 +1981,11 @@ pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Valu
         });
     };
 
-    if !row["diagnosis"].is_null() || !row["hint"].is_null() {
-        return Ok(diagnose_result(log_id, row["diagnosis"].clone().into(), row["hint"].as_str().map(str::to_string)));
-    }
+    let stored = (!row["diagnosis"].is_null() || !row["hint"].is_null())
+        .then(|| (row["diagnosis"].clone(), row["hint"].as_str().map(str::to_string)));
 
     // requirement 5: "recomputing them against the current schema if the
-    // row predates this feature" -- reruns [`diagnose_sync`]'s own logic
+    // row predates this feature" -- reruns [`identifier_diagnosis`]'s own logic
     // from the row's own stored sql/error/row_count, never by re-running
     // the query itself.
     let sql = row["sql"].as_str().unwrap_or_default().to_string();
@@ -1867,10 +2014,11 @@ pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Valu
     };
 
     // A synthetic re-creation of the original call's `Result` shape --
-    // [`diagnose_sync`] only inspects an `Err`'s message text (via
+    // [`identifier_diagnosis`] only inspects an `Err`'s message text (via
     // `query_diag::parse_bind_error`) and an `Ok`'s emptiness, never any
     // other field, so this round-trips exactly what it needs from the
     // stored row without re-running the query.
+    let logged_an_error = error_message.is_some();
     let synthetic_result: Result<Vec<Value>, AppError> = if let Some(msg) = error_message {
         Err(AppError::Structured { code: crate::errors::STORAGE, message: msg, data: Value::Null })
     } else if row_count.unwrap_or(0) == 0 {
@@ -1880,20 +2028,40 @@ pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Valu
     };
 
     let path2 = tenant_db_path(state, tenant.id);
-    let (diagnosis, hint) = with_tenant_conn(path2, state.db.cfg(), state.db.counters_handle(), move |conn| {
-        Ok(diagnose_sync(conn, &ctx, &synthetic_result))
+    let (diagnosis, hint, data) = with_tenant_conn(path2, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        let diag = identifier_diagnosis(conn, &ctx, &synthetic_result);
+        let (diagnosis, hint) = render_diagnosis(&ctx, diag.as_ref());
+        // The `data` block of the error this row's query answered with
+        // (`missing_identifier_error`), as a success result: a logged
+        // missing table/column is not itself an error to diagnose.
+        let data = diag
+            .as_ref()
+            .filter(|_| logged_an_error)
+            .and_then(|d| missing_identifier_parts(conn, &ctx, d))
+            .map(|(code, _message, mut data)| {
+                data["error_code"] = json!(code);
+                data
+            });
+        Ok((diagnosis, hint, data))
     })
     .await?;
 
-    Ok(diagnose_result(log_id, diagnosis, hint))
+    match stored {
+        Some((diagnosis, hint)) => Ok(diagnose_result(log_id, diagnosis.into(), hint, data)),
+        None => Ok(diagnose_result(log_id, diagnosis, hint, data)),
+    }
 }
 
 /// The `host.table.query_diagnose` answer. `diagnosis` and `hint` are required
 /// by the advertised `outputSchema` (an object, a string), so "nothing to
 /// diagnose" is an empty `identifiers` list and an empty hint, never `null`.
-fn diagnose_result(log_id: i64, diagnosis: Option<Value>, hint: Option<String>) -> Value {
+fn diagnose_result(log_id: i64, diagnosis: Option<Value>, hint: Option<String>, data: Option<Value>) -> Value {
     let diagnosis = diagnosis.filter(|d| !d.is_null()).unwrap_or_else(|| json!({"identifiers": []}));
-    json!({"log_id": log_id, "diagnosis": diagnosis, "hint": hint.unwrap_or_default()})
+    let mut out = json!({"log_id": log_id, "diagnosis": diagnosis, "hint": hint.unwrap_or_default()});
+    if let Some(data) = data {
+        out["data"] = data;
+    }
+    out
 }
 
 /// PRD-mcphost-query-diagnosis P0 requirement 6/AC6: `host.table.query_stats(window_s?)`
@@ -2402,7 +2570,7 @@ async fn table_query_materialize(
 /// path did before this PRD split it in two -- requirement 2/3's own
 /// "every call, whether it returns rows or is refused, gets one row"
 /// still holds for this (non-materialising) path. The diagnosis pipeline
-/// ([`QueryDiagContext`]/[`diagnose_sync`]) that PRD-mcphost-query-diagnosis
+/// ([`QueryDiagContext`]/[`identifier_diagnosis`]) that PRD-mcphost-query-diagnosis
 /// added to the pre-split `table_query` carries over unchanged, now run
 /// from here instead. Materialising calls (`table_query_materialize`) are
 /// not logged here -- out of this PRD's own scope, left for the
@@ -2514,7 +2682,8 @@ async fn table_query_select(
                 // (requirement 4's eviction order), neither of which is part of
                 // the caller's own read-only query.
                 let _ = conn.pragma_update(None, "query_only", "OFF");
-                let (diagnosis, hint) = diagnose_sync(conn, &ctx, &result);
+                let diag = identifier_diagnosis(conn, &ctx, &result);
+                let (diagnosis, hint) = render_diagnosis(&ctx, diag.as_ref());
                 let diagnosis_str = diagnosis.as_ref().map(|v| v.to_string());
                 match &result {
                     Ok(rows) => {
@@ -2569,7 +2738,7 @@ async fn table_query_select(
                         },
                     ),
                 }
-                let out = result?;
+                let out = result.map_err(|e| missing_identifier_error(conn, &ctx, &e, diag.as_ref()).unwrap_or(e))?;
                 let count = count_filtered_sync(conn, &sql_owned, &[], ctx.from_table.as_deref()).ok();
                 if !referenced_handles.is_empty() {
                     for h in &referenced_handles {
@@ -2618,7 +2787,8 @@ async fn table_query_select(
                     // same "turn query_only back off before the log write"
                     // reasoning as the Unrestricted branch above.
                     let _ = conn.pragma_update(None, "query_only", "OFF");
-                    let (diagnosis, hint) = diagnose_sync(conn, &ctx, &result);
+                    let diag = identifier_diagnosis(conn, &ctx, &result);
+                    let (diagnosis, hint) = render_diagnosis(&ctx, diag.as_ref());
                     let diagnosis_str = diagnosis.as_ref().map(|v| v.to_string());
                     let rows = match result {
                         Ok(rows) => rows,
@@ -2637,7 +2807,7 @@ async fn table_query_select(
                                     est_tokens: None,
                                 },
                             );
-                            return Err(e);
+                            return Err(missing_identifier_error(conn, &ctx, &e, diag.as_ref()).unwrap_or(e));
                         }
                     };
                     let withheld = match &primary {
@@ -2801,7 +2971,7 @@ pub async fn table_count(state: &AppState, tenant: &Tenant, args: &Value) -> Res
             let sql_owned = base_sql.clone();
             let table_owned = table.clone();
             with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
-                load_schema_sync(conn, &table_owned)?;
+                declared_schema_or_diagnosed_sync(conn, &table_owned)?;
                 count_filtered_sync(conn, &sql_owned, &[], Some(&table_owned))
             })
             .await?
@@ -2820,7 +2990,7 @@ pub async fn table_count(state: &AppState, tenant: &Tenant, args: &Value) -> Res
             let bindings = outcome.bindings;
             let table_owned = table.clone();
             with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
-                load_schema_sync(conn, &table_owned)?;
+                declared_schema_or_diagnosed_sync(conn, &table_owned)?;
                 count_filtered_sync(conn, &rewritten_sql, &bindings, Some(&table_owned))
             })
             .await?
@@ -3219,6 +3389,12 @@ crate::err_code! {
 }
 
 crate::err_code! {
+    pub TABLE_ROW_CONFLICT,
+    code: "table_row_conflict", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Change the conflicting value in data.column or query the table first; nothing was appended.",
+}
+
+crate::err_code! {
     pub TABLE_BOUND_EXCEEDED,
     code: "table_bound_exceeded", family: Call, class: AgentFault, retryable: false,
     remedy: "Narrow the query so it stays under data.bound's limit.",
@@ -3231,10 +3407,40 @@ crate::err_code! {
 }
 
 crate::err_code! {
+    pub TABLE_COLUMN_NOT_FOUND,
+    code: "table_column_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Use a declared column; data.candidates lists the closest ones in data.table.",
+    data_keys: &["table", "column", "candidates", "hint", "declared_tables_count"],
+}
+
+crate::err_code! {
     pub TABLE_QUERY_REJECTED,
     code: "table_query_rejected", family: Args, class: AgentFault, retryable: false,
     remedy: "Fix the query; data.reason says why it was rejected.",
 }
+
+/// Every `err_code!`-declared code the `mcphost.table` bridge
+/// (`kinds::python::TableSidecarBridge`) can return in `resp.code`, sorted,
+/// including the shared `not_found` / `quota_exceeded` the table functions pass
+/// through (the pre-#517 `lookup()` branch kept these; tests/dryrun_ac07 pins
+/// `quota_exceeded`). An uncaught `McphostTableError` with one of these keeps
+/// it as the tool call's own error code (`kinds::python::map_envelope_error`).
+/// Members name the `err_code!` items, so the registry stays the only spelling (tests/tcse_ac07).
+pub const TABLE_ERROR_CODES: &[&str] = &[
+    crate::chart::CHART_INVALID_MARK,
+    HANDLE_NOT_FOUND,
+    HANDLE_QUOTA_EXCEEDED,
+    LINEAGE_BLOCKED,
+    crate::subkeys::NOT_FOUND,
+    crate::errors::QUOTA_EXCEEDED,
+    TABLE_ALREADY_EXISTS,
+    TABLE_BOUND_EXCEEDED,
+    TABLE_COLUMN_NOT_FOUND,
+    TABLE_NOT_FOUND,
+    TABLE_QUERY_REJECTED,
+    TABLE_ROW_CONFLICT,
+    crate::kinds::TABLE_UNAVAILABLE,
+];
 
 
 #[cfg(test)]
@@ -3305,6 +3511,7 @@ mod tests {
             fleet_ips: crate::state::FleetIps::empty(),
             end_user_activity: Default::default(),
             oauth_healthz_cache: Default::default(),
+            progress_healthz_cache: Default::default(),
             verified_client_ids: crate::state::VerifiedClientIds::empty(),
             session_bindings: session_bindings.clone(),
             invite_hints: crate::invites::InviteHintTracker::new(),
@@ -3323,6 +3530,7 @@ mod tests {
             confirm_clock_offset_secs: Default::default(),
             onboarding_cache: Default::default(),
             resource_subs: Default::default(),
+            listen_hub: Default::default(),
         }
     }
 
@@ -3515,11 +3723,11 @@ mod tests {
         )
         .await
         .unwrap_err();
-        // Structurally a plain SQLite "no such table" -- surfaced as
-        // `storage` (this module's generic rusqlite-error passthrough),
-        // never a distinct "forbidden" code that would leak the table's
-        // existence to the wrong tenant.
-        assert_eq!(err.code(), "storage");
+        // Structurally a plain SQLite "no such table" -- surfaced as the
+        // ordinary `table_not_found` (the same answer a table that never
+        // existed gets), never a distinct "forbidden" code that would leak
+        // the table's existence to the wrong tenant.
+        assert_eq!(err.code(), "table_not_found");
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -3616,5 +3824,41 @@ mod tests {
         assert_eq!(result["columns"]["value"], "real");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// PRD-mcphost-table-conflict-structured-error: `TABLE_ERROR_CODES` is a
+    /// hand-listed subset of the error registry (the bridge set spans several
+    /// `err_code!` families, so no field of `REGISTERED` yields it); this pins
+    /// it to the registry in both directions, so a renamed or newly declared
+    /// `table_*` code cannot drift out of the bridge docs or the code mapping.
+    #[test]
+    fn table_error_codes_match_registry() {
+        let registered: Vec<&str> = crate::error_registry::REGISTERED.iter().map(|e| e.code).collect();
+        for code in TABLE_ERROR_CODES {
+            assert!(
+                registered.contains(code),
+                "TABLE_ERROR_CODES member {code:?} is not err_code!-declared"
+            );
+        }
+        for code in registered.iter().filter(|c| c.starts_with("table_")) {
+            assert!(
+                TABLE_ERROR_CODES.contains(code),
+                "registry code {code:?} is not in TABLE_ERROR_CODES; add it to TABLE_ERROR_CODES; \
+                 kinds::python::render_bridge_docs_block lists it as a bridge code"
+            );
+        }
+        assert!(
+            TABLE_ERROR_CODES.windows(2).all(|w| w[0] < w[1]),
+            "TABLE_ERROR_CODES must be strictly sorted (sorted and unique): {TABLE_ERROR_CODES:?}"
+        );
+        // A regression pin, not a second source of truth: the shared codes the
+        // table functions pass through, which the pre-#517 `lookup()` branch kept.
+        for shared in ["not_found", "quota_exceeded"] {
+            assert!(
+                TABLE_ERROR_CODES.contains(&shared),
+                "TABLE_ERROR_CODES must contain {shared:?}: tests/dryrun_ac07 pins quota_exceeded and the \
+                 pre-#517 lookup() branch kept every registry code"
+            );
+        }
     }
 }

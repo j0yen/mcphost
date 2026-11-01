@@ -6,11 +6,21 @@
 //! `admin.shared_tools`/`admin.tool_unshare` live in `admin.rs` instead,
 //! alongside the rest of the `admin.*` surface.
 
+use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::state::AppState;
+
+/// The shape `host.tool.spec_shared` reads in `tool`: `<owner_namespace>.<name>`,
+/// split at the first dot. `tool.pattern` is this string.
+pub const QUALIFIED_NAME_PATTERN: &str = "\\.";
+
+/// Whether `s` has the dot [`QUALIFIED_NAME_PATTERN`] states.
+pub fn is_qualified_name(s: &str) -> bool {
+    s.contains('.')
+}
 
 /// PRD-mcphost-scoped-tool-share R1: what a share lets its grantee do. The
 /// ONE source of the scope set: `host.tool_share`'s `scopes.items.enum`,
@@ -210,18 +220,79 @@ pub fn parse_tags(args: &Value) -> Result<Option<Vec<String>>, AppError> {
     Ok(Some(out))
 }
 
-fn tool_json(namespace: &str, tool: &crate::db::ToolRow) -> Value {
-    json!({
-        "name": format!("{namespace}.{}", tool.name),
-        "kind": tool.kind,
-        "owner": namespace,
-        "visibility": tool.visibility,
-        "group": tool.shared_group,
-        "description": tool.share_description,
-        "tags": tool.tags,
-        "tested_version": tool.tested_version,
-        "stale_test": tool.tested_version != Some(tool.current_version),
-    })
+/// PRD-mcphost-trusted-discovery-catalog-receipts R3/R5: one catalog entry --
+/// the ONE emitter behind `host.catalog.search`, the well-known document,
+/// `host.catalog.get`. `contracts/host-output-schemas.v1.json`
+/// declares exactly these fields (a two-way test holds the line). The owner
+/// appears by namespace only: no caller or tenant id is ever on an entry.
+#[derive(Debug, Clone, Serialize)]
+pub struct CatalogEntry {
+    pub name: String,
+    pub kind: String,
+    pub owner: String,
+    pub visibility: String,
+    pub group: Option<String>,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub tested_version: Option<i64>,
+    pub stale_test: bool,
+    /// The host-run test verdict, only while it judged the current version.
+    pub test_verdict: Option<String>,
+    pub calls_30d: CatalogCalls,
+}
+
+/// `calls_30d`: cross-tenant calls of the last 30 days, `n` of them, `ok` succeeded.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct CatalogCalls {
+    pub n: i64,
+    pub ok: i64,
+}
+
+/// `view`: which population the result ranked.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct CatalogView {
+    pub include_synthetic: bool,
+    /// Distinct owners in the view, before `limit`.
+    pub owners: i64,
+}
+
+/// The `host.catalog.search` result and the well-known document.
+#[derive(Debug, Clone, Serialize)]
+pub struct CatalogResult {
+    pub tools: Vec<CatalogEntry>,
+    pub view: CatalogView,
+}
+
+impl CatalogEntry {
+    pub fn new(namespace: &str, tool: &ToolRow, calls: CatalogCalls) -> Self {
+        CatalogEntry {
+            name: format!("{namespace}.{}", tool.name),
+            kind: tool.kind.clone(),
+            owner: namespace.to_string(),
+            visibility: tool.visibility.clone(),
+            group: tool.shared_group.clone(),
+            description: tool.share_description.clone(),
+            tags: tool.tags.clone(),
+            tested_version: tool.tested_version,
+            stale_test: tool.tested_version != Some(tool.current_version),
+            test_verdict: tool.current_verdict().map(str::to_string),
+            calls_30d: calls,
+        }
+    }
+}
+
+impl From<&crate::db::CatalogHit> for CatalogEntry {
+    fn from(hit: &crate::db::CatalogHit) -> Self {
+        CatalogEntry::new(&hit.namespace, &hit.tool, CatalogCalls { n: hit.calls_n, ok: hit.calls_ok })
+    }
+}
+
+fn catalog_result(page: &crate::db::CatalogPage, include_synthetic: bool) -> Value {
+    let result = CatalogResult {
+        tools: page.hits.iter().map(CatalogEntry::from).collect(),
+        view: CatalogView { include_synthetic, owners: page.owners },
+    };
+    serde_json::to_value(result).unwrap_or(Value::Null)
 }
 
 /// R2: the `scopes` argument. Absent: `["call"]`, or `["call","read_source"]`
@@ -253,12 +324,15 @@ fn parse_scopes(args: &Value, visibility: &str, expose_spec: bool) -> Result<Vec
         .collect())
 }
 
-/// R2: `rate_per_hour_per_caller`, 1..=10000, optional.
+/// The top of `rate_per_hour_per_caller`'s range (the descriptor's `maximum`).
+pub const RATE_PER_HOUR_MAX: i64 = 10_000;
+
+/// R2: `rate_per_hour_per_caller`, 1..=[`RATE_PER_HOUR_MAX`], optional.
 fn parse_rate(args: &Value) -> Result<Option<i64>, AppError> {
     match args.get("rate_per_hour_per_caller") {
         None | Some(Value::Null) => Ok(None),
         Some(v) => match v.as_i64() {
-            Some(n) if (1..=10_000).contains(&n) => Ok(Some(n)),
+            Some(n) if (1..=RATE_PER_HOUR_MAX).contains(&n) => Ok(Some(n)),
             _ => Err(AppError::InvalidArgs("rate_per_hour_per_caller must be an integer 1..10000".into())),
         },
     }
@@ -630,9 +704,10 @@ pub async fn list_shared(state: &AppState, caller: &Tenant, args: &Value) -> Res
         .filter(|(o, r)| matches(&o.namespace, r))
         .map(|(o, r)| entry(&o.namespace, r, "group"))
         .collect();
-    for (ns, row) in state.db.search_catalog(q.clone(), 1000).await? {
-        if ns != caller.namespace {
-            all.push(entry(&ns, &row, "public"));
+    let now = crate::state::now_unix();
+    for hit in state.db.search_catalog(q.clone(), 1000, caller.is_synthetic_marked(), now).await?.hits {
+        if hit.namespace != caller.namespace {
+            all.push(entry(&hit.namespace, &hit.tool, "public"));
         }
     }
     let truncated = all.len() > limit;
@@ -716,14 +791,22 @@ async fn resolve_visible(
 /// How long after an unshare a past caller still gets `share_revoked`.
 const REVOKED_WINDOW_SECS: i64 = 7 * 86_400;
 
-/// `host.catalog.search(q?, limit?)` (AC7): a `LIKE` over name/description
-/// among every `visibility = 'public'` tool, regardless of caller.
-pub async fn catalog_search(state: &AppState, args: &Value) -> Result<Value, AppError> {
+/// `host.catalog.search(q?, limit?, include_synthetic?)` (AC7): a `LIKE` over
+/// name/description among every `visibility = 'public'` tool of an enabled
+/// owner. PRD-mcphost-trusted-discovery-catalog-receipts R2: synthetic-marked
+/// owners are listed only to a synthetic-marked caller, or when
+/// `include_synthetic` is true.
+pub async fn catalog_search(state: &AppState, caller: &Tenant, args: &Value) -> Result<Value, AppError> {
     let q = arg_str_opt(args, "q");
     let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(20).clamp(1, 200);
-    let rows = state.db.search_catalog(q, limit).await?;
-    let tools: Vec<Value> = rows.iter().map(|(ns, t)| tool_json(ns, t)).collect();
-    Ok(json!({ "tools": tools }))
+    let include_synthetic = match args.get("include_synthetic") {
+        None | Some(Value::Null) => caller.is_synthetic_marked(),
+        Some(v) => v
+            .as_bool()
+            .ok_or_else(|| AppError::InvalidArgs("include_synthetic must be a boolean".into()))?,
+    };
+    let page = state.db.search_catalog(q, limit, include_synthetic, crate::state::now_unix()).await?;
+    Ok(catalog_result(&page, include_synthetic))
 }
 
 /// `host.catalog.get(full_name)` (AC7): `full_name` is `<namespace>.<name>`;
@@ -753,7 +836,15 @@ pub async fn catalog_get(state: &AppState, caller: Option<&Tenant>, args: &Value
     };
     let kind = state.kinds.get(&tool.kind);
     let args_schema = kind.map(|k| k.describe(&tool.spec).input_schema);
-    let mut value = tool_json(namespace, &tool);
+    // R7: the same entry as the listing, receipts included, with no view filter
+    // (a direct lookup is not discovery); the caller's class picks which
+    // callers the receipt counts.
+    let include_synthetic = caller.is_some_and(Tenant::is_synthetic_marked);
+    let (n, ok) = state
+        .db
+        .tool_receipts(tool.tenant_id, tool.name.clone(), include_synthetic, crate::state::now_unix())
+        .await?;
+    let mut value = serde_json::to_value(CatalogEntry::new(namespace, &tool, CatalogCalls { n, ok })).unwrap_or(Value::Null);
     if let Some(schema) = args_schema {
         value["args_schema"] = schema;
     }
@@ -770,9 +861,9 @@ pub async fn catalog_get(state: &AppState, caller: Option<&Tenant>, args: &Value
 /// The `/.well-known/mcp/catalog.json` document (AC7): the same public
 /// listing as `host.catalog.search` with no query, for crawlers.
 pub async fn catalog_document(state: &AppState) -> Result<Value, AppError> {
-    let rows = state.db.search_catalog(None, 1000).await?;
-    let tools: Vec<Value> = rows.iter().map(|(ns, t)| tool_json(ns, t)).collect();
-    Ok(json!({ "tools": tools }))
+    // The anonymous document is always the real-owner view.
+    let page = state.db.search_catalog(None, 1000, false, crate::state::now_unix()).await?;
+    Ok(catalog_result(&page, false))
 }
 
 /// PRD-mcphost-shared-tool-caller-usage requirement 3 (AC3): `quota_caller`

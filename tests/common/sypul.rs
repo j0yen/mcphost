@@ -116,3 +116,58 @@ pub fn orders_csv(rows: usize) -> String {
     }
     out
 }
+
+/// What [`TwoFetch`] answers from its second request on.
+#[derive(Clone, Copy)]
+pub enum Later {
+    /// The same CSV again, with its `ETag` (an `If-None-Match` earns a 304).
+    Unchanged,
+    /// HTTP 500.
+    ServerError,
+}
+
+/// sylp AC6: a fixture CSV server whose FIRST request always gets the CSV
+/// with 200 and whose later requests get [`Later`], so the second sync fetch
+/// of a proof run is deterministic whatever the scheduler tick's timing.
+#[derive(Clone)]
+pub struct TwoFetch {
+    pub base: String,
+}
+
+struct TwoFetchState {
+    body: String,
+    later: Later,
+    hits: AtomicU64,
+}
+
+async fn serve_two_fetch(State(st): State<Arc<TwoFetchState>>, headers: HeaderMap) -> Response {
+    let n = st.hits.fetch_add(1, Ordering::SeqCst);
+    if n > 0 && matches!(st.later, Later::ServerError) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "fixture: second fetch fails").into_response();
+    }
+    let etag = etag_of(&st.body);
+    let mut out = HeaderMap::new();
+    out.insert(header::ETAG, HeaderValue::from_str(&etag).expect("etag"));
+    if headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) == Some(etag.as_str()) {
+        return (StatusCode::NOT_MODIFIED, out).into_response();
+    }
+    out.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv"));
+    (StatusCode::OK, out, st.body.clone()).into_response()
+}
+
+impl TwoFetch {
+    pub async fn start(body: &str, later: Later) -> TwoFetch {
+        let st = Arc::new(TwoFetchState { body: body.to_string(), later, hits: AtomicU64::new(0) });
+        let app = Router::new().fallback(serve_two_fetch).with_state(st);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind fixture");
+        let addr = listener.local_addr().expect("fixture addr");
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        TwoFetch { base: format!("http://{addr}") }
+    }
+
+    pub fn csv_url(&self) -> String {
+        format!("{}/orders.csv", self.base)
+    }
+}

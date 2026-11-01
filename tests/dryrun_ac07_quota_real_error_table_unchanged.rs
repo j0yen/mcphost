@@ -51,11 +51,12 @@ def main(args):
         .expect_err("appending past table_rows_max must fail even under a dry run");
     // The quota rejection happens inside `mcphost.table.append`, inside the
     // tool's own python code -- same as any other uncaught exception
-    // escaping the tool, it surfaces as `tool_exception` (PRD-mcphost-
-    // python-kind-runtime requirement 1/AC2), never silently swallowed or
-    // downgraded into a generic failure: the real `table_rows_max` quota
-    // rejection is right there in the message and exception class.
-    assert_eq!(err.error_code.as_deref(), Some("tool_exception"), "{err:?}");
+    // escaping the tool; PRD-mcphost-table-conflict-structured-error keeps the
+    // registry code the table refusal carried (`quota_exceeded`) instead of
+    // the anonymous `tool_exception`, never silently swallowed or downgraded
+    // into a generic failure: the real `table_rows_max` quota rejection is
+    // right there in the message and exception class.
+    assert_eq!(err.error_code.as_deref(), Some("quota_exceeded"), "{err:?}");
     assert_eq!(err.data["exception_class"], json!("McphostTableError"), "{err:?}");
     assert!(
         err.message.contains("table_rows_max"),

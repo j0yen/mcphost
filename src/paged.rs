@@ -663,6 +663,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.connect.list", UNPAGED_REGISTRY),
     ("host.connect.providers", UNPAGED_REGISTRY),
     ("host.docs.search", UNPAGED_RANKED),
+    ("host.docs.status", UNPAGED_ECHO),
     ("host.doctor", UNPAGED_WINDOW),
     ("host.schedule_receipts", UNPAGED_WINDOW),
     ("host.drift.reviews", UNPAGED_WINDOW),
@@ -866,7 +867,7 @@ pub fn project_page(page: &mut Value, key: &str, fields: &[String]) {
 
 /// `fields` on a verb that has `unpaged_reason` and no projection is
 /// `args_invalid` naming the argument, not silently ignored.
-pub fn refuse_fields_on_unprojected(verb: &str, args: &Value) -> Result<(), AppError> {
+pub(crate) fn refuse_fields_on_unprojected(verb: &str, args: &Value) -> Result<(), AppError> {
     if args.get("fields").is_some_and(|v| !v.is_null())
         && fields_for(verb).is_none()
         && unpaged_reason(verb).is_some()

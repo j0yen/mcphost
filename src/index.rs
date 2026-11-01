@@ -662,7 +662,7 @@ pub async fn index_refresh(state: &AppState, tenant: &Tenant, args: &Value) -> R
 // ---- host.index.query -----------------------------------------------------
 
 /// Most hits one query returns.
-const QUERY_K_MAX: i64 = 50;
+pub const QUERY_K_MAX: i64 = 50;
 const QUERY_K_DEFAULT: i64 = 5;
 
 /// R5: lexical search over one index's chunks. `index` carries the same

@@ -200,7 +200,7 @@ enum Command {
     /// `docs/protocol/resources.md`, generated from `RESOURCE_TEMPLATES`.
     ResourcesDoc,
     /// PRD-mcphost-delegation-recipes-and-quickstart requirement 5: print the
-    /// README's `<!-- recipe:sub_agent_key -->` block for
+    /// README's `<!-- quickstart-recipe:sub_agent_key -->` block for
     /// `scripts/sandbox-api-doc-check.sh`.
     RecipeSection,
     /// PRD-mcphost-prompts-from-published-tools requirement 5: print
@@ -1016,7 +1016,7 @@ async fn main() -> anyhow::Result<()> {
             let plans = mcphost::plans::PlanCatalog::load_or_init(&plans_path)?;
             let report = mcphost::funnel::compute(&db, &plans, since_unix).await?;
             let days = days.unwrap_or(7).clamp(1, 365);
-            let (by_surface, probe) =
+            let (by_surface, probe, synthetic_excluded) =
                 mcphost::funnel::surface_report(&db, mcphost::state::now_unix(), days).await?;
             if let (Some(want), false) = (surface.as_deref(), json) {
                 let row = &by_surface[want];
@@ -1040,8 +1040,18 @@ async fn main() -> anyhow::Result<()> {
             } else if json {
                 let mut body = report.to_json();
                 if let Some(obj) = body.as_object_mut() {
+                    obj.extend(mcphost::funnel::origin_report(&db).await?);
                     obj.insert("by_surface".to_string(), by_surface);
                     obj.insert("probe".to_string(), probe);
+                    obj.insert(
+                        "progress_7d".to_string(),
+                        mcphost::progress::compute(&db, mcphost::state::now_unix()).await?,
+                    );
+                    obj.insert("synthetic_excluded".to_string(), serde_json::json!(synthetic_excluded));
+                    let (recipes, recipes_synthetic) =
+                        mcphost::funnel::recipe_attempts_7d(&db, mcphost::state::now_unix()).await?;
+                    obj.insert("recipe_attempts_7d".to_string(), recipes);
+                    obj.insert("recipe_attempts_synthetic_7d".to_string(), serde_json::json!(recipes_synthetic));
                 }
                 println!("{}", serde_json::to_string(&body)?);
             } else {
@@ -1783,6 +1793,9 @@ async fn main() -> anyhow::Result<()> {
                             for member in mcphost::api_contract::missing_envelope_fields(&committed) {
                                 eprintln!("  - output_envelope_fields is missing `{member}`");
                             }
+                            for path in mcphost::resources::contract_drift(&committed, mcphost::resources::RESOURCE_TEMPLATES) {
+                                eprintln!("  - {path} differs from RESOURCE_TEMPLATES");
+                            }
                         }
                         std::process::exit(1);
                     }
@@ -2202,6 +2215,7 @@ async fn main() -> anyhow::Result<()> {
                 fleet_ips,
                 end_user_activity: Default::default(),
                 oauth_healthz_cache: Default::default(),
+                progress_healthz_cache: Default::default(),
                 verified_client_ids,
                 session_bindings,
                 invite_hints: mcphost::invites::InviteHintTracker::new(),
@@ -2222,6 +2236,7 @@ async fn main() -> anyhow::Result<()> {
                 confirm_clock_offset_secs: Default::default(),
                 onboarding_cache: Default::default(),
                 resource_subs: Default::default(),
+                listen_hub: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

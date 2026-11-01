@@ -835,6 +835,17 @@ fn quota_error(code: &'static str, ceiling: &str, limit: i64, used: i64) -> AppE
     }
 }
 
+/// The canonical standard-alphabet base64 [`decode_content`] accepts: whole
+/// four-character groups, then an optional final group padded with `=` whose
+/// last symbol carries no stray low bits. `host.blob.put`'s `content_base64.pattern`.
+pub const BASE64_PATTERN: &str = "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$";
+
+/// Whether `s` decodes under [`decode_content`]'s engine (what [`BASE64_PATTERN`] states).
+pub fn is_base64_shape(s: &str) -> bool {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.decode(s).is_ok()
+}
+
 /// R1: `content_base64`, decoded.
 fn decode_content(args: &Value) -> Result<Vec<u8>, AppError> {
     let Some(b64) = args.get("content_base64").and_then(Value::as_str) else {

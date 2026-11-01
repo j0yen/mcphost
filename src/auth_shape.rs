@@ -43,6 +43,31 @@ pub const LIFECYCLE_TERMINAL_VERBS: &[&str] = &["host.self.offboard"];
 /// `disabled_reason` that `Db::self_offboard_tenant` records.
 pub const SELF_OFFBOARD_REASON: &str = "self_offboard";
 
+/// PRD-mcphost-synthetic-implicit-tenant-expiry: `disabled_reason` the idle
+/// sweep records; refused exactly like [`SELF_OFFBOARD_REASON`].
+pub const IDLE_EXPIRED_REASON: &str = "idle_expired";
+
+/// PRD-mcphost-external-unclaimed-tenant-expiry: the two `disabled_reason`
+/// values of the external unclaimed policy. `EXPIRING` is phase 1 of the
+/// invalidation (marked, teardown still running); `EXPIRED` is terminal and
+/// the only one a claim restores or the purge deletes.
+pub const UNCLAIMED_EXPIRING_REASON: &str = "unclaimed_expiring";
+pub const UNCLAIMED_EXPIRED_REASON: &str = "unclaimed_expired";
+
+/// `true` iff a tenant disabled for `reason` ended itself (offboard, idle
+/// expiry or the unclaimed policy), so its peer is free to start a fresh tenant.
+pub fn frees_peer(reason: Option<&str>) -> bool {
+    matches!(
+        reason,
+        Some(
+            SELF_OFFBOARD_REASON
+                | IDLE_EXPIRED_REASON
+                | UNCLAIMED_EXPIRING_REASON
+                | UNCLAIMED_EXPIRED_REASON
+        )
+    )
+}
+
 /// `true` iff a disabled tenant (`disabled_reason`) may still authenticate
 /// for `verb` (the name as sent -- an alias resolves to its canonical).
 pub fn lets_through_disabled(verb: &str, disabled_reason: Option<&str>) -> bool {

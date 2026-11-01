@@ -10,6 +10,8 @@ mod common;
 mod ci_sandbox_support;
 #[path = "support/osreach.rs"]
 mod osreach;
+#[path = "support/shape_probe.rs"]
+mod shape_probe;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/vbd_calls.rs"]
@@ -153,6 +155,10 @@ mod kdr_ac02_python_page_tables_generated;
 mod kdr_ac03_check_names_stale_block;
 #[path = "lanecov_ac07_docs_document_adding_a_lane.rs"]
 mod lanecov_ac07_docs_document_adding_a_lane;
+#[path = "mcphost-external-class-positive-evidence_ac06_four_surfaces_agree.rs"]
+mod mcphost_external_class_positive_evidence_ac06_four_surfaces_agree;
+#[path = "mcphost-external-class-positive-evidence_ac07_origin_set_generated.rs"]
+mod mcphost_external_class_positive_evidence_ac07_origin_set_generated;
 #[path = "mcphost-llms-install-doc_ac05_sitemap_lists_the_page.rs"]
 mod mcphost_llms_install_doc_ac05_sitemap_lists_the_page;
 #[path = "mcphost_chain_run_lineage_ac13_deferral_is_justified.rs"]
@@ -199,6 +205,24 @@ mod osreach_ac03_unreached_cap;
 mod osreach_ac04_import_own_dry_run;
 #[path = "osreach_ac05_validator_control_and_doctor.rs"]
 mod osreach_ac05_validator_control_and_doctor;
+#[path = "osroot_ac01_roots_type_only_host_keys.rs"]
+mod osroot_ac01_roots_type_only_host_keys;
+#[path = "osroot_ac02_forwarded_verb_results_validate.rs"]
+mod osroot_ac02_forwarded_verb_results_validate;
+#[path = "osroot_ac03_tenant_keys_validate_at_both_roots.rs"]
+mod osroot_ac03_tenant_keys_validate_at_both_roots;
+#[path = "osroot_ac04_ask_wait_pending_carries_keys.rs"]
+mod osroot_ac04_ask_wait_pending_carries_keys;
+#[path = "osroot_ac05_run_row_nulls_validate.rs"]
+mod osroot_ac05_run_row_nulls_validate;
+#[path = "osroot_ac06_opaque_root_diff_category.rs"]
+mod osroot_ac06_opaque_root_diff_category;
+#[path = "osrx_ac01_real_export_previews.rs"]
+mod osrx_ac01_real_export_previews;
+#[path = "osrx_ac02_plan_mode_offline.rs"]
+mod osrx_ac02_plan_mode_offline;
+#[path = "osrx_ac03_stream_parser_pairs_results.rs"]
+mod osrx_ac03_stream_parser_pairs_results;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
 mod outsch_ac02_every_canonical_declares_an_object_output_schema;
 #[path = "ptbatch_ac01_classify_files_agrees_with_classify.rs"]
@@ -217,8 +241,34 @@ mod rlfe_ac06_limit_clamp_and_children_preserved;
 mod rlfe_ac07_admin_runs_refused_through_the_shared_validator;
 #[path = "rsm_ac04_next_call_follows_the_state_table.rs"]
 mod rsm_ac04_next_call_follows_the_state_table;
+#[path = "sba_ac01_boundary_calls_router_and_validator_agree.rs"]
+mod sba_ac01_boundary_calls_router_and_validator_agree;
+#[path = "sba_ac02_upper_bound_guards_have_schema_keywords.rs"]
+mod sba_ac02_upper_bound_guards_have_schema_keywords;
+#[path = "sba_ac04_contacts_import_bounds_refused_by_validator.rs"]
+mod sba_ac04_contacts_import_bounds_refused_by_validator;
+#[path = "sba_ac05_contacts_import_in_range_reaches_handler.rs"]
+mod sba_ac05_contacts_import_in_range_reaches_handler;
+#[path = "sba_ac06_contract_carries_new_bounds.rs"]
+mod sba_ac06_contract_carries_new_bounds;
+#[path = "sba_ac07_bound_call_script_selftest.rs"]
+mod sba_ac07_bound_call_script_selftest;
 #[path = "sfc_ac04_stray_notify_panics_in_debug.rs"]
 mod sfc_ac04_stray_notify_panics_in_debug;
+#[path = "shp_ac01_shape_probes_router_and_validator_agree.rs"]
+mod shp_ac01_shape_probes_router_and_validator_agree;
+#[path = "shp_ac02_every_property_carries_a_type.rs"]
+mod shp_ac02_every_property_carries_a_type;
+#[path = "shp_ac03_policy_set_rule_is_a_typed_list.rs"]
+mod shp_ac03_policy_set_rule_is_a_typed_list;
+#[path = "shp_ac04_patterns_and_handler_checks_agree.rs"]
+mod shp_ac04_patterns_and_handler_checks_agree;
+#[path = "shp_ac05_blast_radius_change_kind_is_an_enum.rs"]
+mod shp_ac05_blast_radius_change_kind_is_an_enum;
+#[path = "shp_ac06_ask_options_are_unique_and_untrimmed.rs"]
+mod shp_ac06_ask_options_are_unique_and_untrimmed;
+#[path = "shp_ac07_contract_carries_new_shape_keywords.rs"]
+mod shp_ac07_contract_carries_new_shape_keywords;
 #[path = "sreg_ac01_registry_single_source.rs"]
 mod sreg_ac01_registry_single_source;
 #[path = "statusfeed_ac11_deferral_is_justified.rs"]
@@ -229,25 +279,5 @@ mod suite_ac2_check_catches_unregistered_file;
 mod suite_ac4_archived_prd_pointers_resolve;
 #[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
 mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
-#[path = "syreg_ac02_source_kinds_render_once_everywhere.rs"]
-mod syreg_ac02_source_kinds_render_once_everywhere;
-#[path = "thand_ac02_status_enum_source_of_truth.rs"]
-mod thand_ac02_status_enum_source_of_truth;
-#[path = "toolname_ac03_tools_list_alias_entries.rs"]
-mod toolname_ac03_tools_list_alias_entries;
-#[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
-mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;
-#[path = "vaultst_ac09_deferral_is_justified.rs"]
-mod vaultst_ac09_deferral_is_justified;
-#[path = "vbd_ac01_validated_by_default_coverage.rs"]
-mod vbd_ac01_validated_by_default_coverage;
-#[path = "vbd_ac03_skips_come_from_the_owner_registry.rs"]
-mod vbd_ac03_skips_come_from_the_owner_registry;
-#[path = "vbd_ac05_unknown_argument_everywhere.rs"]
-mod vbd_ac05_unknown_argument_everywhere;
-#[path = "vbd_ac06_descriptor_enums_from_constants.rs"]
-mod vbd_ac06_descriptor_enums_from_constants;
-#[path = "verbfwd_ac08_forward_stack_budget.rs"]
-mod verbfwd_ac08_forward_stack_budget;

@@ -36,9 +36,10 @@ fn errreg_ac02_catalog_host_errors_and_help_bodies_are_byte_identical() {
     let mut cat = catalog_json(base);
     cat.as_object_mut().unwrap().remove("version");
     cat["codes"].as_array_mut().unwrap().retain(|r| snap_codes.contains(&r["code"].as_str().unwrap()));
-    // `data_keys` (spkind AC5) is an optional row key the pre-PRD snapshot predates.
+    // `data_keys` (spkind AC5) and `reasons` (ipsess AC4) are optional row keys the pre-PRD snapshot predates.
     for row in cat["codes"].as_array_mut().unwrap() {
         row.as_object_mut().unwrap().remove("data_keys");
+        row.as_object_mut().unwrap().remove("reasons");
     }
     assert_eq!(
         serde_json::to_string(&cat).unwrap(),
@@ -49,6 +50,7 @@ fn errreg_ac02_catalog_host_errors_and_help_bodies_are_byte_identical() {
     for code in &snap_codes {
         let mut body = call(base, &json!({ "code": code })).expect("host.errors {code}");
         body.as_object_mut().unwrap().remove("data_keys");
+        body.as_object_mut().unwrap().remove("reasons");
         assert_eq!(
             serde_json::to_string(&body).unwrap(),
             serde_json::to_string(&snap["host_errors"][code]).unwrap(),

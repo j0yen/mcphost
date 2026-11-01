@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 # GENERATED from recipes/data-sync.toml by `cargo xtask recipes` -- do not hand-edit.
-# Recipe calls (budget: 6 calls, within 90 s):
+# Recipe calls (budget: 8 calls, within 95 s):
 #   1. host.sync.create
 #   2. host.sync.run_now
 #   3. host.sync.get
-#   4. host.sync.list
-#   5. host.sync.delete
+#   4. host.sync.run_now
+#   5. host.sync.get
+#   6. host.sync.list
+#   7. host.sync.delete
 # proof.sh -- runnable end-to-end proof of "Data sync" (see www/llms.txt).
 # One fresh tenant against $MCPHOST_URL: signs up (header-stamped synthetic),
-# registers a CSV source with host.sync.create, reads it back with
-# host.sync.get and host.sync.list, then deletes it with host.sync.delete so
-# no */15 schedule is left running on a throwaway tenant. host.sync.create
-# does not fetch the CSV, so the proof needs no network beyond $MCPHOST_URL.
+# registers a CSV source with host.sync.create, runs it twice with
+# host.sync.run_now and reads each receipt with host.sync.get (the first must
+# write every CSV row, the second must report no change), lists it with
+# host.sync.list, then deletes it with host.sync.delete so no */15 schedule is
+# left running on a throwaway tenant. The host fetches the CSV on its
+# scheduler tick, so each get waits for a tick (waited_s= is the seconds since
+# the matching run_now).
 #
 # Requires: bash, curl, python3. Deliberately has no jq dependency.
 #
@@ -21,6 +26,8 @@
 #   DATA_SYNC_CSV_URL the CSV the sync points at. The host refuses its own
 #                     domain (host_not_allowed), so the default is the
 #                     committed examples/data-sync/orders.csv on GitHub.
+#   DATA_SYNC_ROWS    data rows the first receipt must report as rows_added.
+#                     Default: 12, the data rows of examples/data-sync/orders.csv.
 #   SYNTHETIC_HEADER  the x-mcphost-synthetic label the signup carries.
 #                     Default: recipe:data-sync. Set to the empty string it
 #                     REFUSES (exit 2) against a non-loopback MCPHOST_URL:
@@ -36,8 +43,9 @@ MCPHOST_URL="${MCPHOST_URL:-https://mcphost.dev/mcp}"
 [[ -n "${MCPHOST_PROVE_DRY:-}" ]] && { echo "plan: data-sync proof against $MCPHOST_URL"; exit 0; }
 # Seconds between re-issues, and the step's retry_s, of a retry_until_expect step (generated).
 RETRY_UNTIL_EXPECT_POLL_S=5
-RETRY_UNTIL_EXPECT_DEADLINE_S=45
+RETRY_UNTIL_EXPECT_DEADLINE_S=40
 DATA_SYNC_CSV_URL="${DATA_SYNC_CSV_URL:-https://raw.githubusercontent.com/j0yen/mcphost/main/examples/data-sync/orders.csv}"
+DATA_SYNC_ROWS="${DATA_SYNC_ROWS:-12}"
 # `-` not `:-`: unset takes the default label, an explicit empty value stays empty.
 SYNTHETIC_HEADER="${SYNTHETIC_HEADER-recipe:data-sync}"
 
@@ -229,46 +237,88 @@ check "create_table_is_orders" "$([[ "$SYNC_TABLE" == "orders" ]] && echo 1 || e
 check "create_is_new" "$([[ "$EXISTING" == "false" ]] && echo 1 || echo 0)"
 echo "host.sync.create: sync_id=${SYNC_ID} table=${SYNC_TABLE} status=${SYNC_STATUS} next_run_unix=${NEXT_RUN} existing=${EXISTING}"
 
+# poll_sync_get <label> <want_change_detected> <want_rows_added> <run_now_epoch>
+# Re-issues host.sync.get until the receipt it reads is the one the matching
+# run_now produced and every expect below holds (retry_until_expect, for
+# ${RETRY_UNTIL_EXPECT_DEADLINE_S} s, every ${RETRY_UNTIL_EXPECT_POLL_S} s), then leaves the
+# receipt fields in GET_* and the seconds since that run_now in GET_WAITED.
+poll_sync_get() {
+  local label="$1" want_change="$2" want_rows="$3" since="$4"
+  local deadline=$(( $(date +%s) + RETRY_UNTIL_EXPECT_DEADLINE_S ))
+  local get_args get_resp get_struct
+  get_args=$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")
+  while :; do
+    get_resp=$(mcp_call "host.sync.get" "$get_args" "$OWNER_KEY")
+    get_struct=$(structured_of "$get_resp")
+    GET_ERR=0; has_error "$get_resp" && GET_ERR=1
+    GET_TABLE=$(json_get "$get_struct" "table")
+    GET_RUN_ID=$(json_get "$get_struct" "last_run.run_id")
+    GET_STARTED=$(json_get "$get_struct" "last_run.started_unix")
+    GET_STATUS=$(json_get "$get_struct" "last_run.status")
+    GET_ROWS=$(json_get "$get_struct" "last_run.rows_added")
+    GET_CHANGED=$(json_get "$get_struct" "last_run.change_detected")
+    GET_WHY=""
+    if [[ "$GET_ERR" == "1" ]]; then GET_WHY="call errored"
+    elif [[ "$GET_TABLE" != "orders" ]]; then GET_WHY="table is '${GET_TABLE}', want orders"
+    elif [[ -z "$GET_RUN_ID" ]]; then GET_WHY="last_run.run_id is absent"
+    elif [[ -z "$GET_STARTED" ]]; then GET_WHY="last_run.started_unix is absent"
+    elif [[ "$GET_STATUS" != "ok" ]]; then GET_WHY="last_run.status is '${GET_STATUS}', want ok"
+    elif [[ "$GET_CHANGED" != "$want_change" ]]; then GET_WHY="last_run.change_detected is '${GET_CHANGED}', want ${want_change}"
+    elif [[ "$GET_ROWS" != "$want_rows" ]]; then GET_WHY="last_run.rows_added is '${GET_ROWS}', want ${want_rows}"
+    fi
+    [[ -z "$GET_WHY" ]] && break
+    if [[ "$(date +%s)" -ge "$deadline" ]]; then
+      echo "host.sync.get ${label}: still failing after ${RETRY_UNTIL_EXPECT_DEADLINE_S} s, last expect failure: ${GET_WHY}" >&2
+      break
+    fi
+    sleep "$RETRY_UNTIL_EXPECT_POLL_S"
+  done
+  GET_WAITED=$(( $(date +%s) - since ))
+}
+
 # 3. Make the sync due now. The trigger tick claims it and sync::run writes
-#    one receipt; two run_now before a tick coalesce, so this is issued once.
+#    one receipt; two run_now before a tick coalesce, so each is issued once.
+RUN1_EPOCH=$(date +%s)
 run_resp=$(mcp_call "host.sync.run_now" "$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")" "$OWNER_KEY")
 check "run_now_succeeds" "$(has_error "$run_resp" && echo 0 || echo 1)"
 RUN_NEXT=$(json_get "$(structured_of "$run_resp")" "next_run_unix")
 check "run_now_returns_next_run_unix" "$([[ -n "$RUN_NEXT" ]] && echo 1 || echo 0)"
 echo "host.sync.run_now: next_run_unix=${RUN_NEXT}"
 
-# 4. Read it back by id, re-issuing until the tick has written a receipt for
-#    THIS sync (retry_until_expect, for ${RETRY_UNTIL_EXPECT_DEADLINE_S} s, every ${RETRY_UNTIL_EXPECT_POLL_S} s).
-#    Status is deliberately not pinned (today 'not_implemented').
-GET_DEADLINE=$(( $(date +%s) + RETRY_UNTIL_EXPECT_DEADLINE_S ))
-get_args=$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")
-while :; do
-  get_resp=$(mcp_call "host.sync.get" "$get_args" "$OWNER_KEY")
-  get_struct=$(structured_of "$get_resp")
-  GET_ERR=0; has_error "$get_resp" && GET_ERR=1
-  GET_TABLE=$(json_get "$get_struct" "table")
-  GET_RUN_ID=$(json_get "$get_struct" "last_run.run_id")
-  GET_STARTED=$(json_get "$get_struct" "last_run.started_unix")
-  GET_WHY=""
-  if [[ "$GET_ERR" == "1" ]]; then GET_WHY="call errored"
-  elif [[ "$GET_TABLE" != "orders" ]]; then GET_WHY="table is '${GET_TABLE}', want orders"
-  elif [[ -z "$GET_RUN_ID" ]]; then GET_WHY="last_run.run_id is absent"
-  elif [[ -z "$GET_STARTED" ]]; then GET_WHY="last_run.started_unix is absent"
-  fi
-  [[ -z "$GET_WHY" ]] && break
-  if [[ "$(date +%s)" -ge "$GET_DEADLINE" ]]; then
-    echo "host.sync.get: still failing after ${RETRY_UNTIL_EXPECT_DEADLINE_S} s, last expect failure: ${GET_WHY}" >&2
-    break
-  fi
-  sleep "$RETRY_UNTIL_EXPECT_POLL_S"
-done
+# 4. First receipt: the 12-row CSV was written, so rows_added is its data-row
+#    count and a change was detected.
+poll_sync_get "(1st)" "true" "$DATA_SYNC_ROWS" "$RUN1_EPOCH"
 check "get_succeeds" "$([[ "$GET_ERR" == "0" ]] && echo 1 || echo 0)"
 check "get_table_is_orders" "$([[ "$GET_TABLE" == "orders" ]] && echo 1 || echo 0)"
 check "get_last_run_has_run_id" "$([[ -n "$GET_RUN_ID" ]] && echo 1 || echo 0)"
 check "get_last_run_has_started_unix" "$([[ -n "$GET_STARTED" ]] && echo 1 || echo 0)"
-echo "host.sync.get: table=${GET_TABLE} last_run.run_id=${GET_RUN_ID} last_run.started_unix=${GET_STARTED}"
+check "get_last_run_status_is_ok" "$([[ "$GET_STATUS" == "ok" ]] && echo 1 || echo 0)"
+check "get_last_run_rows_added_is_csv_rows" "$([[ "$GET_ROWS" == "$DATA_SYNC_ROWS" ]] && echo 1 || echo 0)"
+check "get_last_run_change_detected" "$([[ "$GET_CHANGED" == "true" ]] && echo 1 || echo 0)"
+[[ -n "$GET_WHY" ]] && echo "FAILED EXPECT (1st host.sync.get): ${GET_WHY}"
+FIRST_RUN_ID="$GET_RUN_ID"
+echo "host.sync.get: table=${GET_TABLE} last_run.run_id=${GET_RUN_ID} last_run.started_unix=${GET_STARTED} last_run.status=${GET_STATUS} rows_added=${GET_ROWS} change_detected=${GET_CHANGED} waited_s=${GET_WAITED}"
 
-# 5. It is the tenant's one sync.
+# 5. Run it again against the same, unchanged CSV: the second receipt must read
+#    "no change" (status ok, nothing added) and be a different run.
+RUN2_EPOCH=$(date +%s)
+run2_resp=$(mcp_call "host.sync.run_now" "$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")" "$OWNER_KEY")
+check "run_now_again_succeeds" "$(has_error "$run2_resp" && echo 0 || echo 1)"
+RUN2_NEXT=$(json_get "$(structured_of "$run2_resp")" "next_run_unix")
+check "run_now_again_returns_next_run_unix" "$([[ -n "$RUN2_NEXT" ]] && echo 1 || echo 0)"
+echo "host.sync.run_now: next_run_unix=${RUN2_NEXT}"
+
+poll_sync_get "(2nd)" "false" "0" "$RUN2_EPOCH"
+check "get2_succeeds" "$([[ "$GET_ERR" == "0" ]] && echo 1 || echo 0)"
+check "get2_last_run_status_is_ok" "$([[ "$GET_STATUS" == "ok" ]] && echo 1 || echo 0)"
+check "get2_last_run_rows_added_is_zero" "$([[ "$GET_ROWS" == "0" ]] && echo 1 || echo 0)"
+check "get2_last_run_change_detected_is_false" "$([[ "$GET_CHANGED" == "false" ]] && echo 1 || echo 0)"
+check "get2_run_id_differs_from_get1" "$([[ -n "$GET_RUN_ID" && "$GET_RUN_ID" != "$FIRST_RUN_ID" ]] && echo 1 || echo 0)"
+check "get2_expects_hold" "$([[ -z "$GET_WHY" ]] && echo 1 || echo 0)"
+[[ -n "$GET_WHY" ]] && echo "FAILED EXPECT (2nd host.sync.get): ${GET_WHY}"
+echo "host.sync.get: table=${GET_TABLE} last_run.run_id=${GET_RUN_ID} last_run.started_unix=${GET_STARTED} last_run.status=${GET_STATUS} rows_added=${GET_ROWS} change_detected=${GET_CHANGED} waited_s=${GET_WAITED}"
+
+# 6. It is the tenant's one sync.
 list_resp=$(mcp_call "host.sync.list" '{}' "$OWNER_KEY")
 check "list_succeeds" "$(has_error "$list_resp" && echo 0 || echo 1)"
 LIST_STRUCT=$(structured_of "$list_resp")
@@ -278,7 +328,7 @@ check "list_first_table_is_orders" "$([[ "$LIST_TABLE" == "orders" ]] && echo 1 
 check "list_first_sync_is_the_created_one" "$([[ -n "$SYNC_ID" && "$LIST_ID" == "$SYNC_ID" ]] && echo 1 || echo 0)"
 echo "host.sync.list: syncs[0].table=${LIST_TABLE}"
 
-# 6. Delete it: a proof must not leave a schedule running on a throwaway tenant.
+# 7. Delete it: a proof must not leave a schedule running on a throwaway tenant.
 delete_resp=$(mcp_call "host.sync.delete" "$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")" "$OWNER_KEY")
 check "delete_succeeds" "$(has_error "$delete_resp" && echo 0 || echo 1)"
 DELETED=$(json_get "$(structured_of "$delete_resp")" "deleted")

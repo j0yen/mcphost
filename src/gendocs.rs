@@ -386,10 +386,6 @@ const PRICING_STYLE: &str = r###"<style>
   li::before { content: "- "; color: #484f58; margin-left: -1.3rem; }
   footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid #21262d;
            color: #8b949e; font-size: .9em; }
-  .snd { background: none; border: 1px solid #21262d; border-radius: 6px;
-         padding: .35rem .8rem; margin: 1.6rem 0 0; font: inherit; color: #8b949e;
-         cursor: pointer; }
-  .snd:hover { color: #e6edf3; border-color: #484f58; }
   .connect { margin: 0 0 1.6rem; }
   .snip { margin: 0 0 .8rem; position: relative; }
   .snip-label { color: #e6edf3; font-size: .85em; margin: 0 0 .3rem; }
@@ -684,8 +680,8 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
 /// PRD-mcphost-input-schema-is-the-validator R1/AC6: a tool's `input_schema`
 /// as an argument list -- one bullet per property (sorted by name) with its
 /// type, whether it is required, and every `enum`, `pattern`, `minimum`,
-/// `maximum`, `minItems` and `maxItems` the schema carries (nested `items` and
-/// object properties included, under a dotted path), plus one bullet per
+/// `maximum`, `minItems`, `maxItems`, `minLength` and `maxLength` the schema carries
+/// (nested `items`, `oneOf` branches and object properties included, under a dotted path), plus one bullet per
 /// top-level `anyOf` naming its alternatives. Rendered from the same
 /// descriptor `tools/list` and the contract dump read, so the three cannot
 /// drift.
@@ -713,7 +709,7 @@ pub fn render_arguments_block(schema: &serde_json::Map<String, serde_json::Value
         if let Some(p) = node.get("pattern") {
             out.push(format!("pattern: {}", show(p)));
         }
-        for key in ["minimum", "maximum", "minItems", "maxItems"] {
+        for key in ["minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength"] {
             if let Some(n) = node.get(key) {
                 out.push(format!("{key}: {n}"));
             }
@@ -746,6 +742,11 @@ pub fn render_arguments_block(schema: &serde_json::Map<String, serde_json::Value
         if let Some(props) = node.get("properties").and_then(Value::as_object) {
             for (name, sub) in props {
                 walk(&format!("{path}.{name}"), sub, out);
+            }
+        }
+        if let Some(branches) = node.get("oneOf").and_then(Value::as_array) {
+            for (i, branch) in branches.iter().enumerate() {
+                walk(&format!("{path}<oneOf {i}>"), branch, out);
             }
         }
         for key in ["propertyNames"] {

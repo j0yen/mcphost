@@ -308,6 +308,8 @@ pub fn all_error_codes() -> Vec<String> {
     // A code declared with `err_code!` outside `AppError` (the sync verbs'
     // `connection_missing`, `quota_syncs_max`, `schedule_too_frequent`) is
     // still one the host returns, so both SDKs get a class for it.
+    // (PRD-mcphost-table-conflict-structured-error: that includes
+    // `table_row_conflict`, declared at its emit site.)
     codes.extend(crate::error_registry::ERROR_CODES.iter().map(|e| e.code.to_string()));
     codes.into_iter().filter(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')).collect()
 }

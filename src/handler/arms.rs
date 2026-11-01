@@ -46,6 +46,8 @@ impl McpHostHandler {
     /// Verbs `dispatch_tenant_tool_inner` serves that are not host descriptors in
     /// the registry's canonical dotted set: `billing.*` and the conditionally
     /// listed `host.tool_from_description`.
+    ///
+    /// The names it serves are [`UNADVERTISED_ARMS`], which `precheck` reads.
     pub(crate) fn arm_unadvertised<'a>(&'a self, c: ArmCtx<'a>) -> Option<ArmFut<'a>> {
         let name = c.name;
         match name {
@@ -384,6 +386,34 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_probe_progress<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            let started = std::time::Instant::now();
+            let out = crate::progress::probe(&args, crate::progress::current_sink().as_ref()).await;
+            // Host verbs write no `calls` row of their own; the probe does, so
+            // the progress counters see the call they exist to measure.
+            let ok = out.is_ok();
+            let _ = self
+                .state
+                .db
+                .record_call(
+                    tenant.id,
+                    "host.probe.progress".to_string(),
+                    started.elapsed().as_millis() as i64,
+                    ok,
+                    (!ok).then(|| "args_invalid".to_string()),
+                    None,
+                    None,
+                    if ok { "ok" } else { "error" },
+                    tenant.origin.clone(),
+                    tenant.origin_detail.clone(),
+                )
+                .await;
+            out
+        })
+    }
+
     pub(crate) fn arm_host_usage<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;
@@ -502,8 +532,8 @@ impl McpHostHandler {
 
     pub(crate) fn arm_host_catalog_search<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
-            let ArmCtx { args, .. } = c;
-            crate::sharing::catalog_search(&self.state, &args).await
+            let ArmCtx { tenant, args, .. } = c;
+            crate::sharing::catalog_search(&self.state, tenant, &args).await
         })
     }
 
@@ -1051,6 +1081,13 @@ impl McpHostHandler {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;
             docs::doc_put(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_docs_put_many<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            docs::doc_put_many(&self.state, tenant, &args).await
         })
     }
 

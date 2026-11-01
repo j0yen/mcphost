@@ -16,18 +16,23 @@ use std::time::Duration;
 /// Strings tried, in order, for a string property; the first one the
 /// property's own subschema accepts wins (so `pattern`, `enum` and
 /// `minLength` are satisfied from the schema, never from a per-tool table).
-const STRING_CANDIDATES: &[&str] = &["x", "ab", "a1", "abc_1", "A", "0a", "https://example.com/a", "@x", "2026-01-01"];
+const STRING_CANDIDATES: &[&str] = &["x", "ab", "a1", "abc_1", "A", "0a", "https://example.com/a", "@x", "2026-01-01", "AAAA", "example.com", "a@example.com"];
 
 fn valid(schema: &Value, candidate: &Value) -> bool {
     jsonschema::validator_for(schema).map(|v| v.is_valid(candidate)).unwrap_or(false)
 }
 
 /// A value satisfying `schema`'s `enum`, `type`, `pattern`, `minimum`,
-/// `minItems` and `propertyNames`, with `required` (and the first `anyOf`
+/// `minItems`, `uniqueItems`, `oneOf`/`anyOf` (first branch) and `propertyNames`, with `required` (and the first `anyOf`
 /// branch) filled for objects.
 fn placeholder(schema: &Value) -> Value {
     if let Some(first) = schema.get("enum").and_then(Value::as_array).and_then(|e| e.first()) {
         return first.clone();
+    }
+    if schema.get("type").is_none()
+        && let Some(first) = ["oneOf", "anyOf"].iter().find_map(|k| schema.get(*k).and_then(Value::as_array).and_then(|b| b.first()))
+    {
+        return placeholder(first);
     }
     let ty = match schema.get("type") {
         Some(Value::String(t)) => t.clone(),
@@ -43,7 +48,14 @@ fn placeholder(schema: &Value) -> Value {
         "boolean" => json!(true),
         "array" => {
             let n = schema.get("minItems").and_then(Value::as_u64).unwrap_or(0) as usize;
-            let item = schema.get("items").map(placeholder).unwrap_or_else(|| json!("x"));
+            let items = schema.get("items").cloned().unwrap_or_else(|| json!({}));
+            let item = placeholder(&items);
+            if schema.get("uniqueItems") == Some(&json!(true)) {
+                // Distinct elements: the first `n` candidates the item schema accepts.
+                let mut out: Vec<Value> = STRING_CANDIDATES.iter().map(|c| json!(c)).filter(|c| valid(&items, c)).take(n).collect();
+                out.resize(n, item);
+                return Value::Array(out);
+            }
             Value::Array(vec![item; n])
         }
         "object" => {

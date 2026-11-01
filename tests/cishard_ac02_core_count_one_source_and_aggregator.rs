@@ -2,8 +2,9 @@
 //! PRD-mcphost-ci-core-suites-sharded AC2 -- ci.yml's core matrix comes from
 //! the plan job's `ci-test-partition.sh shards core` output, no literal core
 //! count appears in ci.yml or gen-test-suites.sh, and the job named exactly
-//! "static analysis + core suites" needs the static job and the core matrix
-//! with `if: always()` and fails unless both results are success.
+//! "static analysis + core suites" needs the static job, the contract-suites
+//! job and the core matrix with `if: always()` and fails unless all three
+//! results are success.
 
 use crate::ci_sandbox_support;
 use ci_sandbox_support as support;
@@ -104,19 +105,26 @@ fn the_aggregator_keeps_id_and_name_and_needs_both_jobs_always() {
         .lines()
         .find(|l| l.trim_start().starts_with("needs:"))
         .expect("the aggregator declares needs");
-    assert!(needs.contains("core-static") && needs.contains("core]"), "needs both jobs: {needs}");
+    assert!(
+        needs.contains("core-static") && needs.contains("core-contract") && needs.contains("core,"),
+        "needs the static job, the contract-suites job and the core matrix: {needs}"
+    );
     assert!(
         gate.lines().any(|l| l.trim() == "if: always()"),
         "the aggregator must run even when a job it needs failed"
     );
     assert!(gate.contains("needs.core-static.result"), "must read the static job's result");
+    assert!(gate.contains("needs.core-contract.result"), "must read the contract-suites job's result");
     assert!(gate.contains("needs.core.result"), "must read the core matrix's result");
-    assert!(gate.contains(r#"!= "success""#), "must fail unless both results are success");
+    assert!(gate.contains(r#"!= "success""#), "must fail unless every result is success");
+    // Any result but success fails, so a wall-cancelled or skipped job cannot pass.
+    assert!(!gate.contains(r#"== "cancelled""#) && !gate.contains(r#"== "skipped""#), "no result is waved through");
     assert!(gate.contains("exit 1"));
     assert!(!gate.contains("cargo "), "the aggregator runs no tests of its own");
     // The static job and the shards each own what the old job did.
     assert!(job("core-static").contains("./scripts/ci-test-partition.sh check"));
-    assert!(job("core-static").contains("./scripts/pin-tests.sh"));
+    assert!(job("core-contract").contains("./scripts/pin-tests.sh"));
+    assert!(!job("core-static").contains("pin-tests.sh"), "the contract suites left core-static for their own job");
     assert!(job("core-static").contains("cargo test --locked --doc"));
     assert!(job("core-static").contains("cargo deny --locked check"));
     assert!(job("core-static").contains("./scripts/audit.sh"));

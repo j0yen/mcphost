@@ -8,7 +8,8 @@
 //! `"additionalProperties"` compare outside the registry reader.
 
 use mcphost::handler::host_tool_descriptors;
-use mcphost::host_args::{ArgOwner, arg_owners, owned_by, validate_host_args};
+use mcphost::host_args::{ArgOwner, arg_owners, owned_by};
+use mcphost::precheck::precheck_args as validate_host_args;
 use mcphost::kinds::KindRegistry;
 use mcphost::paged::{fields_for, paged_spec};
 use serde_json::{Value, json};

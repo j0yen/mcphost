@@ -65,15 +65,15 @@ TIMING = (
 ) % (timing_header.group(1), timing_metric.group(1))
 
 rows = []
-for rt, frames, rule in re.findall(
-    r'FrameRow \{\s*request_type: "([^"]+)",\s*frames: &\[(.*?)\],\s*content_type_rule: ContentTypeRule::(\w+),\s*\}',
+for rt, frames, rule, when in re.findall(
+    r'FrameRow \{\s*request_type: "([^"]+)",\s*frames: &\[(.*?)\],\s*content_type_rule: ContentTypeRule::(\w+),(?:\s*when: (?:None|Some\("([^"]*)"\)),)?\s*\}',
     block.group(1),
     re.S,
 ):
     if rule not in RULE_TYPES or rule not in rule_names:
         die("unknown content_type_rule " + rule)
     pairs = re.findall(r"\(FrameKind::(\w+), Card::(\w+)\)", frames)
-    rows.append((rt, [(methods[k], notation[c]) for k, c in pairs], rule))
+    rows.append((rt, [(methods[k], notation[c]) for k, c in pairs], rule, when))
 if not rows:
     die("FRAME_SEQUENCES has no rows")
 
@@ -92,14 +92,14 @@ def render_md():
         "",
         TIMING,
         "",
-        "| request type | frames in order | content type |",
-        "|---|---|---|",
+        "| request type | frames in order | content type | when |",
+        "|---|---|---|---|",
     ]
     out[4] = out[4] % version.group(1)
-    for rt, frames, rule in rows:
+    for rt, frames, rule, when in rows:
         one, many = RULE_TYPES[rule]
         seq = ", ".join("`%s` %s" % (m, card(c)) for m, c in frames)
-        out.append("| `%s` | %s | `%s` with one frame, `%s` with more (`%s`) |" % (rt, seq, one, many, rule_names[rule]))
+        out.append("| `%s` | %s | `%s` with one frame, `%s` with more (`%s`) | %s |" % (rt, seq, one, many, rule_names[rule], when or "always"))
     return "\n".join(out) + "\n"
 
 
@@ -114,16 +114,19 @@ def render_json():
             "semantics": TIMING,
         },
         "rows": [
-            {
-                "request_type": rt,
-                "frames": [{"method": m, "card": card(c)} for m, c in frames],
-                "content_type": {
-                    "rule": rule_names[rule],
-                    "single_frame": RULE_TYPES[rule][0],
-                    "multi_frame": RULE_TYPES[rule][1],
+            dict(
+                {
+                    "request_type": rt,
+                    "frames": [{"method": m, "card": card(c)} for m, c in frames],
+                    "content_type": {
+                        "rule": rule_names[rule],
+                        "single_frame": RULE_TYPES[rule][0],
+                        "multi_frame": RULE_TYPES[rule][1],
+                    },
                 },
-            }
-            for rt, frames, rule in rows
+                **({"when": when} if when else {}),
+            )
+            for rt, frames, rule, when in rows
         ],
     }
     return json.dumps(doc, indent=2) + "\n"
@@ -131,8 +134,8 @@ def render_json():
 
 def render_llms():
     parts = []
-    for rt, frames, _ in rows:
-        parts.append("`%s` = %s" % (rt, ", ".join("`%s` %s" % (m, card(c)) for m, c in frames)))
+    for rt, frames, _, when in rows:
+        parts.append("`%s` = %s%s" % (rt, ", ".join("`%s` %s" % (m, card(c)) for m, c in frames), " (when %s)" % when if when else ""))
     return "\n".join(
         [
             START,

@@ -58,7 +58,9 @@ async fn bare_calls_across_the_host_and_billing_surface_never_return_tenant_key_
     for name in names {
         // A fresh, independent session per call -- each one genuinely
         // bare, never riding a prior call's binding.
-        let client = McpClient::new(&server.base_url);
+        // A distinct User-Agent per client: one peer per client (R3 of
+        // PRD-mcphost-implicit-signup-mints-only-on-success).
+        let client = McpClient::new(&server.base_url).with_user_agent(&format!("implsign-ac07-{name}"));
         let result = client.tools_call(name, json!({})).await;
         if let Err(err) = result {
             assert_ne!(

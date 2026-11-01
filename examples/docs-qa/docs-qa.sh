@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # docs-qa.sh -- runnable end-to-end proof of "Docs Q&A in a minute" (see
 # www/llms.txt): one fresh tenant against <endpoint>, the 8-document
-# corpus/ put and indexed, `ask_docs` published (python kind, searches over
+# corpus/ put (one host.docs.put_many call) and indexed, `ask_docs` published (python kind, searches over
 # the zero-network mcphost.docs.search loopback), the 6 gold.json questions
 # asked, and a receipt JSON written with per-step timings, hit results, and
 # a quota summary. Exit 0 only when >= 5 of 6 questions hit.
@@ -99,11 +99,15 @@ os.makedirs(receipt_dir, exist_ok=True)
 GOLD_PATH = os.path.join(corpus_dir, "gold.json")
 ASK_DOCS_SOURCE_PATH = "ask_docs.py"
 SYNTHETIC_SOURCE = "recipe-docs-qa"
+# The hub stamps a tenant synthetic at creation only from this header on the
+# signup request; the `source` arg above attributes but does not classify.
+SYNTHETIC_HEADER = "recipe:docs-qa"
 
 call_log = []
+corpus_load_calls = []
 
 
-def mcp_call(tool, arguments, key=None):
+def mcp_call(tool, arguments, key=None, extra_headers=None):
     call_log.append(tool)
     body = json.dumps(
         {
@@ -136,6 +140,8 @@ def mcp_call(tool, arguments, key=None):
     }
     if key:
         headers["Authorization"] = f"Bearer {key}"
+    if extra_headers:
+        headers.update(extra_headers)
     req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -211,13 +217,18 @@ def put_corpus(key):
     paths = sorted(glob.glob(os.path.join(corpus_dir, "*.md")))
     if len(paths) != 8:
         fail(f"expected exactly 8 corpus documents in {corpus_dir}, found {len(paths)}")
+    documents = []
     for path in paths:
-        name = os.path.basename(path)
         with open(path, encoding="utf-8") as f:
-            content = f.read()
-        resp = mcp_call("host.docs.put", {"name": name, "content": content}, key)
-        if is_error(resp):
-            fail(f"host.docs.put {name} failed: {resp['error']}")
+            documents.append({"name": os.path.basename(path), "content": f.read()})
+    # One host.docs.put_many call loads the whole corpus (up to 50 documents).
+    corpus_load_calls.append("host.docs.put_many")
+    resp = mcp_call("host.docs.put_many", {"documents": documents}, key)
+    if is_error(resp):
+        fail(f"host.docs.put_many failed: {resp['error']}")
+    loaded = structured_of(resp)
+    if loaded.get("stored") != len(documents) or loaded.get("refused") != 0:
+        fail(f"host.docs.put_many did not store every document: {loaded}")
     return len(paths)
 
 
@@ -275,7 +286,9 @@ def main():
     is_fresh = not (reuse_state and os.path.exists(reuse_state))
     if is_fresh:
         resp = mcp_call(
-            "signup", {"name": "docs-qa-owner", "source": SYNTHETIC_SOURCE}
+            "signup",
+            {"name": "docs-qa-owner", "source": SYNTHETIC_SOURCE},
+            extra_headers={"x-mcphost-synthetic": SYNTHETIC_HEADER},
         )
         if is_error(resp):
             fail(f"signup failed: {resp['error']}")
@@ -360,6 +373,9 @@ def main():
         "total_questions": len(gold),
         "answers": answers,
         "quota": {"documents": 8, "chunks": chunks, "tool_calls": tool_calls},
+        # Calls spent loading the corpus into the host: one host.docs.put_many.
+        "tool_calls": len(corpus_load_calls),
+        "call_counts": {name: call_log.count(name) for name in distinct_calls},
         "wall_time_ms": wall_time_ms,
         "calls": distinct_calls,
     }

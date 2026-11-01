@@ -155,6 +155,16 @@ async fn resolve_sub_key_tenant(
 /// self-offboarded tenant may still reach its own lifecycle-terminal verb
 /// (`auth_shape::LIFECYCLE_TERMINAL_VERBS`) so that verb can answer
 /// idempotently instead of the auth layer turning success into an error.
+/// The refusal a disabled tenant's own credential (URL secret or header)
+/// gets: `TenantDisabled`, plus `claim_url` once the unclaimed policy has
+/// invalidated it, so the holder can still claim during the grace.
+fn tenant_disabled_error(state: &AppState, t: &Tenant) -> AppError {
+    let claim_url = (t.disabled_reason.as_deref() == Some(crate::auth_shape::UNCLAIMED_EXPIRED_REASON))
+        .then(|| crate::claim::claim_url_for_tenant(&state.public_url, t))
+        .flatten();
+    AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url }
+}
+
 fn is_refused_disabled(t: &Tenant, verb: &str) -> bool {
     t.disabled && !crate::auth_shape::lets_through_disabled(verb, t.disabled_reason.as_deref())
 }
@@ -176,7 +186,7 @@ async fn resolve_auth(
     let hash = hash_key(&key);
     if let Some(t) = resolve_sub_key_tenant(state, &key, sub).await? {
         if is_refused_disabled(&t, verb) {
-            return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() });
+            return Err(tenant_disabled_error(state, &t));
         }
         if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
             tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -184,7 +194,7 @@ async fn resolve_auth(
         return Ok(Auth::Tenant(Box::new(t), None));
     }
     match state.db.find_tenant_by_key_hash(hash).await? {
-        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
+        Some(t) if is_refused_disabled(&t, verb) => Err(tenant_disabled_error(state, &t)),
         Some(t) => {
             // PRD-mcphost-agent-directory requirement 6: `last_seen` is the
             // tenant's most recent authenticated request -- bumped here,
@@ -207,7 +217,7 @@ async fn resolve_auth(
             let result = crate::oauth::validate_bearer(state, &key).await?;
             crate::oauth::check_entry_audience(&state.public_url, parts.uri.path(), &result)?;
             match state.db.find_tenant_by_id(result.tenant_id).await? {
-                Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
+                Some(t) if is_refused_disabled(&t, verb) => Err(tenant_disabled_error(state, &t)),
                 Some(t) => {
                     if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                         tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -300,7 +310,7 @@ async fn resolve_path_secret_auth(
     };
     let hash = hash_key(secret);
     match state.db.find_tenant_by_url_secret_hash(hash.clone()).await? {
-        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
+        Some(t) if is_refused_disabled(&t, verb) => Err(tenant_disabled_error(state, &t)),
         Some(t) => {
             // See the mirrored comment in `resolve_auth` above.
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
@@ -325,7 +335,7 @@ async fn resolve_path_secret_auth(
                     return Ok(None);
                 };
                 if is_refused_disabled(&t, verb) {
-                    return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() });
+                    return Err(tenant_disabled_error(state, &t));
                 }
                 if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                     tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -442,7 +452,7 @@ async fn bind_session_to_created_tenant(
         maybe_stamp_second_session(state, &tenant, Some(session_id)).await;
     }
     tracing::info!(tenant = %tenant.namespace, "session bound to tenant after signup");
-    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::FrameKind::ListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
+    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::Frame::ToolListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
         tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
     }
     if let Some(obj) = value.as_object_mut() {
@@ -495,7 +505,7 @@ async fn record_implicit_signup_memory(
     if let Err(e) = state.db.set_created_session_id(tenant.id, session_id.to_string()).await {
         tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record created_session_id");
     }
-    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::FrameKind::ListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
+    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::Frame::ToolListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
         tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
     }
 }
@@ -526,7 +536,7 @@ async fn resolve_session_binding(
     match state.db.find_tenant_by_id(tenant_id).await? {
         Some(t) if is_refused_disabled(&t, verb) => {
             state.session_bindings.drop_binding(session_id);
-            Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() })
+            Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None })
         }
         Some(t) => {
             // PRD-mcphost-same-user-second-agent R4: a session that joined
@@ -916,6 +926,10 @@ fn tool_publish_schema(kinds: &KindRegistry, with_tenant_key: bool) -> Map<Strin
     out
 }
 
+/// The JSON types an argument "any JSON value" accepts: a schema property that takes
+/// anything still states `type` (PRD-mcphost-schema-shape-agreement R3), as this list.
+pub const ANY_JSON_TYPES: [&str; 7] = ["string", "number", "integer", "boolean", "array", "object", "null"];
+
 const TOOL_PUBLISH_REQUIRED: &[&str] = &["name", "kind", "spec"];
 
 /// PRD-mcphost-tenant-data-export P1 requirement 4 / AC5: the plain
@@ -1002,6 +1016,42 @@ fn host_schema_extra(props: Value, required: &[&str], extra: Value) -> Map<Strin
 /// by it before the handler runs.
 fn host_schema_checked(props: Value, required: &[&str]) -> Map<String, Value> {
     host_schema_extra(props, required, json!({}))
+}
+
+/// PRD-mcphost-table-import-from-url R1: exactly one of `sources` -- `oneOf`
+/// refuses two at once (naming both fields), `anyOf` is the either-or form the
+/// schema-derived call builders and the `insch_*` readers understand.
+fn import_one_of(sources: &[&str]) -> Value {
+    json!({"anyOf": any_of_required(sources), "oneOf": any_of_required(sources)})
+}
+
+/// PRD-mcphost-table-import-from-url R1: the `source_url` property of
+/// `host.table.create` / `host.table.append`.
+fn import_source_url_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to \
+            load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+    })
+}
+
+/// The `csv_text` property of `host.table.create` / `host.table.append`.
+fn import_csv_text_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "The CSV itself (header row first, at most 1 MB), for a client that \
+            holds the data but has no file tool.",
+    })
+}
+
+/// The `import_id` property of `host.table.create` / `host.table.append`.
+fn import_id_schema() -> Value {
+    json!({
+        "type": "string",
+        "maxLength": 128,
+        "description": "Optional retry key for a source_url / csv_text import: the same id \
+            within 24 hours returns the first result and writes nothing.",
+    })
 }
 
 /// `[{"required": [a]}, {"required": [b]}, ...]`, one branch per alternative.
@@ -1546,7 +1596,7 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                     "key_label": {"type": "string", "description": "Only calls made with the sub-key labelled so."},
                     "tool": {"type": "string", "description": "Only calls to this tool."},
                     "outcome": {"type": "string", "description": "Only calls with this outcome (ok, error, refused, ...)."},
-                    "credential": {"type": "string", "description": "Only calls made with this credential kind."},
+                    "credential": {"type": "string", "enum": crate::calllog::Credential::ALL.iter().map(|c| c.as_str()).collect::<Vec<_>>(), "description": "Only calls made with this credential kind."},
                 }),
                 &[],
             ),
@@ -1898,6 +1948,7 @@ fn host_tools_part_02() -> Vec<Tool> {
                     },
                     "by": {
                         "type": "string",
+                        "enum": crate::control::USAGE_BY,
                         "description": "\"tool\", \"caller\", or \"end_user\" -- omit for the plain \
                             per-tenant summary.",
                     },
@@ -2044,14 +2095,14 @@ fn host_tools_part_02() -> Vec<Tool> {
                             with may call host.tool_spec_shared to read its (redacted) spec.",
                     },
                     "scopes": {
-                        "type": "array",
+                        "type": "array", "minItems": 1,
                         "items": {"type": "string", "enum": crate::sharing::ShareScope::names()},
                         "description": "What the grantee may do: call, read_source, fork. Default \
                             [\"call\"] ([\"call\",\"read_source\"] with expose_spec: true). url \
                             shares allow only call.",
                     },
                     "rate_per_hour_per_caller": {
-                        "type": "integer",
+                        "type": "integer", "minimum": 1, "maximum": crate::sharing::RATE_PER_HOUR_MAX,
                         "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
                     },
                 }),
@@ -2069,6 +2120,7 @@ fn host_tools_part_02() -> Vec<Tool> {
                 json!({
                     "tool": {
                         "type": "string",
+                        "pattern": crate::sharing::QUALIFIED_NAME_PATTERN,
                         "description": "\"<owner_namespace>.<name>\", the same qualified name \
                             host.tool_call uses for a shared tool.",
                     },
@@ -2129,7 +2181,7 @@ fn host_tools_part_02() -> Vec<Tool> {
                         "description": "The caller's namespace to cap.",
                     },
                     "calls_per_day": {
-                        "type": "integer",
+                        "type": "integer", "minimum": 1,
                         "description": "Max successful calls per UTC day for this caller.",
                     },
                 }),
@@ -2198,6 +2250,7 @@ fn host_tools_part_03() -> Vec<Tool> {
                 json!({
                     "q": {"type": "string", "description": "Substring to match; omit for every public tool."},
                     "limit": {"type": "integer", "description": "Max results; default 20."},
+                    "include_synthetic": {"type": "boolean", "description": "List tools of synthetic-marked owners too. Default: true for a synthetic-marked caller, false otherwise; owners that offboarded are never listed."},
                 }),
                 &[],
             ),
@@ -2376,7 +2429,7 @@ fn host_tools_part_03() -> Vec<Tool> {
                     },
                     "hosts": {
                         "type": "array",
-                        "items": {"type": "string"},
+                        "items": {"type": "string", "pattern": crate::leakguard::HOST_PATTERN},
                         "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
                     },
                 }),
@@ -2399,6 +2452,7 @@ fn host_tools_part_03() -> Vec<Tool> {
                 json!({
                     "name": {
                         "type": "string",
+                        "pattern": crate::leakguard::SECRET_NAME_PATTERN,
                         "description": "The secret to test (host.secret.set).",
                     },
                     "echo_url": {
@@ -2446,7 +2500,7 @@ fn host_tools_part_03() -> Vec<Tool> {
                         "type": "string",
                         "description": "Key to write in this tenant's key-value state namespace.",
                     },
-                    "value": {"description": "Any JSON value to store under key."},
+                    "value": {"type": ANY_JSON_TYPES, "description": "Any JSON value to store under key."},
                     "end_user": end_user_arg_schema(),
                 }),
                 &["key", "value"],
@@ -2495,7 +2549,7 @@ fn host_tools_part_03() -> Vec<Tool> {
              fails quota_exceeded {limit, used}; an unknown tool or run fails not_found.",
             host_schema(
                 json!({
-                    "text": {"type": "string", "maxLength": 4096, "description": "The note (at most 4096 bytes)."},
+                    "text": {"type": "string", "minLength": 1, "maxLength": 4096, "description": "The note (at most 4096 bytes)."},
                     "attach_to": {
                         "type": "object",
                         "description": "What the note is about: {tool: <your tool's local name>} or {run: <run id>}.",
@@ -2652,8 +2706,12 @@ fn host_tools_part_04() -> Vec<Tool> {
              handful of small values, host.table.* when you want real SQL (joins, aggregates, \
              read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \
              \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of \
-             columns's own entries.",
-            host_schema_checked(
+             columns's own entries. Give exactly one of columns (declare an empty table), \
+             source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text \
+             (the CSV itself, at most 1 MB): the import infers the column types from the first \
+             1,000 rows, loads every row and reports rows_imported, rows_skipped, columns and \
+             source -- the way to load data when you have no file tool.",
+            host_schema_extra(
                 json!({
                     "name": {
                         "type": "string",
@@ -2669,16 +2727,25 @@ fn host_tools_part_04() -> Vec<Tool> {
                         "type": "string",
                         "description": "Column name (must be in columns); optional.",
                     },
+                    "source_url": import_source_url_schema(),
+                    "csv_text": import_csv_text_schema(),
+                    "import_id": import_id_schema(),
                 }),
-                &["name", "columns"],
+                &["name"],
+                import_one_of(&["columns", "source_url", "csv_text"]),
             ),
         ),
         Tool::new(
             "host.table.append",
             "Append one row (an object) or several (an array of objects) to a declared table. \
              Each row is validated against the table's schema first -- a type mismatch fails \
-             the whole call with table_schema_violation and writes nothing.",
-            host_schema_checked(
+             the whole call with table_schema_violation and writes nothing. Instead of rows, \
+             give source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text \
+             (the CSV itself, at most 1 MB, header row first): each row is coerced to the \
+             table's schema, a row that does not fit is skipped, and the result reports \
+             rows_imported, rows_skipped and the first three skip reasons (line and column). \
+             Exactly one of rows, source_url and csv_text.",
+            host_schema_extra(
                 json!({
                     "table": {"type": "string", "description": "Name of the declared table to append to."},
                     "rows": {
@@ -2686,8 +2753,12 @@ fn host_tools_part_04() -> Vec<Tool> {
                         "description": "One row (an object) or several (an array of objects), each \
                             validated against the table's schema.",
                     },
+                    "source_url": import_source_url_schema(),
+                    "csv_text": import_csv_text_schema(),
+                    "import_id": import_id_schema(),
                 }),
-                &["table", "rows"],
+                &["table"],
+                import_one_of(&["rows", "source_url", "csv_text"]),
             ),
         ),
         Tool::new(
@@ -2698,7 +2769,9 @@ fn host_tools_part_04() -> Vec<Tool> {
              each refusal names the rule or bound it hit. handle: true materialises the result \
              as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a \
              20-row sample, per-column stats over every row) naming a hdl_<id> you can later \
-             reference in FROM or a CTE through this same tool.",
+             reference in FROM or a CTE through this same tool. A table the tenant never \
+             declared answers table_not_found and an unknown column table_column_not_found \
+             (-32602), each with data.candidates and data.hint.",
             host_schema(
                 json!({
                     "sql": {
@@ -2900,7 +2973,8 @@ fn host_tools_part_05() -> Vec<Tool> {
                     },
                     "change_kind": {
                         "type": "string",
-                        "description": "One of drop, rename, type_change, remove, add.",
+                        "enum": crate::lineage::graph::ChangeKind::SPELLINGS.iter().map(|(s, _)| *s).collect::<Vec<_>>(),
+                        "description": "One of drop, rename, type_change, remove, add (lowercase; typechange and type-change are accepted spellings of type_change).",
                     },
                     "max_depth": {
                         "type": "integer",
@@ -2979,24 +3053,70 @@ fn host_tools_part_05() -> Vec<Tool> {
         // the search PRD will index from -- a third data-ish store
         // alongside host.state.*'s KV namespace and host.table.*'s real SQL
         // rows, for whole documents rather than small values or table rows.
+        // PRD-mcphost-docs-import-and-stated-boundary R3: the boundary sentence
+        // (`docs::DOCS_BOUNDARY`) leads the description.
         Tool::new(
             "host.docs.put",
-            "Write (or, for an already-used name, create a new version of) a document in this \
-             tenant's document store. mime is detected from name and content when omitted; \
-             allowed mimes are text/plain, text/markdown, application/json, text/csv. content \
-             (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES \
-             (default 2 MiB). Identical content to the current version is a no-op that repeats \
-             the current version.",
+            format!(
+                "{} Write (or, for an already-used name, create a new version of) a document in \
+                 this tenant's document store. mime is detected from name and content when \
+                 omitted; allowed mimes are text/plain, text/markdown, application/json, \
+                 text/csv. content (or content_base64 for arbitrary bytes) must be at most \
+                 MCPHOST_DOC_MAX_BYTES (default 2 MiB). Identical content to the current version \
+                 is a no-op that repeats the current version. Loading many documents: \
+                 host.docs.put_many takes up to 50 per call.",
+                crate::docs::DOCS_BOUNDARY
+            ),
             host_schema_any(
                 json!({
-                    "name": {"type": "string", "description": "Document name; same name on a later put creates a new version of the same id."},
+                    "name": {"type": "string", "minLength": 1, "description": "Document name; same name on a later put creates a new version of the same id."},
                     "content": {"type": "string", "description": "Document content as text; use content_base64 instead for arbitrary bytes."},
                     "content_base64": {"type": "string", "description": "Document content, base64-encoded; use content instead for plain text."},
-                    "mime": {"type": "string", "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted."},
-                    "metadata": {"description": "Arbitrary caller metadata stored alongside the document; any JSON value."},
+                    "mime": {"type": "string", "enum": crate::docs::ALLOWED_MIMES, "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted."},
+                    "metadata": {"type": ANY_JSON_TYPES, "description": "Arbitrary caller metadata stored alongside the document; any JSON value."},
                 }),
                 &["name"],
                 &["content", "content_base64"],
+            ),
+        ),
+        // PRD-mcphost-docs-import-and-stated-boundary R1: up to 50 documents per
+        // call, each through `docs::doc_put`, one result row per input.
+        Tool::new(
+            "host.docs.put_many",
+            format!(
+                "{} Write up to {max} documents to this tenant's document store in one call. \
+                 documents is an array of 1-{max} objects, each the arguments host.docs.put takes \
+                 (name, one of content / content_base64, optional mime and metadata); on_conflict \
+                 is replace (default: an existing name gets a new version) or skip (an existing \
+                 name is left unchanged). Each document is its own write: results has one row per \
+                 input, in order, with status stored / replaced / skipped / refused (refused rows \
+                 carry the error_code and message host.docs.put would return, e.g. quota_docs), so \
+                 one refusal never undoes another and the call itself succeeds. More than {max} \
+                 documents is invalid_params and writes nothing.",
+                crate::docs::DOCS_BOUNDARY,
+                max = crate::docs::PUT_MANY_MAX
+            ),
+            host_schema(
+                json!({
+                    "documents": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": crate::docs::PUT_MANY_MAX,
+                        "description": "1-50 documents, each the arguments host.docs.put takes.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "Document name; same name on a later put creates a new version of the same id."},
+                                "content": {"type": "string", "description": "Document content as text; use content_base64 instead for arbitrary bytes."},
+                                "content_base64": {"type": "string", "description": "Document content, base64-encoded; use content instead for plain text."},
+                                "mime": {"type": "string", "enum": crate::docs::ALLOWED_MIMES, "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted."},
+                                "metadata": {"type": ANY_JSON_TYPES, "description": "Arbitrary caller metadata stored alongside the document; any JSON value."},
+                            },
+                        },
+                    },
+                    "on_conflict": {"type": "string", "enum": crate::docs::ON_CONFLICT_MODES, "description": "replace (default): an existing name gets a new version; skip: an existing name is left unchanged and reported skipped."},
+                }),
+                &["documents"],
             ),
         ),
         // PRD-mcphost-blob-put-get-signed-url R1: any file, stored in one
@@ -3014,11 +3134,11 @@ fn host_tools_part_05() -> Vec<Tool> {
              blobs_max files -- see host.quickstart limits.plan.",
             host_schema_any(
                 json!({
-                    "name": {"type": "string", "description": "File name; the same name on a later put creates a new version of the same id."},
-                    "content_base64": {"type": "string", "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them."},
+                    "name": {"type": "string", "minLength": 1, "description": "File name; the same name on a later put creates a new version of the same id."},
+                    "content_base64": {"type": "string", "pattern": crate::blobs::BASE64_PATTERN, "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them."},
                     "url": {"type": "string", "description": "http(s) URL the host fetches (10 s, at most blob_max_bytes, no redirects); refused for private, loopback, link-local and internal hosts. Use content_base64 instead for bytes you hold."},
                     "mime": {"type": "string", "description": "Content type; sniffed from name and content when omitted."},
-                    "ttl_s": {"type": "integer", "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410."},
+                    "ttl_s": {"type": "integer", "minimum": 1, "maximum": crate::blobs::TTL_MAX_SECS, "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410."},
                 }),
                 &["name"],
                 &["content_base64", "url"],
@@ -3030,7 +3150,7 @@ fn host_tools_part_05() -> Vec<Tool> {
             host_schema(
                 json!({
                     "id": {"type": "string", "description": "Blob id."},
-                    "ttl_s": {"type": "integer", "description": "Seconds from now until the file expires, 1-31536000 (365 days)."},
+                    "ttl_s": {"type": "integer", "minimum": 1, "maximum": crate::blobs::TTL_MAX_SECS, "description": "Seconds from now until the file expires, 1-31536000 (365 days)."},
                 }),
                 &["id", "ttl_s"],
             ),
@@ -3106,7 +3226,7 @@ fn host_tools_part_05() -> Vec<Tool> {
             host_schema(
                 json!({
                     "id": {"type": "string", "description": "Blob id."},
-                    "ttl_s": {"type": "integer", "description": "Seconds the url stays valid, 1-604800; default 86400."},
+                    "ttl_s": {"type": "integer", "minimum": 1, "maximum": crate::blobs::URL_TTL_MAX_SECS, "description": "Seconds the url stays valid, 1-604800; default 86400."},
                 }),
                 &["id"],
             ),
@@ -3232,7 +3352,7 @@ fn host_tools_part_06() -> Vec<Tool> {
                 json!({
                     "name": {"type": "string", "description": "The index name."},
                     "query": {"type": "string", "description": "Words to look for."},
-                    "k": {"type": "integer", "description": "Hits to return, 1-50, default 5."},
+                    "k": {"type": "integer", "minimum": 1, "maximum": crate::index::QUERY_K_MAX, "description": "Hits to return, 1-50, default 5."},
                 }),
                 &["name", "query"],
             ),
@@ -3242,7 +3362,10 @@ fn host_tools_part_06() -> Vec<Tool> {
             "This tenant's document store counters: documents, bytes, text_bytes, the current \
              change watermark, this plan's document/byte quotas, and an index block (mode, \
              indexed_watermark, lag_seconds, pending_documents, chunks, rebuilding, \
-             quota_chunks_reached) describing the search index's own freshness.",
+             quota_chunks_reached) describing the search index's own freshness. \
+             import_paths names how a document gets in (content, content_base64, put_many), \
+             put_many_max the most documents one host.docs.put_many takes, and doc_max_bytes \
+             the per-document byte cap.",
             host_schema(json!({}), &[]),
         ),
         // PRD-mcphost-docs-semantic-search P0 requirements 2-5, P1
@@ -3264,7 +3387,7 @@ fn host_tools_part_06() -> Vec<Tool> {
                 json!({
                     "query": {"type": "string", "description": "Search query text."},
                     "k": {"type": "integer", "description": "Max results to return, 1-20; default 5."},
-                    "mode": {"type": "string", "description": "\"auto\" (default), \"lexical\", \"embeddings\", or \"hybrid\". \"embeddings\"/\"hybrid\" without a configured provider is a validation error."},
+                    "mode": {"type": "string", "enum": crate::docs::SEARCH_MODES, "description": "\"auto\" (default), \"lexical\", \"embeddings\", or \"hybrid\". \"embeddings\"/\"hybrid\" without a configured provider is a validation error."},
                     "filter": {
                         "type": "object",
                         "description": "Restrict results to documents matching prefix and/or name.",
@@ -3285,7 +3408,7 @@ fn host_tools_part_06() -> Vec<Tool> {
              config re-indexes every document from scratch in the background.",
             host_schema(
                 json!({
-                    "provider": {"type": "string", "description": "\"none\" or \"openai-compatible\"."},
+                    "provider": {"type": "string", "enum": crate::docs::INDEX_PROVIDERS, "description": "\"none\" or \"openai-compatible\"."},
                     "endpoint": {"type": "string", "description": "Embeddings API URL; required for openai-compatible."},
                     "model": {"type": "string", "description": "Embeddings model name; required for openai-compatible."},
                     "secret": {"type": "string", "description": "Name of a tenant secret (host.secret_set) used as the bearer; required for openai-compatible."},
@@ -3423,7 +3546,7 @@ fn host_tools_part_07() -> Vec<Tool> {
                         "enum": crate::tables_model::ANNOTATION_KEYS,
                         "description": "One of role, unit, description, hidden.",
                     },
-                    "value": {"description": "The annotation's value."},
+                    "value": {"type": ANY_JSON_TYPES, "description": "The annotation's value."},
                 }),
                 &["table", "key", "value"],
             ),
@@ -3488,8 +3611,8 @@ fn host_tools_part_07() -> Vec<Tool> {
              and the response carries data.clamped_to.",
             host_schema(
                 json!({
-                    "name": {"type": "string", "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool."},
-                    "urls": {"type": "array", "items": {"type": "string"}, "description": "1-20 URLs to probe with GET; a 2xx/3xx answer is up."},
+                    "name": {"type": "string", "pattern": crate::uptime::NAME_PATTERN, "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool."},
+                    "urls": {"type": "array", "minItems": 1, "maxItems": crate::uptime::TARGETS_MAX, "items": {"type": "string"}, "description": "1-20 URLs to probe with GET; a 2xx/3xx answer is up."},
                     "every_s": {"type": "integer", "description": "Probe interval in seconds; default 300, raised to the plan's floor (pro: 60)."},
                 }),
                 &["name", "urls"],
@@ -3507,7 +3630,7 @@ fn host_tools_part_07() -> Vec<Tool> {
              (data.limit) at the plan's event_triggers_max.",
             host_schema(
                 json!({
-                    "name": {"type": "string", "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$)."},
+                    "name": {"type": "string", "pattern": crate::drafter::TOOL_NAME_REGEX, "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$)."},
                     "verify": {"type": "string", "enum": crate::webhook_inbox::VERIFY_SCHEMES, "description": "How a POST is signed; default hmac (X-Mcphost-Signature: sha256=<hex hmac of the body>)."},
                     "rotate": {"type": "boolean", "description": "On an existing inbox, mint and return a new secret; the url never changes."},
                 }),
@@ -3521,7 +3644,7 @@ fn host_tools_part_07() -> Vec<Tool> {
              family, each group with the next concrete step. Returns {window: {calls, failed, \
              first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, \
              first_source_line?, line?, next}]} biggest group first; tool_exception groups carry \
-             the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows). No failed calls: groups: [] and a next \
+             the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, policy, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed, or external unclaimed: policy external_unclaimed with idle_since_unix, warn_at_unix, expires_at_unix, purge_at_unix, warned_unix, warn_address_masked) and when. No failed calls: groups: [] and a next \
              saying so (hint: host.quickstart when the tenant has no tools yet). The admin key \
              may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
             host_schema(
@@ -3815,6 +3938,7 @@ fn host_tools_part_08() -> Vec<Tool> {
                             stored in.",
                     },
                     "verify": {
+                        "type": ["string", "object"],
                         "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\
                             \"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set \
                             name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? \
@@ -3966,10 +4090,10 @@ fn host_tools_part_08() -> Vec<Tool> {
                 json!({
                     "id": {"type": "string", "description": "The event, message or webhook trigger id."},
                     "name": {"type": "string", "description": "The trigger's name, instead of id."},
-                    "body": {"description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."},
+                    "body": {"type": ANY_JSON_TYPES, "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."},
                     "headers": {"type": "object", "description": "kind=\"event\": header name -> string value, e.g. {\"X-Hub-Signature-256\": \"sha256=...\"}."},
                     "from": {"type": "string", "description": "kind=\"message\": the synthetic envelope's from address; default \"@test\"."},
-                    "data": {"description": "kind=\"message\": the synthetic envelope's data payload."},
+                    "data": {"type": ANY_JSON_TYPES, "description": "kind=\"message\": the synthetic envelope's data payload."},
                 }),
                 &[],
                 &["id", "name"],
@@ -4031,6 +4155,7 @@ fn host_tools_part_08() -> Vec<Tool> {
                     "plan": {"type": "string", "description": "Which plan to check out; default: pro."},
                     "source": {
                         "type": "string",
+                        "enum": crate::billing::KNOWN_CHECKOUT_SOURCES,
                         "description": "Which refusal started this checkout (e.g. calls_per_day, \
                             tools_max, secrets_max), or manual; default: manual. Echoed back in the \
                             response and recorded on the eventual payment's ledger row.",
@@ -4066,6 +4191,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                 json!({
                     "handle": {
                         "type": ["string", "null"],
+                        "pattern": crate::agents::HANDLE_PATTERN,
                         "description": "Unique handle to claim, e.g. \"indexer\" (without the @); \
                             null clears it.",
                     },
@@ -4076,6 +4202,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                     },
                     "tags": {
                         "type": "array",
+                        "maxItems": crate::agents::MAX_TAGS,
                         "items": {"type": "string"},
                         "description": "Up to 16 tags of up to 32 bytes each, for host.agent.search.",
                     },
@@ -4149,6 +4276,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                     },
                     "text": {
                         "type": "string",
+                        "minLength": 1,
                         "description": "What you needed or saw; 1 to 2048 bytes after trim.",
                     },
                     "context": {
@@ -4176,7 +4304,7 @@ fn host_tools_part_09() -> Vec<Tool> {
             crate::example_propose::PROPOSE_DESCRIPTION,
             host_schema(
                 json!({
-                    "tool": {"type": "string", "description": "Name of one of your published tools; the example takes its name."},
+                    "tool": {"type": "string", "minLength": 1, "description": "Name of one of your published tools; the example takes its name."},
                     "proof_call": {
                         "type": "object",
                         "description": "The call that proves the tool works: args for the tool and expect, `result.<path> <op> <value>` with op one of ==, !=, contains.",
@@ -4186,7 +4314,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                         },
                         "required": ["expect"],
                     },
-                    "title": {"type": "string", "description": "Example title, 1 to 60 characters."},
+                    "title": {"type": "string", "minLength": 1, "description": "Example title, 1 to 60 characters."},
                     "summary": {"type": "string", "description": "One-line summary, up to 200 characters; defaults to the tool's description."},
                     "use_case": {
                         "type": "array",
@@ -4241,7 +4369,7 @@ fn host_tools_part_09() -> Vec<Tool> {
             crate::feedback::tool_descriptors()[2].1,
             host_schema(
                 json!({
-                    "feedback_id": {"type": "string", "description": "An id host.feedback.send returned."},
+                    "feedback_id": {"type": "string", "minLength": 1, "description": "An id host.feedback.send returned."},
                 }),
                 &["feedback_id"],
             ),
@@ -4258,12 +4386,12 @@ fn host_tools_part_09() -> Vec<Tool> {
             host_schema(
                 json!({
                     "to": {
-                        "type": "array",
+                        "type": "array", "minItems": 1,
                         "items": {"type": "string"},
                         "description": "1 to recipients_per_msg_max addresses (@handle or t_... \
                             namespace).",
                     },
-                    "body": {"type": "string", "description": "Message text; non-empty after trim."},
+                    "body": {"type": "string", "minLength": 1, "description": "Message text; non-empty after trim."},
                     "data": {"type": "object", "description": "Optional structured payload."},
                     "dedupe_key": {
                         "type": "string",
@@ -4296,7 +4424,7 @@ fn host_tools_part_09() -> Vec<Tool> {
             host_schema(
                 json!({
                     "thread_id": {"type": "string", "description": "The thread to reply in."},
-                    "body": {"type": "string", "description": "Message text; non-empty after trim."},
+                    "body": {"type": "string", "minLength": 1, "description": "Message text; non-empty after trim."},
                     "data": {"type": "object", "description": "Optional structured payload."},
                     "in_reply_to": {"type": "string", "description": "The message_id this replies to."},
                     "dedupe_key": {
@@ -4479,15 +4607,16 @@ fn host_tools_part_10() -> Vec<Tool> {
              missing answer. Refused with asks_limit at the plan's asks_open_max.",
             host_schema_checked(
                 json!({
-                    "question": {"type": "string", "description": "What to ask, at most 500 characters."},
+                    "question": {"type": "string", "minLength": 1, "description": "What to ask, at most 500 characters."},
                     "options": {
                         "type": "array",
-                        "items": {"type": "string"},
+                        "items": {"type": "string", "pattern": crate::asks::OPTION_PATTERN},
+                        "uniqueItems": true,
                         "minItems": crate::asks::OPTIONS_MIN,
                         "maxItems": crate::asks::OPTIONS_MAX,
                         "description": "2 to 6 distinct button labels, each at most 40 characters.",
                     },
-                    "ttl_s": {"type": "integer", "description": "Seconds the link stays answerable; default 3600, at most 604800."},
+                    "ttl_s": {"type": "integer", "minimum": 1, "maximum": crate::asks::TTL_MAX_S, "description": "Seconds the link stays answerable; default 3600, at most 604800."},
                     "context": {"type": "string", "description": "Markdown shown under the question, at most 2 KB; raw HTML is escaped."},
                     "notify": {"type": "boolean", "description": "Also push the link to the user's channel once host.notify.send is live; until then accepted and reported notified: false."},
                 }),
@@ -4549,7 +4678,7 @@ fn host_tools_part_10() -> Vec<Tool> {
             host_schema(
                 json!({
                     "kind": {"type": "string", "enum": crate::notify::ChannelKind::names(), "description": "Where this channel delivers."},
-                    "target": {"type": "string", "description": "email: the verified owner address; webhook/slack: an https URL."},
+                    "target": {"type": "string", "minLength": 1, "description": "email: the verified owner address; webhook/slack: an https URL."},
                 }),
                 &["kind", "target"],
             ),
@@ -4580,9 +4709,9 @@ fn host_tools_part_10() -> Vec<Tool> {
             ),
             host_schema_checked(
                 json!({
-                    "text": {"type": "string", "description": format!("The message, at most {} bytes.", crate::notify::TEXT_MAX_BYTES)},
+                    "text": {"type": "string", "minLength": 1, "description": format!("The message, at most {} bytes.", crate::notify::TEXT_MAX_BYTES)},
                     "level": {"type": "string", "enum": crate::notify::Level::names(), "description": "How urgent."},
-                    "link": {"type": "string", "description": "Optional https URL appended to the message."},
+                    "link": {"type": "string", "pattern": crate::notify::LINK_PATTERN, "description": "Optional https URL appended to the message."},
                 }),
                 &["text", "level"],
             ),
@@ -4603,13 +4732,13 @@ fn host_tools_part_10() -> Vec<Tool> {
             host_schema_checked(
                 json!({
                     "to": {"description": format!("One address, or an array of at most {}.", crate::email_send::TO_MAX), "oneOf": [
-                        {"type": "string", "format": "email"},
-                        {"type": "array", "items": {"type": "string", "format": "email"}},
+                        {"type": "string", "format": "email", "pattern": crate::email_send::ADDRESS_PATTERN},
+                        {"type": "array", "minItems": 1, "maxItems": crate::email_send::TO_MAX, "items": {"type": "string", "format": "email", "pattern": crate::email_send::ADDRESS_PATTERN}},
                     ]},
-                    "subject": {"type": "string", "description": format!("One line, at most {} bytes.", crate::email_send::SUBJECT_MAX_BYTES)},
+                    "subject": {"type": "string", "minLength": 1, "description": format!("One line, at most {} bytes.", crate::email_send::SUBJECT_MAX_BYTES)},
                     "text": {"type": "string", "description": format!("Plain-text body, at most {} bytes.", crate::email_send::TEXT_MAX_BYTES)},
                     "html": {"type": "string", "description": format!("Optional HTML body, at most {} bytes.", crate::email_send::HTML_MAX_BYTES)},
-                    "reply_to_message_id": {"type": "string", "description": "Optional Message-ID this answers; copied into In-Reply-To."},
+                    "reply_to_message_id": {"type": "string", "pattern": crate::email_send::ONE_LINE_PATTERN, "description": "Optional Message-ID this answers; copied into In-Reply-To."},
                 }),
                 &["to", "subject", "text"],
             ),
@@ -4622,7 +4751,7 @@ fn host_tools_part_10() -> Vec<Tool> {
                 crate::email_send::SendStatus::names().join(", ")
             ),
             host_schema(
-                json!({"limit": {"type": "integer", "description": format!("1 to {}; default 20.", crate::email_send::SENDS_MAX)}}),
+                json!({"limit": {"type": "integer", "minimum": 1, "maximum": crate::email_send::SENDS_MAX, "description": format!("1 to {}; default 20.", crate::email_send::SENDS_MAX)}}),
                 &[],
             ),
         ),
@@ -4720,7 +4849,7 @@ fn host_tools_part_10() -> Vec<Tool> {
             host_schema(
                 json!({
                     "addresses": {
-                        "type": "array",
+                        "type": "array", "minItems": 1, "maxItems": crate::consent::MAX_IMPORT_ADDRESSES,
                         "items": {"type": "string"},
                         "description": "1 to 50 @handle or t_... addresses.",
                     },
@@ -4751,7 +4880,7 @@ fn host_tools_part_11() -> Vec<Tool> {
              name) the same way. Refuses channels_max (quota_exceeded) past the plan's cap.",
             host_schema_any(
                 json!({
-                    "name": {"type": "string", "description": "Channel name to create or look up."},
+                    "name": {"type": "string", "minLength": 1, "description": "Channel name to create or look up."},
                     "group": {"type": "string", "description": "A group you own (host.group.create); open its one channel instead."},
                 }),
                 &[],
@@ -4767,7 +4896,7 @@ fn host_tools_part_11() -> Vec<Tool> {
             host_schema(
                 json!({
                     "channel": {"type": "string", "description": "Channel name or channel_id."},
-                    "body": {"type": "string", "description": "Post text; non-empty after trim."},
+                    "body": {"type": "string", "minLength": 1, "description": "Post text; non-empty after trim."},
                     "data": {"type": "object", "description": "Optional structured payload."},
                 }),
                 &["channel", "body"],
@@ -4863,7 +4992,7 @@ fn host_tools_part_11() -> Vec<Tool> {
              OAuth consent page. Up to 32 catalog entries per tenant.",
             host_schema(
                 json!({
-                    "name": {"type": "string", "description": "^[a-z][a-z0-9_:.-]{0,40}$"},
+                    "name": {"type": "string", "pattern": crate::state::SCOPE_NAME_PATTERN, "description": "^[a-z][a-z0-9_:.-]{0,40}$"},
                     "description": {"type": "string", "description": "Human-readable text shown on the OAuth consent page."},
                 }),
                 &["name", "description"],
@@ -4909,8 +5038,8 @@ fn host_tools_part_11() -> Vec<Tool> {
                 json!({
                     "clients": {"type": "string", "enum": crate::oauth_policy::CLIENTS_MODES},
                     "allowlist": {"type": "array", "items": {"type": "string"}},
-                    "access_ttl_s": {"type": "integer"},
-                    "refresh_ttl_s": {"type": "integer"},
+                    "access_ttl_s": {"type": "integer", "minimum": crate::oauth_policy::ACCESS_TTL_MIN, "maximum": crate::oauth_policy::ACCESS_TTL_MAX},
+                    "refresh_ttl_s": {"type": "integer", "minimum": crate::oauth_policy::REFRESH_TTL_MIN, "maximum": crate::oauth_policy::REFRESH_TTL_MAX},
                     "max_grant_age_s": {"type": "integer"},
                     "reconsent_after_s": {"type": "integer"},
                 }),
@@ -5108,6 +5237,31 @@ fn host_tools_part_12() -> Vec<Tool> {
                         "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}.",
                     },
                     "rule": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "column_or_attr": {"type": "string"},
+                                "op": {"type": "string", "enum": crate::rowpolicy::policy::RuleOp::NAMES},
+                                "value": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {"literal": {"type": ["string", "number", "boolean", "array", "object", "null"]}},
+                                            "required": ["literal"],
+                                            "additionalProperties": false,
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {"attr": {"type": "string"}},
+                                            "required": ["attr"],
+                                            "additionalProperties": false,
+                                        },
+                                    ],
+                                },
+                            },
+                            "required": ["column_or_attr", "op", "value"],
+                        },
                         "description": "A list of {column_or_attr, op, value} rules, ANDed together.",
                     },
                     "replace": {
@@ -5141,10 +5295,10 @@ fn host_tools_part_14() -> Vec<Tool> {
             host_schema(
                 json!({
                     "source": crate::sync::source_schema(),
-                    "table": {"type": "string", "description": "The host table that mirrors the source; created if it does not exist."},
+                    "table": {"type": "string", "pattern": crate::tables::IDENT_PATTERN, "description": "The host table that mirrors the source; created if it does not exist."},
                     "mode": crate::sync::mode_schema(),
                     "every": {"type": "string", "description": format!("Five-field cron schedule, UTC (default {}); never faster than every {} seconds.", crate::sync::DEFAULT_EVERY, crate::sync::MIN_INTERVAL_S)},
-                    "primary_key": {"type": "string", "description": "Column that identifies a row across pulls."},
+                    "primary_key": {"type": "string", "pattern": crate::tables::IDENT_PATTERN, "description": "Column that identifies a row across pulls."},
                 }),
                 &["source", "table"],
             ),
@@ -5164,7 +5318,7 @@ fn host_tools_part_14() -> Vec<Tool> {
              running, ok, error, rate_limited, auth_expired, suspicious_empty or deferred.",
             host_schema(
                 json!({
-                    "sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."},
+                    "sync_id": {"type": "string", "minLength": 1, "description": "The sync_id host.sync.create returned."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "How many receipts runs carries (default 20)."},
                 }),
                 &["sync_id"],
@@ -5175,7 +5329,7 @@ fn host_tools_part_14() -> Vec<Tool> {
             "Delete a sync and its receipts. The mirrored table and its rows stay and keep \
              answering host.table.query.",
             host_schema(
-                json!({"sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."}}),
+                json!({"sync_id": {"type": "string", "minLength": 1, "description": "The sync_id host.sync.create returned."}}),
                 &["sync_id"],
             ),
         ),
@@ -5184,11 +5338,32 @@ fn host_tools_part_14() -> Vec<Tool> {
             "Make a sync due now: next_run_unix becomes the current time and the scheduler picks \
              it up on its next pass. Returns {sync_id, next_run_unix}.",
             host_schema(
-                json!({"sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."}}),
+                json!({"sync_id": {"type": "string", "minLength": 1, "description": "The sync_id host.sync.create returned."}}),
                 &["sync_id"],
             ),
         ),
     ]
+}
+
+/// PRD-mcphost-tools-call-progress-notifications P0: the progress probe.
+#[inline(never)]
+fn host_tools_part_15() -> Vec<Tool> {
+    vec![Tool::new(
+        "host.probe.progress",
+        "Report progress on a schedule, so a client can see notifications/progress frames arrive \
+         before the result. Sleeps step_ms, then reports, steps times; with _meta.progressToken \
+         each report is one notifications/progress frame (progress = pct, total = 100, or with \
+         mode=count progress = the step number and no total). Returns {steps, elapsed_ms}. Never \
+         runs longer than 25 s.",
+        host_schema_checked(
+            json!({
+                "steps": {"type": "integer", "minimum": 1, "maximum": 5, "description": "How many reports to make, 1-5."},
+                "step_ms": {"type": "integer", "minimum": 1000, "maximum": 5000, "description": "Milliseconds to sleep before each report, 1000-5000."},
+                "mode": {"type": "string", "enum": crate::progress::ProbeMode::NAMES, "description": "pct (default): progress is the percentage done with total 100; count: progress is the step number, no total."},
+            }),
+            &["steps", "step_ms"],
+        ),
+    )]
 }
 
 #[inline(never)]
@@ -5232,7 +5407,7 @@ fn host_tools_part_13() -> Vec<Tool> {
                 json!({
                     "since": {"type": ["integer", "string"], "description": "Start of the window (inclusive): unix seconds, YYYY-MM-DD, RFC 3339 or -24h."},
                     "until": {"type": ["integer", "string"], "description": "End of the window (exclusive), same forms as since."},
-                    "limit": {"type": "integer", "description": "Refuse export_too_large past this many rows, 1-50000; default 50000."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": crate::audit_export::EXPORT_ROWS_MAX, "description": "Refuse export_too_large past this many rows, 1-50000; default 50000."},
                     "format": {"type": "string", "enum": crate::audit_export::EXPORT_FORMATS, "description": "Default jsonl."},
                 }),
                 &[],
@@ -5564,6 +5739,7 @@ fn host_tools_part_13() -> Vec<Tool> {
     tools.extend(host_tools_part_12());
     tools.extend(host_tools_part_13());
     tools.extend(host_tools_part_14());
+    tools.extend(host_tools_part_15());
     tools.extend(crate::verify::tools());
     if authenticated {
         tools.push(Tool::new(
@@ -5794,7 +5970,14 @@ fn set_alias_of(tool: &mut Tool, canonical: &str) {
 /// PRD-mcphost-tools-list-alias-truth requirement 3: the one
 /// `unknown_tool` error for a `host.*`/`billing.*` name nothing dispatches,
 /// with `nearest` drawn from exactly what `tools/list` advertises.
-fn unknown_host_tool(kinds: &KindRegistry, requested: &str) -> AppError {
+/// The names `McpHostHandler::arm_unadvertised` (handler/arms.rs) serves -- read
+/// by `precheck::precheck_tenant_call`'s name-exists check.
+/// `admin_events.action` of a rolled-back implicit signup (R2).
+pub(crate) const ROLLED_BACK_ACTION: &str = "implicit_signup_rolled_back";
+
+pub(crate) const UNADVERTISED_ARMS: &[&str] = &["host.tool_from_description", "billing.status", "billing.checkout"];
+
+pub(crate) fn unknown_host_tool(kinds: &KindRegistry, requested: &str) -> AppError {
     let advertised: Vec<String> = host_tools(kinds, true).into_iter().map(|t| t.name.to_string()).collect();
     let canonical = canonical_control_plane_names(kinds);
     AppError::host_tool_not_found(requested, &canonical, &advertised)
@@ -5844,12 +6027,15 @@ fn admin_tools_raw() -> Vec<Tool> {
             "admin.tenants",
             "List every tenant, optionally filtered to display names starting with `prefix` \
              and/or by `synthetic` (`true`: only labeled tenants, `false`: only unlabeled, \
-             `all`: no filter -- the default). Every row carries a `synthetic` field, null \
-             for unlabeled.",
+             `all`: no filter -- the default) and/or by `disabled_reason` (e.g. `idle_expired`). \
+             Every row carries a `synthetic` field, null for unlabeled, and `expires_at_unix`, \
+             when the idle sweep ends the tenant (null unless it is a synthetic implicit \
+             unclaimed tenant).",
             schema(
                 json!({
                     "prefix": {"type": "string"},
                     "synthetic": {"type": "string", "enum": crate::admin::SYNTHETIC_FILTERS},
+                    "disabled_reason": {"type": "string", "description": "Only tenants disabled for this reason (self_offboard, admin_disable, idle_expired)."},
                 }),
                 &[],
             ),
@@ -5912,7 +6098,7 @@ fn admin_tools_raw() -> Vec<Tool> {
             schema(
                 json!({
                     "window": {"type": "string", "description": "e.g. \"1d\"; default 1d."},
-                    "by": {"type": "string", "description": "\"tool\" (default) or \"tenant\"."},
+                    "by": {"type": "string", "enum": crate::admin::USAGE_TOP_BY, "description": "\"tool\" (default) or \"tenant\"."},
                     "limit": {"type": "integer", "description": "Max rows; default 20."},
                 }),
                 &[],
@@ -6007,11 +6193,18 @@ fn admin_tools_raw() -> Vec<Tool> {
         // are the four `admin::funnel` reads.
         Tool::new(
             "admin.funnel",
-            "Activation funnel for every tenant that signed up in the trailing days (default 7): \
-             per-stage counts, shares and medians, signups and signups_human, the breakdown by \
-             source and by origin, upgrades by trigger, install-link clicks and the by-surface \
-             probe report. Narrow it by source_class or signup_source, or split organic from \
-             invite-born tenants with invited, which also adds the invite k-factor.",
+            format!(
+                "Activation funnel for every tenant that signed up in the trailing days (default 7): \
+                 per-stage counts, shares and medians, signups and signups_human, the breakdown by \
+                 source and by origin, upgrades by trigger, install-link clicks and the by-surface \
+                 probe report (known-synthetic tenants excluded and counted in synthetic_excluded; \
+                 each by_surface row has the keys {}), plus recipe_attempts_7d (keys {}; uses by \
+                 non-synthetic tenants) and recipe_attempts_synthetic_7d. Narrow it by source_class \
+                 or signup_source, or split organic from invite-born tenants with invited, which \
+                 also adds the invite k-factor.",
+                crate::api_contract::SURFACE_STAGE_KEYS.join(", "),
+                crate::kinds::aliases::recipe_names().join(", "),
+            ),
             schema(
                 json!({
                     "days": {"type": "integer", "description": "Trailing signup window in days; default 7, clamped to 1..365."},
@@ -6049,7 +6242,7 @@ fn admin_tools_raw() -> Vec<Tool> {
             schema(
                 json!({
                     "tenant": {"type": "string"},
-                    "label": {"type": ["string", "null"]},
+                    "label": {"type": ["string", "null"], "pattern": crate::state::SYNTHETIC_LABEL_PATTERN},
                 }),
                 &["tenant", "label"],
             ),
@@ -6063,7 +6256,7 @@ fn admin_tools_raw() -> Vec<Tool> {
             schema(
                 json!({
                     "name_like": {"type": "string"},
-                    "label": {"type": "string"},
+                    "label": {"type": "string", "pattern": crate::state::SYNTHETIC_LABEL_PATTERN},
                     "dry_run": {"type": "boolean"},
                 }),
                 &["name_like", "label"],
@@ -6241,7 +6434,7 @@ fn admin_tools_raw() -> Vec<Tool> {
              (default true) only reports counts.",
             schema(
                 json!({
-                    "older_than_days": {"type": "integer"},
+                    "older_than_days": {"type": "integer", "minimum": 1},
                     "dry_run": {"type": "boolean"},
                 }),
                 &["older_than_days"],
@@ -6263,7 +6456,7 @@ fn admin_tools_raw() -> Vec<Tool> {
                         "description": "The raw tenant key, a literal address, or an email domain.",
                     },
                     "ttl": {"type": "string", "description": "e.g. \"30m\", \"24h\", \"7d\"."},
-                    "permanent": {"description": "Only the literal boolean true counts; any other value is treated as absent (then ttl is required)."},
+                    "permanent": {"type": ANY_JSON_TYPES, "description": "Only the literal boolean true counts; any other value is treated as absent (then ttl is required)."},
                     "reason": {"type": "string"},
                     "public": {"type": "boolean", "description": "Include reason in the refusal; default false."},
                 }),
@@ -6306,7 +6499,7 @@ fn admin_tools_raw() -> Vec<Tool> {
                 json!({
                     "tenant_id": {"type": "integer", "description": "The owning tenant's id (host.doctor's oauth_issuers.invalid[].tenant_id)."},
                     "issuer": {"type": "string"},
-                    "reason": {"type": "string", "description": "Why; stored in the tenant's audit row."},
+                    "reason": {"type": "string", "minLength": 1, "description": "Why; stored in the tenant's audit row."},
                 }),
                 &["tenant_id", "issuer", "reason"],
             ),
@@ -7199,21 +7392,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 230 forwardable ids is 983,040 B (every id measures it:
+/// maximum over all 230 forwardable ids is 1,028,096 B (every id measures it:
 /// `test:host.trigger.set`, `call:host.whoami`,
 /// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
-/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path), after the dispatch table
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-21 with the implicit-signup rollback guard on the first-call path: 983,040 -> 991,232 B; and 2026-10-23 with the schema-shape validators on the argument path: 991,232 -> 1,007,616 B; and 2026-10-24 CI's debug build measured `call:host.whoami` at 1,011,712 B (PR #515 run 40094459445; a CI figure, not `scripts/fwd-stack-measure.sh all`, so a script re-run must not lower it); and 2026-10-24 merged with the progress-token sink on the call path: CI figure, run 40114224490 (debug build), `call:host.whoami` minimum stack 1019904 bytes, so a script re-run must not lower it; and 2026-10-27 merged with the subscriptions-listen stream: `scripts/fwd-stack-measure.sh call:host.whoami` (debug build) 1,024,000 B, +4,096 B over main; the branch alone measured 995,328 B; and 2026-10-30 with the per-session implicit-signup peer-recent gate on the first-call path: `scripts/fwd-stack-measure.sh` (debug build) 1,024,000 -> 1,028,096 B on `test:host.trigger.set`, `call:host.whoami`, `call:host.webhook_inbox.create` and `call:host.vault.status`), after the dispatch table
 /// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
 /// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
 /// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
 /// compiling its error-envelope report on the caller's stack) and the
-/// budget is that + 25 % = 1,228,800 B, so CI's 2 MiB test thread keeps
+/// budget is that + 25 % = 1,285,120 B, so CI's 2 MiB test thread keeps
 /// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_228_800;
+pub const FORWARD_STACK_BUDGET: usize = 1_285_120;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
 /// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
@@ -7563,7 +7756,11 @@ impl McpHostHandler {
     ) -> Result<Value, AppError> {
         // PRD-mcphost-resources-for-tenant-data requirements 4 and 6: the
         // one place a committed write tells resource subscribers.
-        let hint = crate::resources::write_hint(name, &args);
+        // Boxed: this frame is re-entered once per forwarding level (FORWARD_STACK_BUDGET).
+        let hint = crate::resources::write_hint(name, &args).map(Box::new);
+        // PRD-mcphost-subscriptions-listen R4: what a tools/list-changing verb
+        // needs remembered from before it ran; boxed so this frame stays small.
+        let listen = Box::pin(crate::listen::Pending::begin(&self.state, tenant, name, &args)).await;
         // The forwarding boundary. A wrapper verb (`FORWARDING_WRAPPERS`) re-enters
         // this dispatcher with the verb it forwards, so it is on the stack UNDER
         // the forwarded verb. Dispatched the usual way it would hold the
@@ -7577,9 +7774,7 @@ impl McpHostHandler {
         let result = if FORWARDING_WRAPPERS.contains(&name) {
             // The same two checks `dispatch_tenant_tool_inner` makes first: the
             // wrapper's descriptor validates its own call like every other verb.
-            match crate::paged::refuse_fields_on_unprojected(name, &args)
-                .and_then(|()| crate::host_args::validate_host_args(&self.state.kinds, name, &args))
-            {
+            match crate::precheck::precheck_tenant_call(&self.state.kinds, name, &args) {
                 Ok(()) => {
                     crate::host_args::note_handler_run(&tenant.namespace, name);
                     self.forwarding_wrapper(tenant, calls_auth_method, end_user, name, args).await
@@ -7589,20 +7784,27 @@ impl McpHostHandler {
         } else {
             // `Box::pin`: run 945 verbfwd_ac01 stack overflow (CI 39080964983) -- the hint
             // locals added here grew this frame past the 2 MiB test-thread stack.
-            Box::pin(self.dispatch_tenant_tool_dry_run(
-                tenant,
-                subject,
-                auth_method,
-                calls_auth_method,
-                end_user,
-                session_id,
-                name,
-                args,
+            // The task-local rides inside the same box (PRD-mcphost-subscriptions-listen R5).
+            Box::pin(crate::listen::CURRENT_VERB.scope(
+                crate::listen::canonical_verb(name).to_string(),
+                self.dispatch_tenant_tool_dry_run(
+                    tenant,
+                    subject,
+                    auth_method,
+                    calls_auth_method,
+                    end_user,
+                    session_id,
+                    name,
+                    args,
+                ),
             ))
             .await
         };
         if let (Some(hint), Ok(out)) = (hint, &result) {
-            crate::resources::after_write(&self.state, tenant.id, hint, out);
+            crate::resources::after_write(&self.state, tenant.id, *hint, out);
+        }
+        if let (Some(listen), Ok(out)) = (listen, &result) {
+            Box::pin(listen.finish(&self.state, tenant, out)).await;
         }
         self.attach_data_quota(tenant, name, result).await
     }
@@ -8022,10 +8224,9 @@ impl McpHostHandler {
     ) -> Result<Value, AppError> {
         // PRD-mcphost-fields-projection-on-list-verbs R4: `fields` on an
         // excused (`unpaged_reason`) verb is refused, never silently ignored.
-        crate::paged::refuse_fields_on_unprojected(name, &args)?;
         // PRD-mcphost-input-schema-is-the-validator R3: the descriptor is the
         // validator -- a structural violation is refused before any handler.
-        crate::host_args::validate_host_args(&self.state.kinds, name, &args)?;
+        crate::precheck::precheck_tenant_call(&self.state.kinds, name, &args)?;
         crate::host_args::note_handler_run(&tenant.namespace, name);
         let ctx = ArmCtx { tenant, subject, auth_method, calls_auth_method, end_user, session_id, name, args };
         // The verb table is generated from the descriptor registry
@@ -8071,6 +8272,10 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
+        // PRD-mcphost-implicit-signup-mints-only-on-success R1: the SAME check
+        // `dispatch_tenant_tool_inner` runs, before `control::signup` charges the
+        // limiter or writes a row -- a call that cannot work mints nothing.
+        crate::precheck::precheck_tenant_call(&self.state.kinds, name, &args)?;
         let (client_name, client_version) = match peer_client_info(ctx) {
             Some((name, version)) => (Some(name), Some(version)),
             None => (None, None),
@@ -8120,6 +8325,79 @@ impl McpHostHandler {
             .await?
             .ok_or_else(|| AppError::Internal("implicit signup's tenant vanished".to_string()))?;
 
+        // PRD-mcphost-implicit-signup-mints-only-on-success R2: everything after the
+        // mint runs under the per-call deadline and `catch_unwind`; an error, a
+        // timeout or a panic deletes the tenant it created and tells the caller how
+        // to get a key.
+        use futures_util::FutureExt as _;
+        let guarded = std::panic::AssertUnwindSafe(tokio::time::timeout(
+            self.state.call_timeout,
+            self.implicit_after_mint(ctx, &tenant, session_id, name, args),
+        ))
+        .catch_unwind()
+        .await;
+        let err = match guarded {
+            Ok(Ok(Ok(value))) => {
+                // R3: a client that presented no server-issued session id has no way
+                // to be recognised on its next call but its peer (IP + User-Agent);
+                // `redeemed_peers` is the memory the refusal block reads.
+                let presented = parts
+                    .extensions
+                    .get::<crate::session_bind::SessionPresented>()
+                    .is_some_and(|p| p.0);
+                if !presented {
+                    self.state.redeemed_peers.record_at(
+                        &request_peer_key(parts),
+                        &tenant.namespace,
+                        session_id,
+                        now_unix(),
+                    );
+                }
+                return Ok(value);
+            }
+            Ok(Ok(Err(e))) => e,
+            Ok(Err(_elapsed)) => AppError::CallTimeout(self.state.call_timeout.as_secs().max(1)),
+            Err(_panic) => AppError::Internal("implicit signup dispatch panicked".to_string()),
+        };
+        self.rollback_implicit_signup(&tenant, session_id).await;
+        Err(err.with_get_a_key(&self.state.public_url))
+    }
+
+    /// R4: one `signup_events` row (kind `implicit_peer_refused`) per R3 refusal,
+    /// with the source IP and its `ip_class`; the limiter counts only `signup`.
+    async fn note_implicit_peer_refused(&self, parts: &http::request::Parts) {
+        let ip = source_ip(parts);
+        let ip_class = crate::state::classify_ip_class(&ip).to_string();
+        if let Err(e) = self.state.db.record_implicit_peer_refused(ip, ip_class).await {
+            tracing::warn!(error = %e, "failed to record implicit_peer_refused");
+        }
+    }
+
+    /// R2: delete the tenant an implicit signup minted for a call that then failed,
+    /// through the path `admin.tenant_delete` uses, recorded as
+    /// `implicit_signup_rolled_back`; the `signup_events` row stays (the attempt
+    /// still counts toward the limiter).
+    async fn rollback_implicit_signup(&self, tenant: &Tenant, session_id: Option<&str>) {
+        if let Some(sid) = session_id {
+            self.state.implicit_signup_memory.drop_binding(sid);
+        }
+        if let Err(e) = admin::delete_tenant_cascade(&self.state, &tenant.namespace, ROLLED_BACK_ACTION).await {
+            tracing::error!(error = %e, tenant = %tenant.namespace, "implicit signup rollback failed; orphan left");
+        }
+    }
+
+    /// Everything an implicit signup does once the tenant exists (R2's guarded
+    /// span): the session memory, the personal URL, the dispatch of the call that
+    /// triggered the mint, and the `onboarding` envelope.
+    #[allow(clippy::too_many_arguments)]
+    async fn implicit_after_mint(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+        tenant: &Tenant,
+        session_id: Option<&str>,
+        name: &str,
+        args: Value,
+    ) -> Result<Value, AppError> {
         // PRD-mcphost-session-bound-tenant-key requirement 1/3: records this
         // connection's own implicit signup into `implicit_signup_memory`,
         // NOT `state.session_bindings` the way this call site used to
@@ -8127,7 +8405,7 @@ impl McpHostHandler {
         // signup attempt on this same connection must be refused and named
         // by default (requirement 2), never silently served the way an
         // explicit `signup`/`host.redeem` binding still is.
-        record_implicit_signup_memory(&self.state, session_id, &ctx.peer, &tenant).await;
+        record_implicit_signup_memory(&self.state, session_id, &ctx.peer, tenant).await;
 
         // Requirement 2's own dependency on PRD-mcphost-url-bound-tenants:
         // mints this tenant's personal URL right away -- the onboarding
@@ -8153,12 +8431,27 @@ impl McpHostHandler {
         // PRD-mcphost-msg-wait-long-poll-contract R5: a just-created tenant's
         // inbox cannot hold anything, so its `host.msg.wait` times out at
         // once instead of sleeping out the full default wait.
+        let injected = crate::implicit_fault::take(&tenant.display_name);
+        if let Some(fault) = injected {
+            return Err(crate::implicit_fault::fire(fault).await);
+        }
         let mut value = if name == "host.msg.wait" {
             crate::longpoll::wait_response(json!({"messages": []}), true, Instant::now(), crate::longpoll::clamp_timeout_s(args.get("timeout_s").and_then(Value::as_i64)))
         } else {
-            self.dispatch_tenant_tool(&tenant, None, "key", "session", None, session_id, name, args)
+            self.dispatch_tenant_tool(tenant, None, "key", "session", None, session_id, name, args)
                 .await?
         };
+        // R4: a successful first call is a used tool, so the tenant is not one of
+        // `admin.funnel`'s `implicit_zero_ok_calls`.
+        if name.starts_with("host.")
+            && let Err(e) = self
+                .state
+                .db
+                .record_host_tool_use(tenant.id, name.to_string(), "direct".to_string(), now_unix())
+                .await
+        {
+            tracing::warn!(tenant = %tenant.namespace, error = %e, "record_host_tool_use failed");
+        }
         // Requirement 2 (AC1): the first response's result envelope gains
         // `onboarding`; requirement 2's second half (AC2) holds by
         // construction -- this function only ever runs on the call that
@@ -8198,7 +8491,7 @@ impl McpHostHandler {
                     // PRD-mcphost-ownership-moment requirement 1 (AC1): the
                     // same stable claim link `host.whoami` will keep
                     // reporting until this tenant is claimed.
-                    "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, &tenant),
+                    "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, tenant),
                 }),
             );
         }
@@ -8243,7 +8536,7 @@ impl McpHostHandler {
         // descriptor is the validator, through the SAME `validate_host_args`
         // `call_tool_inner` runs for `host.*` -- one validator, one more
         // call site.
-        crate::host_args::validate_host_args(&self.state.kinds, name, &args)?;
+        crate::precheck::precheck_args(&self.state.kinds, name, &args)?;
         // Counted after the validator passed, keyed by the `tenant` (else
         // `prefix`) argument -- empty for "every tenant" -- so concurrent
         // tests cannot disturb each other's count.
@@ -8659,7 +8952,7 @@ impl McpHostHandler {
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             end_user: end_user.cloned(),
             vault_token,
@@ -9282,7 +9575,7 @@ impl McpHostHandler {
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             // PRD-mcphost-end-user-identity: `host.tool_test` is a dry run
             // against the real upstream, not a metered call -- no end user
@@ -9566,6 +9859,7 @@ impl McpHostHandler {
                 "unreached_cap": crate::output_schemas::reach_report().unreached_cap,
             },
             "oauth_issuers": crate::oauth::doctor_report(&self.state, tenant.map(|t| t.id)).await?,
+            "tenant_lifecycle": self.tenant_lifecycle_view(target_id).await?,
         });
         if rows.is_empty() {
             out["next"] = json!(crate::doctor::empty_next(limit));
@@ -9574,6 +9868,20 @@ impl McpHostHandler {
             }
         }
         Ok(out)
+    }
+
+    /// `host.doctor`'s `tenant_lifecycle`: the external unclaimed policy when
+    /// the tenant is one of its subjects, else the synthetic implicit one.
+    async fn tenant_lifecycle_view(&self, tenant_id: i64) -> Result<Value, AppError> {
+        let external = self.state.db.external_subjects(Some(tenant_id)).await?;
+        if let Some(subject) = external.get(&tenant_id) {
+            let window = self.state.db.external_expiry_window_days().await?;
+            return Ok(crate::retention::external_lifecycle_view(subject, window, now_unix()));
+        }
+        Ok(crate::retention::lifecycle_view(
+            self.state.db.synthetic_expiry_window_days().await?,
+            self.state.db.tenant_expires_at(tenant_id).await?,
+        ))
     }
 
     /// PRD-mcphost-call-trace-replay R5/R6: `host.call_trace`. `tenant` is
@@ -9743,7 +10051,7 @@ impl McpHostHandler {
         // same `validate` a real `host.tool_publish` would run, so a spec
         // that would be rejected at publish time fails identically here,
         // before any request is attempted.
-        if let Err(e) = kind.validate(&spec) {
+        if let Err(e) = KindRegistry::validate_checked(kind.as_ref(), &spec) {
             let err = crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), AppError::from(e));
             return Err(crate::hooks::enrich_own_hook_refusal(&self.state, tenant, &spec, err).await);
         }
@@ -9804,7 +10112,7 @@ impl McpHostHandler {
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             // PRD-mcphost-end-user-identity: `host.bridge_test` is a dry
             // run, not a metered call -- no end user to thread through.
@@ -9891,14 +10199,21 @@ impl McpHostHandler {
     async fn tool_test_stamping(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
         let name = args.get("name").and_then(Value::as_str).map(str::to_string);
         let mut out = self.tool_test(tenant, args).await?;
+        let verdict = out.get("verdict").and_then(Value::as_str).map(str::to_string);
         if let Some(name) = name
-            && out.get("verdict").and_then(Value::as_str) == Some("pass")
+            && let Some(verdict) = verdict
             && let Some(row) = self.state.db.get_tool(tenant.id, name.clone()).await?
         {
-            self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
-            if let Value::Object(map) = &mut out {
-                map.insert("tested_version".to_string(), json!(row.current_version));
-                map.insert("stale_test".to_string(), json!(false));
+            // PRD-mcphost-trusted-discovery-catalog-receipts R1: every verdict is
+            // stored with the version it judged; only `pass` stamps `tested_version`.
+            let passed = verdict == "pass";
+            self.state.db.record_test_verdict(tenant.id, name.clone(), row.current_version, verdict).await?;
+            if passed {
+                self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
+                if let Value::Object(map) = &mut out {
+                    map.insert("tested_version".to_string(), json!(row.current_version));
+                    map.insert("stale_test".to_string(), json!(false));
+                }
             }
         }
         Ok(out)
@@ -10064,7 +10379,7 @@ impl McpHostHandler {
             return Err(AppError::sandbox_unavailable(&status, retry_after_s));
         }
 
-        if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
+        if let Some(err) = AppError::from_kind_violations(KindRegistry::validate_all_checked(kind.as_ref(), &spec)) {
             return Err(crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), err));
         }
         kind.validate_async(&spec)
@@ -10183,7 +10498,7 @@ impl McpHostHandler {
             concurrent_calls_per_tenant,
             chain_fanout_max: usize::MAX,
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: tenant.plan == "pro",
             sandbox_ceilings: self.state.plans.sandbox_ceilings(&tenant.plan),
@@ -10631,7 +10946,7 @@ impl McpHostHandler {
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             // PRD-mcphost-end-user-identity: `host.tool_run`'s own
             // `record_call` (below) carries no end-user columns either --
@@ -10808,9 +11123,10 @@ impl McpHostHandler {
             .and_then(Value::as_str)
             .ok_or_else(|| AppError::InvalidArgs("missing required argument 'name'".into()))?
             .to_string();
-        if secret.is_empty() || !secret.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        if !crate::leakguard::is_secret_name(&secret) {
             return Err(AppError::InvalidArgs(format!(
-                "name: '{secret}' must match ^[a-zA-Z0-9_]+$ to be referenced as secret.<name>"
+                "name: '{secret}' must match {} to be referenced as secret.<name>",
+                crate::leakguard::SECRET_NAME_PATTERN
             )));
         }
         if !self.state.db.list_secret_names(tenant.id).await?.contains(&secret) {
@@ -11569,7 +11885,7 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> (Result<Value, AppError>, bool) {
-        let tracked = matches!(name, "host.tool.publish" | "host.tool.remove");
+        let tracked = crate::listen::tracks_prompts(name);
         let kind_before = match (tracked, args.get("name").and_then(Value::as_str)) {
             (true, Some(tool)) => self
                 .state
@@ -11591,6 +11907,9 @@ impl McpHostHandler {
             }
             _ => false,
         };
+        if changed {
+            self.state.listen_hub.notify(tenant.id, crate::listen::ListChange::Prompts);
+        }
         (result, changed)
     }
 }
@@ -11599,12 +11918,84 @@ impl McpHostHandler {
 async fn notify_prompt_list_changed(peer: &Peer<RoleServer>, namespace: &str) {
     if let Err(e) = crate::protocol::frames::emit(
         peer,
-        crate::protocol::frames::FrameKind::PromptsListChanged,
+        crate::protocol::frames::Frame::PromptListChanged,
         crate::protocol::frames::request_type_of("tools/call", true),
     )
     .await
     {
         tracing::warn!(tenant = %namespace, error = %e, "notify_prompt_list_changed failed");
+    }
+}
+
+impl McpHostHandler {
+    /// PRD-mcphost-subscriptions-listen R2/R6: the body of `ServerHandler::listen`.
+    async fn listen_stream(&self, context: rmcp::service::SubscriptionContext) -> Result<(), McpError> {
+        let base = Some(self.state.public_url.as_str());
+        let parts = get_parts(context.request_context())?;
+        let mut sub_key = None;
+        let auth = match resolve_path_secret_auth(&self.state, parts, "")
+            .await
+            .map_err(|e| e.into_error_data_at(base))?
+        {
+            Some(a) => a,
+            None => resolve_auth(&self.state, parts, &mut sub_key, "")
+                .await
+                .map_err(|e| e.into_error_data_at(base))?,
+        };
+        let tenant = match auth {
+            Auth::Tenant(tenant, _) => tenant,
+            Auth::Invalid => return Err(AppError::TenantKeyInvalid.into_error_data_at(base)),
+            // No key: nothing to listen for. The graceful result closes the stream.
+            Auth::Anonymous | Auth::Admin => return Ok(()),
+        };
+        if let Some(ns) = tenant_path_namespace(parts)
+            && tenant.namespace != ns
+        {
+            return Err(AppError::WrongTenant.into_error_data_at(base));
+        }
+        let plan = self
+            .state
+            .plans
+            .get(&tenant.plan)
+            .ok_or_else(|| AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan)))
+            .map_err(|e| e.into_error_data_at(base))?;
+        let limit = plan.listen_streams_max;
+        let mut guard = match self.state.listen_hub.open_within(tenant.id, limit) {
+            Ok(guard) => guard,
+            Err(used) => {
+                let fleet = self.state.fleet_ips.contains(&source_ip(parts));
+                self.state.listen_hub.record_refusal(crate::state::now_unix(), fleet);
+                return Err(AppError::Structured {
+                    code: crate::listen::LISTEN_STREAMS_MAX,
+                    message: format!("this tenant already has {used} open listen streams, the {} plan maximum", plan.name),
+                    data: json!({"limit": limit, "used": used, "plan": plan.name}),
+                }
+                .into_error_data_at(base));
+            }
+        };
+        let sink = context.sink().clone();
+        let mut pending = Vec::new();
+        loop {
+            let change = tokio::select! {
+                _ = context.cancelled() => return Ok(()),
+                change = guard.next(&mut pending) => match change {
+                    Some(change) => change,
+                    None => return Ok(()),
+                },
+            };
+            let sent = match change {
+                crate::listen::ListChange::Tools => sink.notify_tool_list_changed().await,
+                crate::listen::ListChange::Prompts => sink.notify_prompt_list_changed().await,
+            };
+            match sent {
+                // The client did not ask for this list.
+                Ok(()) | Err(rmcp::service::SubscriptionSendError::NotificationNotAccepted(_)) => {}
+                Err(e) => {
+                    tracing::debug!(tenant = %tenant.namespace, error = %e, "listen stream ended on send");
+                    return Ok(());
+                }
+            }
+        }
     }
 }
 
@@ -11711,6 +12102,36 @@ impl ServerHandler for McpHostHandler {
             ),
         ))
         .with_instructions(instructions)
+    }
+
+    /// PRD-mcphost-subscriptions-listen R1: the list notifications this host
+    /// can deliver on a listen stream. rmcp intersects this with the request and
+    /// with `get_info`'s capabilities. Resource notifications stay out (Non-goals).
+    fn accepted_subscription_filter(
+        &self,
+        requested: &rmcp::model::SubscriptionFilter,
+    ) -> Option<rmcp::model::SubscriptionFilter> {
+        let mut filter = rmcp::model::SubscriptionFilter::builder();
+        if requested.tools_list_changed == Some(true) {
+            filter = filter.tools_list_changed();
+        }
+        if requested.prompts_list_changed == Some(true) {
+            filter = filter.prompts_list_changed();
+        }
+        Some(filter.build())
+    }
+
+    /// PRD-mcphost-subscriptions-listen R2/R6: hold one stream for the tenant
+    /// the Authorization header names, until the client closes it or the server
+    /// shuts down. Resolution is read-only: no tenant is created and no
+    /// session memory is written.
+    fn listen(
+        &self,
+        context: rmcp::service::SubscriptionContext,
+    ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
+        // Boxed: rmcp's `handle_request` poll frame holds every arm's future, and
+        // this one is large (FORWARD_STACK_BUDGET's shared level).
+        Box::pin(self.listen_stream(context))
     }
 
     // PRD-mcphost-resources-for-tenant-data requirement 2: one entry per
@@ -12089,6 +12510,11 @@ impl ServerHandler for McpHostHandler {
             shape: gate.shape,
         });
         let sampling_peer = gate.sampling.then(|| ctx.peer.clone());
+        let progress = Arc::new(crate::progress::CallProgress::new(ctx.meta.get_progress_token().is_some()));
+        if let Some(token) = ctx.meta.get_progress_token() {
+            progress.start_forwarding(ctx.peer.clone(), token);
+        }
+        let finish = Arc::clone(&progress);
         // PRD-mcphost-key-scoped-to-tools R3: the cell `call_tool_inner`
         // fills once a sub-key resolves, read by the `calls` insert.
         let inner = crate::leakguard::UNBOUND_SENT.scope(
@@ -12099,10 +12525,14 @@ impl ServerHandler for McpHostHandler {
         let inner = crate::sampling::SAMPLING_CLIENT
             .scope(crate::sampling::SamplingClient { peer: sampling_peer, session_id: gate.session_id.clone() }, inner);
         let inner = crate::inband::CALL_GATE.scope(gate, inner);
+        // PRD-mcphost-tools-call-progress-notifications P0: the slot every
+        // `calls` row of this request reads `progress_token` / `progress_frames` from.
+        let inner = crate::progress::scope(progress, inner);
         let result = match channel {
             Some(channel) => crate::elicit::CLIENT_CHANNEL.scope(channel, inner).await,
             None => inner.await,
         };
+        finish.finish().await;
         // PRD-mcphost-incident-banner-for-agents R3: every result feeds the
         // 5-minute error-rate window.
         let code = result.as_ref().err().and_then(|e| crate::incident_banner::error_code_of(&e.data));
@@ -12141,6 +12571,44 @@ impl McpHostHandler {
             ctx.meta.client_capabilities().is_some(),
             now_unix(),
         )
+    }
+
+    /// PRD-mcphost-external-class-positive-evidence requirement (b): classify
+    /// this authenticated call (peer IP against `MCPHOST_FLEET_IPS` and
+    /// loopback, `X-Mcphost-Synthetic` present) and act on it. A fleet,
+    /// loopback or header-stamped call taints an `unattributed` tenant for
+    /// good; a clean call on a later UTC day (>= 6 h after signup) promotes
+    /// it, and is offered to a `synthetic` tenant only so the refusal is
+    /// counted. Best-effort: never fails the call it describes.
+    async fn note_origin_evidence(&self, parts: &http::request::Parts, tenant: &Tenant, source: &str) {
+        use crate::state::Origin;
+        if tenant.origin != Origin::Unattributed.as_str() && tenant.origin != Origin::Synthetic.as_str() {
+            return;
+        }
+        if source.parse::<std::net::IpAddr>().is_err() {
+            return;
+        }
+        let tainted = crate::state::is_loopback_source_ip(source)
+            || self.state.fleet_ips.contains(source)
+            || synthetic_header(parts).is_some();
+        let result = if tainted {
+            if tenant.origin == Origin::Unattributed.as_str() {
+                self.state.db.stamp_origin_taint(tenant.id).await
+            } else {
+                Ok(())
+            }
+        } else if let Some(days) = tenant.created_unix.and_then(|c| crate::state::returned_days(c, now_unix())) {
+            let evidence = crate::db::OriginEvidence::Returned {
+                days,
+                ip_hash: self.state.secrets.salted_hash(source),
+            };
+            self.state.db.promote_origin(tenant.id, evidence).await.map(|_| ())
+        } else {
+            Ok(())
+        };
+        if let Err(e) = result {
+            tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record origin evidence");
+        }
     }
 
     /// PRD-mcphost-same-user-second-agent R2: which client of `tenant` is
@@ -12303,7 +12771,7 @@ impl McpHostHandler {
                     Some(t) if is_refused_disabled(&t, &body_name) => {
                         self.state.implicit_signup_memory.drop_binding(sid);
                         self.state.tenant_key_arg_memory.drop_binding(sid);
-                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }.into_error_data_at(Some(&self.state.public_url)));
+                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None }.into_error_data_at(Some(&self.state.public_url)));
                     }
                     // A self-offboarded tenant calling its own lifecycle verb
                     // again (`auth_shape`): served, so the verb answers
@@ -12343,7 +12811,8 @@ impl McpHostHandler {
                             "host.* call refused: connection already named a tenant, tenant_key missing"
                         );
                         return Err(
-                            AppError::TenantKeyMissing(Some(t.namespace)).into_error_data_at(Some(&self.state.public_url))
+                            AppError::TenantKeyMissing(crate::errors::Reason::ConnectionBound(t.namespace))
+                                .into_error_data_at(Some(&self.state.public_url))
                         );
                     }
                     // The remembered tenant was deleted since: drop the
@@ -12373,24 +12842,46 @@ impl McpHostHandler {
             && crate::tenant_clients::join_path_code(parts).is_none()
         {
             let peer = request_peer_key(parts);
-            if let Some(namespace) = self.state.redeemed_peers.lookup(&peer, now_unix()) {
+            // PRD-mcphost-implicit-signup-per-session-not-per-peer R2: the gate
+            // holds a request that presented no host-minted session, or the
+            // very session that redeemed. A request presenting a DIFFERENT
+            // host-minted session is another agent behind the same address and
+            // reaches implicit signup. `SessionPresented` is false for a forged
+            // or foreign id (the transport replaced it), so a forged header
+            // never turns the gate off.
+            let presented = parts.extensions.get::<crate::session_bind::SessionPresented>().is_some_and(|p| p.0);
+            let recent = self.state.redeemed_peers.lookup(&peer, now_unix());
+            let yields = recent
+                .as_ref()
+                .is_some_and(|(_, redeemer)| presented && redeemer.as_deref() != session_id.as_deref());
+            if yields {
+                // R5: the journal splits a yield (a session of its own) from a
+                // refusal (none); neither line names a key or a namespace.
+                tracing::info!(
+                    peer_recent_yielded = true,
+                    tool = %body_name,
+                    "host.* call proceeds to implicit signup: peer redeemed recently but this request presents a different session"
+                );
+            }
+            if !yields && let Some((namespace, _)) = recent {
                 match self.state.db.find_tenant_by_namespace(namespace.clone()).await {
                     Ok(Some(t)) if !t.disabled => {
                         tracing::warn!(
-                            tenant = %t.namespace,
+                            session_presented = presented,
                             tool = %body_name,
-                            "host.* call refused: peer just redeemed, tenant_key missing"
+                            "host.* call refused: peer just redeemed, request presented no session of its own"
                         );
-                        return Err(AppError::TenantKeyMissing(Some(t.namespace))
+                        Box::pin(self.note_implicit_peer_refused(parts)).await;
+                        return Err(AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent)
                             .into_error_data_at(Some(&self.state.public_url)));
                     }
-                    // A self-offboarded tenant no longer blocks a fresh start.
-                    Ok(Some(t)) if t.disabled_reason.as_deref() == Some(crate::auth_shape::SELF_OFFBOARD_REASON) => {
+                    // A self-offboarded or idle-expired tenant no longer blocks a fresh start.
+                    Ok(Some(t)) if crate::auth_shape::frees_peer(t.disabled_reason.as_deref()) => {
                         self.state.redeemed_peers.forget(&peer);
                     }
                     Ok(Some(t)) => {
                         self.state.redeemed_peers.forget(&peer);
-                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }.into_error_data_at(Some(&self.state.public_url)));
+                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None }.into_error_data_at(Some(&self.state.public_url)));
                     }
                     Ok(None) => self.state.redeemed_peers.forget(&peer),
                     Err(e) => return Err(e.into_error_data_at(Some(&self.state.public_url))),
@@ -12592,6 +13083,14 @@ impl McpHostHandler {
         {
             tracing::warn!(code = err.code(), tenant = %tenant.namespace, tool = %body_name, "call refused: tenant banned");
             return Err(err.into_error_data_at(Some(&self.state.public_url)));
+        }
+        // PRD-mcphost-external-class-positive-evidence: a later-day return is
+        // the second way an `unattributed` tenant earns `external`; its own
+        // `Box::pin`'d fn keeps this future under the size bound.
+        if let Auth::Tenant(tenant, _) = &auth
+            && body_name != "signup"
+        {
+            Box::pin(self.note_origin_evidence(parts, tenant, &source)).await;
         }
         // PRD-mcphost-end-user-identity requirement 1/2: resolved once,
         // before dispatch, from either the OAuth bearer this call's `auth`
@@ -12821,7 +13320,7 @@ impl McpHostHandler {
                 Auth::Tenant(tenant, _) => tenant.namespace.as_str(),
                 _ => "",
             };
-            crate::host_args::validate_host_args(&self.state.kinds, &body_name, &args)
+            crate::precheck::precheck_args(&self.state.kinds, &body_name, &args)
                 .inspect(|()| crate::host_args::note_handler_run(namespace, &body_name))
         } else {
             Ok(())
@@ -12946,6 +13445,7 @@ impl McpHostHandler {
                     self.state.redeemed_peers.record_at(
                         &request_peer_key(parts),
                         &redeemed_tenant.namespace,
+                        session_id.as_deref(),
                         now_unix(),
                     );
                 }
@@ -13017,7 +13517,7 @@ impl McpHostHandler {
             // for a `host.*`/`billing.*` name on `/mcp` (the arm above wins
             // first) -- still the refusal for every other anonymous call.
             (Auth::Anonymous, _) if via_tenant_key_arg => {
-                let err = AppError::TenantKeyMissing(None);
+                let err = AppError::TenantKeyMissing(crate::errors::Reason::Anonymous);
                 tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key missing");
                 Err(err)
             }
@@ -13108,7 +13608,7 @@ impl McpHostHandler {
                     && crate::notes::changes_tool_list(dispatch_name, value)
                     && let Err(e) = crate::protocol::frames::emit(
                         &ctx.peer,
-                        crate::protocol::frames::FrameKind::ListChanged,
+                        crate::protocol::frames::Frame::ToolListChanged,
                         crate::protocol::frames::request_type_of("tools/call", true),
                     )
                     .await
@@ -13177,6 +13677,19 @@ impl McpHostHandler {
         let outcome = outcome.map_err(|e| match &ran_tool {
             Some(tool) => e.with_tool(tool),
             None => e,
+        });
+        // PRD-mcphost-refusals-name-their-cause R4: a published-tool call that
+        // finds nothing, on a connection whose own tenant implicit sign-up made
+        // moments ago, says so. Reads the bound tenant row only.
+        let outcome = outcome.map_err(|e| match &auth {
+            Auth::Tenant(tenant, _)
+                if !body_name.starts_with("host.")
+                    && !body_name.starts_with("billing.")
+                    && !body_name.starts_with("admin.") =>
+            {
+                e.on_implicit_tenant(&tenant.namespace, tenant.signup_source.as_deref(), tenant.created_unix, now_unix())
+            }
+            _ => e,
         });
         // PRD-mcphost-usage-in-every-response R2: `_meta.usage` is built BEFORE
         // the idempotency store captures the response, so a replay returns the
@@ -13294,14 +13807,15 @@ impl McpHostHandler {
                     )
                     .await;
                     // requirement 2 (AC2): "first successful host.tool_publish"
-                    // -- gated on `origin == "external"` (never fleet, never
-                    // synthetic) and `owner_verified_at` still null;
+                    // -- gated on `origin` being `external` or `unattributed`
+                    // (never fleet, never synthetic: a claim link is what turns
+                    // an unattributed tenant into an external one) and `owner_verified_at` still null;
                     // `mark_claim_nudged_if_unset`'s own atomic `UPDATE ...
                     // WHERE claim_nudged_unix IS NULL` is what makes this
                     // "exactly once ever", not just "once per call".
                     if (body_name == "host.tool_publish" || body_name == "host.tool.publish")
                         && tenant.owner_verified_at.is_none()
-                        && tenant.origin == "external"
+                        && matches!(tenant.origin.as_str(), "external" | "unattributed")
                         && self
                             .state
                             .db

@@ -10,7 +10,8 @@
 //! `AppState::billing_client`/`email_client`. `exec` goes through
 //! `kinds::CallCtx` the same way `handler.rs`'s real dispatch does, under a
 //! dedicated `status-feed-self-check` namespace so its `python` env never
-//! collides with a real tenant's.
+//! collides with a real tenant's. Self-probes write only [`STATUS_FEED_TABLES`];
+//! `tests/bsc_ac01_*` guards that.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -22,6 +23,11 @@ use serde_json::{Value, json};
 use crate::db::Incident;
 use crate::errors::AppError;
 use crate::state::{AppState, now_unix, rfc3339_from_unix};
+
+/// Every table a status-feed tick writes (guarded by `tests/bsc_ac01_*`;
+/// `billing_events` is never a member).
+pub const STATUS_FEED_TABLES: &[&str] =
+    &["status_samples", "status_daily", "incidents", "alerts", "signals_probe"];
 
 /// requirement 2: the four fixed self-probed components, in the order
 /// `/status.json` reports them.
@@ -113,9 +119,12 @@ async fn probe_exec(state: &AppState) -> (bool, i64) {
 }
 
 /// requirement 2: the billing webhook route answers a signed no-op --
-/// `billing::process_webhook` is called in process with a synthetic,
-/// correctly-signed, unrecognized event type (the same "ledgered, never
-/// applied" path any real unknown Stripe event takes). Billing is optional
+/// `billing::self_check_webhook` (the verify-only front half of
+/// `process_webhook`: signature, parse, dedupe read, classification) is
+/// called in process with a synthetic, correctly-signed, unrecognized event
+/// type whose `livemode` matches the host key. It writes no ledger row;
+/// self-probes write only [`STATUS_FEED_TABLES`], guarded by
+/// `tests/bsc_ac01_*`. Billing is optional
 /// (goal 4 of PRD-grand-loop-billing): a host with no webhook secret
 /// configured has nothing to probe here, so it reads as trivially ok
 /// rather than a manufactured failure.
@@ -128,14 +137,15 @@ async fn probe_billing(state: &AppState) -> (bool, i64) {
     let payload = json!({
         "id": format!("evt_status_self_check_{ts}"),
         "type": "status.self_check",
-        "livemode": false,
+        "livemode": state.billing_config.billing_mode() == "live",
         "data": {"object": {}},
     })
     .to_string();
     let signature = sign_stripe_payload(payload.as_bytes(), &secret, ts);
-    let ok = crate::billing::process_webhook(state, payload.as_bytes(), &signature)
-        .await
-        .is_ok();
+    let ok = matches!(
+        crate::billing::self_check_webhook(state, payload.as_bytes(), &signature).await,
+        Ok(crate::billing::WebhookClass::Dispatch(crate::billing::WebhookArm::Unknown))
+    );
     (ok, start.elapsed().as_millis() as i64)
 }
 

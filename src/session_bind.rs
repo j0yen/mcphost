@@ -315,6 +315,23 @@ impl SessionBindings {
         }
     }
 
+    /// PRD-mcphost-synthetic-implicit-tenant-expiry: drop every session
+    /// bound to `tenant_id` (the sweep has no session id to hand, unlike
+    /// `host.self_offboard`).
+    pub fn drop_tenant(&self, tenant_id: i64) {
+        if let Ok(mut inner) = self.inner.lock() {
+            let sessions: Vec<String> = inner
+                .bindings
+                .iter()
+                .filter(|(_, b)| b.tenant_id == tenant_id)
+                .map(|(sid, _)| sid.clone())
+                .collect();
+            for sid in sessions {
+                inner.remove(&sid);
+            }
+        }
+    }
+
     /// Requirement 4 / AC8: how many sessions currently hold a binding.
     pub fn len(&self) -> usize {
         self.inner.lock().map(|i| i.bindings.len()).unwrap_or(0)
