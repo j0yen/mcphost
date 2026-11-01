@@ -207,6 +207,37 @@ pub fn annotation_word_candidates(column: &str, description: &str) -> Vec<(Strin
         .collect()
 }
 
+/// PRD-mcphost-table-query-names-missing-table R2: the order `data.candidates`
+/// carries for a missing table. [`score_identifier`]'s Jaro-Winkler alone
+/// ranks `customers` over `orders` for `staging_orders`; a name the term
+/// contains (or that contains the term, or shares an `_`-delimited token with
+/// it) is the likelier intent, so those come first, each group ordered by the
+/// same similarity [`score_identifier`] uses. The log row keeps
+/// [`score_identifier`]'s own order; only the wire list is ranked this way.
+pub fn rank_table_names(term: &str, names: &[String], max: usize) -> Vec<Candidate> {
+    let term_lower = term.to_lowercase();
+    let term_tokens: Vec<&str> = term_lower.split('_').filter(|t| t.len() >= 3).collect();
+    let related = |name: &str| {
+        let n = name.to_lowercase();
+        term_lower.contains(&n)
+            || n.contains(&term_lower)
+            || n.split('_').any(|t| t.len() >= 3 && term_tokens.contains(&t))
+    };
+    let mut ranked: Vec<(bool, Candidate)> = names
+        .iter()
+        .map(|n| {
+            let similarity = round4(strsim::jaro_winkler(&term_lower, &n.to_lowercase()));
+            (related(n), Candidate { name: n.clone(), similarity })
+        })
+        .collect();
+    ranked.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| b.1.similarity.partial_cmp(&a.1.similarity).unwrap_or(Ordering::Equal))
+            .then_with(|| a.1.name.cmp(&b.1.name))
+    });
+    ranked.into_iter().take(max).map(|(_, c)| c).collect()
+}
+
 fn truncate_chars(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();

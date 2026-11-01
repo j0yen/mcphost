@@ -103,6 +103,42 @@ pub struct ContextKeys {
 
 pub const CONTEXT_KEYS: ContextKeys =
     ContextKeys { input: "input", prev: "prev", steps: "steps", event: "event", result: "result", item: "item", index: "index" };
+
+/// PRD-mcphost-chain-near-miss-mapping-refused R1: one root of the context
+/// with the two attributes the near-miss check reads, so the checker never
+/// spells `steps` / `prev` itself.
+#[derive(Clone, Copy)]
+pub struct ContextRoot {
+    pub name: &'static str,
+    /// Its value is `{result}`, so a path under it wants the `result` hop
+    /// (`prev`, `steps[i]`).
+    pub has_result: bool,
+    /// It is a list read by position (`steps[i]`), not a single holder.
+    pub indexed: bool,
+}
+
+impl ContextRoot {
+    const fn plain(name: &'static str) -> Self {
+        ContextRoot { name, has_result: false, indexed: false }
+    }
+}
+
+impl ContextKeys {
+    /// Every key above as a reference root, in declaration order. A field added
+    /// to [`ContextKeys`] and not here is caught by
+    /// `tests/chainmap_ac03_*.rs`.
+    pub const fn roots(&self) -> [ContextRoot; 7] {
+        [
+            ContextRoot::plain(self.input),
+            ContextRoot { name: self.prev, has_result: true, indexed: false },
+            ContextRoot { name: self.steps, has_result: true, indexed: true },
+            ContextRoot::plain(self.event),
+            ContextRoot::plain(self.result),
+            ContextRoot::plain(self.item),
+            ContextRoot::plain(self.index),
+        ]
+    }
+}
 // CONTEXT_KEYS-END
 
 /// Requirement 4 ("up to three nearest sibling names"): the closest
@@ -271,6 +307,17 @@ pub fn grammar_sentence() -> String {
     )
 }
 
+/// PRD-mcphost-chain-near-miss-mapping-refused R5: the one-sentence statement
+/// of the near-miss refusal, naming every key of [`CONTEXT_KEYS`] -- used
+/// verbatim by `docs/kinds/chain.md` and checked by a test, so a root added to
+/// the table and not to the doc fails.
+pub fn near_miss_sentence() -> String {
+    let roots = reference_roots().iter().map(|r| format!("`{}`", r.name)).collect::<Vec<_>>().join(", ");
+    format!(
+        "A value that starts with a context root ({roots}) without `$.` and reads like a path (`steps.0.rows`, `prev.rows`, `$prev.result.rows`, or a one-key object such as `{{\"from\": \"steps.0.rows\"}}`) is refused at publish as `not a path`, with `did_you_mean` rebuilt as the `$.` path; `force: true` publishes it as the literal it is."
+    )
+}
+
 /// One `$.prev...`/`$.steps[i]...` mapping split for checking: which step it
 /// reads (1-based, same numbering as everywhere else in this module), the
 /// `prefix` that named it (`$.prev` or `$.steps[i]`), and the raw path
@@ -375,6 +422,186 @@ fn path_tokens(mut rest: &str) -> Vec<String> {
         rest = &rest[end..];
     }
     out
+}
+
+// ---- near-miss ----
+//
+// PRD-mcphost-chain-near-miss-mapping-refused: a step `args` value that reads
+// like a reference but is not a `$.` path (`steps.0.rows`, `$prev.result.x`,
+// `{"from": "steps.0.rows"}`) is refused at publish, because `resolve_args`
+// copies it through as a literal. Every root name below comes from
+// [`CONTEXT_KEYS`]`.roots()`; `tests/chainmap_ac03_*.rs` scans these
+// functions for a root-name literal.
+
+/// How a string reads against the mapping grammar.
+enum StringShape {
+    /// `$.<root>...` with a root in the table: accepted (or refused by the
+    /// path check, never here).
+    Path,
+    /// `$.<name>...` with a name that is not a root.
+    UnknownRoot,
+    /// A root without the `$.` prefix.
+    Bare,
+    /// `$<root>...` (no `.` after the `$`).
+    Dollar,
+}
+
+/// The checker's reference roots: every key of [`CONTEXT_KEYS`], with the
+/// table's per-root attributes. The one place the near-miss check reads them.
+pub fn reference_roots() -> Vec<ContextRoot> {
+    CONTEXT_KEYS.roots().to_vec()
+}
+
+/// The root of the table named `name`.
+fn root_named(name: &str) -> Option<ContextRoot> {
+    reference_roots().into_iter().find(|r| r.name == name)
+}
+
+/// `s` split at its first `.` or `[`: the root token and the tail.
+fn split_root(s: &str) -> (&str, &str) {
+    s.split_at(s.find(['.', '[']).unwrap_or(s.len()))
+}
+
+/// A `.name` or `[digits]` path token.
+fn valid_token(token: &str) -> bool {
+    match token.strip_prefix('.') {
+        Some(name) => !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-'),
+        None => token
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+            .is_some_and(|digits| !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())),
+    }
+}
+
+/// `tail` as path tokens when it is made of nothing else.
+fn well_formed_tail(tail: &str) -> Option<Vec<String>> {
+    let tokens = path_tokens(tail);
+    (tokens.concat() == tail && tokens.iter().all(|t| valid_token(t))).then_some(tokens)
+}
+
+fn string_shape(s: &str) -> Option<StringShape> {
+    if let Some(rest) = s.strip_prefix("$.") {
+        let (name, _) = split_root(rest);
+        if root_named(name).is_some() {
+            return Some(StringShape::Path);
+        }
+        let mut chars = name.chars();
+        let identifier = chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
+            && chars.all(|c| c.is_alphanumeric() || c == '_');
+        return identifier.then_some(StringShape::UnknownRoot);
+    }
+    let (dollar, body) = match s.strip_prefix('$') {
+        Some(body) => (true, body),
+        None => (false, s),
+    };
+    let (name, tail) = split_root(body);
+    let root = root_named(name)?;
+    let tokens = well_formed_tail(tail)?;
+    if dollar {
+        return Some(StringShape::Dollar);
+    }
+    let dotted = tokens.iter().filter(|t| t.starts_with('.')).count();
+    let shaped = root.has_result || tokens.first().is_some_and(|t| t.starts_with('[')) || dotted >= 2;
+    shaped.then_some(StringShape::Bare)
+}
+
+/// R1: `v` rewritten in the accepted grammar -- strip a bare `$`, add `$.`,
+/// `<indexed>.N` -> `<indexed>[N]`, then the missing-`result` hop once. `None`
+/// when no canonical spelling exists (the indexed root without an index, a
+/// `result`-holder without a field, a malformed rewrite).
+fn rewrite_reference(raw: &str) -> Option<String> {
+    let body = raw.strip_prefix("$.").or_else(|| raw.strip_prefix('$')).unwrap_or(raw);
+    let (name, tail) = split_root(body);
+    let root = root_named(name)?;
+    let mut tokens = well_formed_tail(tail)?;
+    if root.indexed {
+        match tokens.first() {
+            Some(t) if t.starts_with('[') => {}
+            Some(t) if t[1..].chars().all(|c| c.is_ascii_digit()) => tokens[0] = format!("[{}]", &t[1..]),
+            _ => return None,
+        }
+    } else if root.has_result && tokens.is_empty() {
+        return None;
+    }
+    let mut rewritten = format!("$.{}{}", root.name, tokens.concat());
+    if root.has_result {
+        let r = StepRef::parse(&rewritten, usize::MAX)?;
+        if r.name(0).is_some_and(|first| !r.accepted_keys().contains(first)) {
+            rewritten = r.rebuilt(&[CONTEXT_KEYS.result], None);
+        }
+    }
+    Path::parse(&rewritten).is_ok().then_some(rewritten)
+}
+
+/// R1/R2: the `(path, reason, rewrite, verbatim)` of a reference-shaped `args`
+/// value, `None` for a literal; `verbatim` marks a `$.` path inside a literal
+/// object, whose `did_you_mean` is that string unchanged. A one-key object is
+/// inspected one level (its string); nothing deeper.
+fn near_miss(v: &Value) -> Option<(String, &'static str, Option<String>, bool)> {
+    let (s, wrapped) = match v {
+        Value::String(s) => (s.as_str(), false),
+        Value::Object(m) if m.len() == 1 => (m.values().next()?.as_str()?, true),
+        _ => return None,
+    };
+    match (string_shape(s)?, wrapped) {
+        (StringShape::Path, false) => None,
+        (StringShape::Path, true) => {
+            Some((s.to_string(), "path inside a literal object", Some(s.to_string()), true))
+        }
+        (StringShape::UnknownRoot, false) => Some((s.to_string(), "unknown root", None, false)),
+        (StringShape::UnknownRoot, true) => None,
+        (StringShape::Bare | StringShape::Dollar, _) => Some((s.to_string(), "not a path", rewrite_reference(s), false)),
+    }
+}
+
+/// R2 closure: `rewrite` stays a `did_you_mean` only when it is a path the
+/// checker accepts from `step_no` -- no forward reference, a real
+/// predecessor; when the predecessor's fields refuse it, what the existing
+/// path check suggests instead (or nothing). A `verbatim` rewrite (a path
+/// inside a literal object) is kept as written once it is no forward
+/// reference.
+#[allow(clippy::too_many_arguments)]
+async fn accepted_rewrite(
+    db: Option<&crate::db::Db>,
+    kinds: Option<&KindRegistry>,
+    tenant_id: i64,
+    steps: &[ParsedStep],
+    step_no: usize,
+    rewrite: Option<String>,
+    verbatim: bool,
+    use_observed: bool,
+) -> Value {
+    let Some(rewrite) = rewrite else {
+        return Value::Null;
+    };
+    let name = split_root(rewrite.strip_prefix("$.").unwrap_or(&rewrite)).0;
+    if !root_named(name).is_some_and(|r| r.has_result) {
+        return json!(rewrite);
+    }
+    let Some(r) = StepRef::parse(&rewrite, step_no) else {
+        return Value::Null;
+    };
+    if r.predecessor_no >= step_no {
+        return Value::Null;
+    }
+    if r.tokens.is_empty() || verbatim {
+        return json!(rewrite);
+    }
+    let Some(predecessor) = steps.get(r.predecessor_no - 1) else {
+        return Value::Null;
+    };
+    match check_step_ref(db, kinds, tenant_id, &predecessor.tool, &r, use_observed).await {
+        RefCheck::WillFail(extra) => extra.get("did_you_mean").cloned().unwrap_or(Value::Null),
+        RefCheck::Pass | RefCheck::Unverifiable => json!(rewrite),
+    }
+}
+
+/// Test hook (`tests/chainmap_ac02_*.rs`): whether today's checker parses
+/// `raw` as a `$.prev` / `$.steps[i]` reference from step `this_step_no`
+/// (1-based). [`StepRef::parse`] itself is unchanged by this PRD.
+#[doc(hidden)]
+pub fn step_ref_parses(raw: &str, this_step_no: usize) -> bool {
+    StepRef::parse(raw, this_step_no).is_some()
 }
 
 /// The nearest of `known` to `name` by edit distance, only when it is
@@ -671,6 +898,20 @@ async fn steps_verdict(
     let mut passes = std::collections::HashSet::new();
     for (i, step) in steps.iter().enumerate() {
         let step_no = i + 1;
+        // PRD-mcphost-chain-near-miss-mapping-refused R2: every value, not
+        // only strings -- a reference-shaped one is `will_fail`.
+        for value in step.args.values() {
+            if let Some((path, reason, rewrite, verbatim)) = near_miss(value) {
+                let did_you_mean =
+                    accepted_rewrite(db, kinds, tenant_id, steps, step_no, rewrite, verbatim, use_observed).await;
+                failures.push(json!({
+                    "step": step_no,
+                    "path": path,
+                    "reason": reason,
+                    "did_you_mean": did_you_mean,
+                }));
+            }
+        }
         // R5: a `for_each` path is a mapping too, and must read an array.
         let mappings = step
             .args
@@ -2080,6 +2321,10 @@ impl Kind for ChainKind {
                     } else {
                         data = json!({"failed_step": failed_step_no, "step_tool": step.tool});
                     }
+                    // PRD-mcphost-chain-near-miss-mapping-refused R4: the
+                    // client surface shows the message, so it names the step
+                    // and tool like `compose_mapping_missing` does.
+                    let message = format!("step {failed_step_no} ('{}'): {message}", step.tool);
                     let wrapped = KindError::structured_with(code, message, data);
 
                     if step.continue_on_error {

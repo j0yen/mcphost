@@ -1,66 +1,72 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-refusals-name-their-cause.md",
-  "intent_slug": "mcphost-refusals-name-their-cause",
-  "root_motivation": "WHO: any MCP client of mcphost.dev (python `mcp` 2.1.1, the TS SDK 1.31.0, curl) and rb, the operator who reads `journalctl -u mcphost` on mcphost-1. WHAT: a client needs a refusal body it can branch on, and an operator needs one journal line per call that says which tool was called and how it ended. WHY NOT TODAY, from mcphost@7d38fd13: (1) the two body-limit sites, `refuse_unimplemented_methods` (`src/http.rs:1871-1882`) and `deliver_client_response` (`src/http.rs:1981-1998`), return `StatusCode::PAYLOAD_TOO_LARGE.into_response()`, a bare status with no body and no content-type, and python `mcp` 2.1.1 only parses an error body on a 4xx when `Content-Type` starts with `application/json` (`mcp/client/streamable_http.py:342-360`), so the client substitutes a stand-in that names no limit; (2) `protocol_version_and_log` (`src/http.rs:1128-1166`) logs `mcp_name` from the optional `Mcp-Name` header and the HTTP status, so a JSON-RPC refusal rides a `status=200` line and the tool name nev...",
-  "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-trusted-discovery-catalog-receipts.md",
+  "intent_slug": "mcphost-trusted-discovery-catalog-receipts",
+  "root_motivation": "**Who.** An agent (Claude Code, an SDK client, a synthorg persona) that calls `host.catalog.search` to find a shared tool it can call instead of writing one; Joe reading the anonymous catalog as the public face of the host; the operator judging whether the catalog proves anything.",
+  "user_persona": "An agent whose first SELECT names a table or column it has not declared, and must learn from the reply which table or column is missing and which declared names are closest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the test server and no tenant key, When a tools/call of host.whoami padded inside params._meta to 1,048,577 bytes is POSTed to /mcp, Then the reply is HTTP 413, Content-Type application/json and the \u00a7 413 body, never 401 or tenant_key_missing, and the tenants row count is unchanged; the same shape at exactly 1,048,576 bytes is answered 200 and mints one tenant (row count +1); a same-size non-JSON body gets the same 413.",
-      "test": "tests/refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs"
+      "description": "Given a tenant with a published tool, When host.tool_test, or require_tested on host.tool_share, returns pass or will_fail on the current version, Then the row stores that verdict with the version it judged, tested_version moves exactly as today, after a republish the entry shows test_verdict null and the tool ranks as untested until retested, and catalog.search shows test_verdict only when it judged the current version.",
+      "test": "tests/tdisc_ac01_verdict_stored_with_version.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given tenant A published t_ac2 and keyless B became an implicit tenant under 600 s ago, When B calls tools/call t_ac2 and a name no tenant owns, Then both -32002 bodies carry data.reason tool_not_found_on_implicit_tenant, data.tenant = B and the \u00a7 Hint fields, keys a subset of the listed set, no byte of A's distinctive namespace or any key; with A's tenant_key t_ac2 succeeds; B older than 600 s gets no data.reason.",
-      "test": "tests/refusals_ac02_tool_not_found_names_the_implicit_tenant.rs"
+      "description": "Given tools of a synthetic-marked, a disabled and a plain owner shared public, When the well-known document is read and a plain and another synthetic-marked tenant each call catalog.search and tool_list_shared, Then the anonymous and plain reads list only the plain owner's tool, the synthetic tenant's reads add the synthetic owner's tool, none lists the disabled owner's tool, and include_synthetic is in the contract dump.",
+      "test": "tests/tdisc_ac02_view_by_owner_mark.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given both body-limit sites (refuse_unimplemented_methods, deliver_client_response in src/http.rs), When either refuses, Then one shared builder writes the \u00a7 413 body: a unit test covers Some(content_length) and None, HTTP tests at refuse_unimplemented_methods cover 1,048,577 bytes with Content-Length and a chunked body (content_length null), deliver_client_response calls that builder, and drain_gate keeps its 503 JSON.",
-      "test": "tests/refusals_ac03_one_builder_for_both_body_limit_sites.rs"
+      "description": "Given a public tool called by its owner, twice by a plain tenant (one ok, one error), once by a synthetic-marked tenant and once 31 days ago, When a plain caller searches, Then the entry carries calls_30d n 2 ok 1; a synthetic-marked caller sees n 3 ok 2; the old call counts in neither; and no entry carries a caller or tenant id, only the owner namespace.",
+      "test": "tests/tdisc_ac03_calls_30d_receipts.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the error registry (src/error_registry.rs, the ERROR_CODES generator behind /errors.json and host.errors), When request_body_too_large is added, Then it is declared through err_code! with class, family and remedy so /errors.json lists it, the 413 body's data carries those fields plus request_id like every registered error, and README's request-body line names the body contract.",
-      "test": "tests/refusals_ac04_request_body_too_large_is_a_registered_error.rs"
+      "description": "Given five plain owners' public tools A pass 1/1, B pass 95/100, C untested with no calls, D republished after a pass then tested will_fail with 100/100, E equal to C but shared later, all calls by plain tenants, When a sixth plain tenant runs catalog.search and tool_list_shared and the well-known document is read, Then all three return the order B, A, E, C, D, ordered by the one search_catalog SQL.",
+      "test": "tests/tdisc_ac04_order_on_receipts.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the http request line, When any /mcp POST completes, Then the line carries rpc=<method|batch|\"\">, tool=<tools/call name|\"\">, reply=ok|jsonrpc_error:<code>|http:<status>|batch by the \u00a7 Reply class mechanism (response extension, line at body end), a 413 adds content_length= and limit=, and a test with one global buffered subscriber runs two concurrent calls of different reply classes and asserts each line by tool=.",
-      "test": "tests/refusals_ac05_access_line_names_rpc_tool_and_reply.rs"
+      "description": "Given the committed host-output-schemas.v1.json, When a test serializes a fully populated catalog.search result, Then at every level, including tools.items, calls_30d and view, every emitted key is declared and every declared key is emitted, each of those objects sets additionalProperties false, and removing any emitted field, nested or not, from the schema fails the test naming the key path.",
+      "test": "tests/tdisc_ac05_schema_two_way.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the seven registered kinds (kinds::names()) and chain spec.steps[i], When spec or a step is not a JSON object, Then the -32602 message keeps each site's current prefix and ends with \", received <string|array|number|boolean|null>\", data.received_type carries the same word, the object check runs once in the registry before any kind's validate, and one test iterates kinds::names() so a kind added later cannot skip it.",
-      "test": "tests/refusals_ac06_non_object_spec_names_the_received_type.rs"
+      "description": "Given 1,000 public tools over 300 owners and 100,000 calls rows seeded in a test, When 8 concurrent callers search with no q, a q matching nothing and limit 50, Then no q returns 50 entries with view.owners counting the distinct owners in the view, the no-match q returns tools [] with view present, and p95 over 20 runs stays under 250 ms.",
+      "test": "tests/tdisc_ac06_catalog_search_at_scale.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 7 command in \u00a7 Live evidence commands runs from the build host with no credential, Then its curl line begins 413 application/json with a byte count above 0, the last line is jq_rc=0 on error_code request_body_too_large and limit_bytes 1048576, and no temp file remains (Live; evidence: AC 7 command in \u00a7 Live evidence commands showing 413 application/json and jq_rc=0)",
-      "test": "deferred: Live (prod; evidence: AC 7 command in \u00a7 Live evidence commands showing 413 application/json and jq_rc=0)"
+      "description": "Given an in-process TestServer, When tests/live/tdisc_live_receipts_rank.py runs under python3 -I against its base_url/mcp, Then its last stdout line is `tdisc_live first=tested receipts=ok hidden=2 view=real offboarded rc=0`, it exits 0, both tenants it signed up are offboarded and no key is printed; against a closed loopback port its last line ends rc=2 and it exits 2.",
+      "test": "tests/tdisc_ac07_live_driver.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after the deploy that carries this PRD, When the AC 8 command in \u00a7 Live evidence commands runs from the build host, Then its last two lines are the driver's `rc=0` line and `rc=0` (Live; evidence: python3 -I tests/live/tdisc_live_receipts_rank.py https://mcphost.dev/mcp from the build host, last two lines tdisc_live first=tested receipts=ok hidden=2 view=real offboarded rc=0 and rc=0)",
+      "test": "deferred: Live (prod; evidence: python3 -I tests/live/tdisc_live_receipts_rank.py https://mcphost.dev/mcp from the build host, last two lines tdisc_live first=tested receipts=ok hidden=2 view=real offboarded rc=0 and rc=0)"
     }
   ],
   "scope": [
-    "src/sync/mod.rs: the SourceKind registry, host.sync.create/list/get/delete/run_now, and the trigger tick's sync pass writing a not_implemented sync_runs receipt.",
-    "migrations/0130_syncs.sql: syncs and sync_runs tables; Plan.syncs_max (free 5, pro 50) and the quota_syncs_max, connection_missing and schedule_too_frequent error codes.",
-    "www/llms.txt gains a generated Data sync section and docs/tools.md the source.kind enum, both rendered from SourceKind."
+    "src/tables.rs + src/query_diag.rs: classify a recognised rusqlite no-such-table / no-such-column error on the table SQL paths before the Storage conversion, with the diagnosis (table/column, candidates, hint, declared_tables_count) in the error data.",
+    "src/errors.rs + error registry + errors.json: new table_column_not_found code (family Table, AgentFault, non-retryable) in the INVALID_PARAMS arm; generated surfaces regenerated.",
+    "host-tools.v1.json descriptor for host.table.query and its generated docs, contract and SDKs."
   ],
   "non_goals": [
-    "Fetching rows (the pull PRD); push or conflict handling (the two-way PRD); type inference beyond text columns; any new OAuth flow."
+    "Changing the diagnosis algorithm or its bands; SQL dialect help; touching host.state.* behaviour; any change to query_log rows."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -69,35 +75,31 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "main_database_tables": "syncs and sync_runs live in the main database (migration 0130), not a per-tenant file, so the tick's sync pass is one indexed query across tenants."
+      "no_schema_change": "Wire-only change; query_log schema unchanged and there is no migration."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent not keep a host table equal to a sheet?",
-      "a": "No verb registers an external source; the agent would own a puller, a token and a diff loop."
+      "q": "Why did dpb_03 get an internal error on its first SELECT?",
+      "a": "The no-such-table rusqlite error became AppError::Storage and every Storage error is swapped for the internal-error reply."
     },
     {
       "why": 2,
-      "q": "Why is there no verb?",
-      "a": "host.table.append cannot update a row and host.trigger.set only calls a published tool."
+      "q": "Why was the cause not on the wire?",
+      "a": "diagnose_sync computed candidates and a hint but filed them only in query_log."
     },
     {
       "why": 3,
-      "q": "Why start with a registry?",
-      "a": "One SourceKind enum generates the schema, docs and dispatch, so the five kinds cannot drift."
+      "q": "Why did it stay?",
+      "a": "The shipped query-diagnosis PRD had no AC on the error branch."
     }
   ],
-  "created_at": "2026-10-21T00:00:00Z",
+  "created_at": "2026-10-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "What is source.secret?",
-      "resolution": "The NAME of a host.secret (stored as secret_name), never a value, so no secret-named field exists on a Debug struct."
-    },
-    {
-      "question": "Do push and two_way modes run?",
-      "resolution": "They are accepted at create with status pending_mode (the PRD default) and the tick skips them."
+      "question": "Which tables does candidates draw from?",
+      "resolution": "The tenant's declared tables from list_table_names_sync, as today; other-namespace shared tables are not included."
     }
   ]
 }

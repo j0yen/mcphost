@@ -2003,7 +2003,11 @@ fn chain_mapping_unresolved(verdict: &Value) -> AppError {
     );
     let first = failures.first().cloned().unwrap_or(Value::Null);
     let message = match first["reason"].as_str() {
-        Some(reason) => format!("step {} reads {}: {reason}", first["step"], first["path"]),
+        Some(reason) => format!(
+            "step {} reads {}: {reason}",
+            first["step"],
+            first["path"].as_str().map_or_else(|| first["path"].to_string(), str::to_string)
+        ),
         None => {
             let available = match first["available"].as_array() {
                 Some(a) if !a.is_empty() => format!("; available: {}", first["available"]),

@@ -68,6 +68,7 @@ pub const DISPATCH_TABLE: &[(&str, Arm)] = &[
     ("host.docs.list", McpHostHandler::arm_host_docs_list),
     ("host.docs.purge", McpHostHandler::arm_host_docs_purge),
     ("host.docs.put", McpHostHandler::arm_host_docs_put),
+    ("host.docs.put_many", McpHostHandler::arm_host_docs_put_many),
     ("host.docs.reindex", McpHostHandler::arm_host_docs_reindex),
     ("host.docs.search", McpHostHandler::arm_host_docs_search),
     ("host.docs.status", McpHostHandler::arm_host_docs_status),

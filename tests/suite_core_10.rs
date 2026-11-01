@@ -32,6 +32,24 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
+mod enduser_ac02_assertion_http_headers_and_calls_row;
+#[path = "enduser_ac03_invalid_assertion_rejected.rs"]
+mod enduser_ac03_invalid_assertion_rejected;
+#[path = "enduser_ac05_state_set_get_end_user_self_isolation.rs"]
+mod enduser_ac05_state_set_get_end_user_self_isolation;
+#[path = "enduser_ac06_state_query_end_user_self_scales_via_index.rs"]
+mod enduser_ac06_state_query_end_user_self_scales_via_index;
+#[path = "enduser_ac07_end_user_required_and_explicit_impersonation.rs"]
+mod enduser_ac07_end_user_required_and_explicit_impersonation;
+#[path = "enduser_ac08_explicit_subject_forbidden_with_own_identity.rs"]
+mod enduser_ac08_explicit_subject_forbidden_with_own_identity;
+#[path = "enduser_ac09_quota_end_users.rs"]
+mod enduser_ac09_quota_end_users;
+#[path = "enduser_ac10_whoami.rs"]
+mod enduser_ac10_whoami;
+#[path = "enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs"]
+mod enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks;
 #[path = "enduserctl_ac01_list_flush_aggregates_calls.rs"]
 mod enduserctl_ac01_list_flush_aggregates_calls;
 #[path = "enduserctl_ac02_get_row_plus_counts.rs"]
@@ -652,6 +670,20 @@ mod invite_ac11_lineage_chain_lookup_and_usage_k;
 mod invite_ac12_shares_are_one_hop_across_a_depth_3_chain;
 #[path = "invite_ac13_meta_invite_url_hint_once_per_session.rs"]
 mod invite_ac13_meta_invite_url_hint_once_per_session;
+#[path = "ipsess_ac01_second_session_one_peer_gets_its_own_tenant.rs"]
+mod ipsess_ac01_second_session_one_peer_gets_its_own_tenant;
+#[path = "ipsess_ac02_redeeming_session_stays_its_own_tenant.rs"]
+mod ipsess_ac02_redeeming_session_stays_its_own_tenant;
+#[path = "ipsess_ac03_sessionless_refusal_names_a_session_not_the_key.rs"]
+mod ipsess_ac03_sessionless_refusal_names_a_session_not_the_key;
+#[path = "ipsess_ac04_no_key_dance_in_peer_recent_or_connection_bound.rs"]
+mod ipsess_ac04_no_key_dance_in_peer_recent_or_connection_bound;
+#[path = "ipsess_ac05_window_elapsed_implicit_signup_proceeds.rs"]
+mod ipsess_ac05_window_elapsed_implicit_signup_proceeds;
+#[path = "ipsess_ac06_journal_names_the_decision.rs"]
+mod ipsess_ac06_journal_names_the_decision;
+#[path = "ipsess_ac07_contract_states_the_rule.rs"]
+mod ipsess_ac07_contract_states_the_rule;
 #[path = "jqk_ac01_manual_examples.rs"]
 mod jqk_ac01_manual_examples;
 #[path = "jqk_ac02_parse_error_position.rs"]

@@ -1,0 +1,7 @@
+{
+  "steps": [
+    {"tool": "fx0", "outputs": ["rows", "count"]},
+    {"tool": "fx1", "outputs": ["items", "count", "action", "leads", "x"]},
+    {"tool": "fx2", "outputs": []}
+  ]
+}

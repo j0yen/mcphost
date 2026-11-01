@@ -117,6 +117,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/invites.rs` (<1k) Business logic for `host.invite.create`/`list`/`revoke`, the `/i/{code}/mcp` redemption path, and the `_met...
 - `src/kinds/aliases.rs` (<1k) PRD-mcphost-unknown-kind-routes-to-recipe: the kind-alias table.
 - `src/kinds/chain.rs` (~2k) The `chain` kind: `spec` is an ordered list of steps, each naming a tool in the same tenant and a mapping f...
+  - sections: near-miss
 - `src/kinds/conformance.rs` (<1k) The `Kind` conformance suite (PRD requirement 5, AC17): a reusable check any `Kind` implementation — this c...
 - `src/kinds/contract.rs` (<1k) `KindContract` (PRD-mcphost-kind-contract-conformance-generated): the one value every [`Kind`] publishes ab...
 - `src/kinds/docs.rs` (<1k) Single source for every registered kind's "what does a minimal example spec look like" content, embedded fr...
@@ -277,7 +278,9 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `DEAD_LETTER_REASONS` in `src/deadletters.rs`
 - `DISPATCH_TABLE` in `src/dispatch_table.rs`
 - `ALLOWED_MIMES` in `src/docs.rs`
+- `IMPORT_PATHS` in `src/docs.rs`
 - `INDEX_PROVIDERS` in `src/docs.rs`
+- `ON_CONFLICT_MODES` in `src/docs.rs`
 - `SEARCH_MODES` in `src/docs.rs`
 - `DOCTOR_FIXTURES` in `src/doctor.rs`
 - `DOCTOR_NEXT` in `src/doctor.rs`
