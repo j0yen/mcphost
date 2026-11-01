@@ -2251,6 +2251,25 @@ fn collect_table_factor(tf: &sqlparser::ast::TableFactor, out: &mut std::collect
     }
 }
 
+/// PRD-mcphost-lineage-runtime-edge-writers R3: the real tables a query
+/// that just succeeded read, as lineage node names -- CTE aliases excluded,
+/// schema prefix and quoting stripped, result handles (`hdl_*`) left out
+/// because they are not lineage nodes. Empty for a statement that
+/// references no table and for one the structural check rejects.
+pub(crate) fn runtime_read_tables(sql: &str) -> Vec<String> {
+    let Ok(query) = validate_query_structure(sql) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for name in rowpolicy::rewrite::referenced_table_names(&query) {
+        let name = crate::lineage::table_node_name(&name);
+        if !name.starts_with(HANDLE_PREFIX) && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
+}
+
 /// [`validate_query_structure`] already proved `sql` parses to exactly one
 /// `SELECT`/CTE statement; this re-parses (cheap -- these are short
 /// strings) to walk it for [`collect_referenced_tables`].
