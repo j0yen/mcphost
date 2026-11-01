@@ -6983,10 +6983,112 @@ pub(crate) struct TenantTableBridge {
     /// user applies identically whether `host.table.query` is reached
     /// directly or via `mcphost.table.query` inside a python sandbox.
     pub(crate) end_user: Option<crate::enduser::EndUser>,
+    /// PRD-mcphost-lineage-runtime-edge-writers R3: the running tool's node
+    /// name in `tenant`'s lineage graph, set only on a real (non-dry-run)
+    /// tool run. `None` leaves the bridge silent: `host.tool_test`,
+    /// `host.spec_test` and every context with no tool behind it.
+    pub(crate) tool_name: Option<String>,
+    /// R1: the lineage pairs this run has already written, shared with every
+    /// composed child's bridge.
+    pub(crate) lineage_memo: crate::lineage::RunMemo,
+}
+
+impl TenantTableBridge {
+    /// R3: after a successful `query`/`chart`, records
+    /// `table:<t> -> tool:<tool_name>` (`runtime_query`) for every table the
+    /// statement read. Never fails the call: a writer error is a warning.
+    async fn record_runtime_reads(&self, args: &Value) {
+        let Some(tool_name) = self.tool_name.as_deref() else {
+            return;
+        };
+        if self.dry_run.is_some() {
+            return;
+        }
+        let Some(sql) = args.get("sql").and_then(Value::as_str) else {
+            return;
+        };
+        // The same statement twice in one run yields the same pairs: skip the
+        // parse and the lookups on the repeat.
+        let sql_key = (format!("sql:{sql}"), tool_name.to_string());
+        if !self.lineage_memo.lock().unwrap().insert(sql_key) {
+            return;
+        }
+        for table in tables::runtime_read_tables(sql) {
+            if let Err(e) = crate::lineage::register_edge_runtime(
+                &self.state,
+                self.tenant.id,
+                &self.lineage_memo,
+                (crate::lineage::NodeKind::Table, &table, &table),
+                (crate::lineage::NodeKind::Tool, tool_name, tool_name),
+                "runtime_query",
+            )
+            .await
+            {
+                tracing::warn!(error = %e, tenant = %self.tenant.namespace, tool = %tool_name, table = %table, "lineage runtime_query writer failed");
+            }
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl TableBackend for TenantTableBridge {
+    fn scoped_to_tool(&self, tool_name: &str) -> Option<Arc<dyn TableBackend>> {
+        // A bridge that records nothing (dry run, spec test) hands out
+        // children that record nothing.
+        if self.tool_name.is_none() || self.dry_run.is_some() {
+            return None;
+        }
+        Some(Arc::new(TenantTableBridge {
+            state: self.state.clone(),
+            tenant: self.tenant.clone(),
+            dry_run: None,
+            end_user: self.end_user.clone(),
+            tool_name: Some(tool_name.to_string()),
+            lineage_memo: self.lineage_memo.clone(),
+        }))
+    }
+
+    async fn record_call_edge(&self, caller: &str, caller_is_chain: bool, callee: &str) {
+        use crate::lineage::NodeKind;
+        if self.tool_name.is_none() || self.dry_run.is_some() {
+            return;
+        }
+        let (caller_kind, callee_id) = (if caller_is_chain { NodeKind::Chain } else { NodeKind::Tool }, crate::lineage::node_id(NodeKind::Tool, callee));
+        let pair = (callee_id, crate::lineage::node_id(caller_kind, caller));
+        if self.lineage_memo.lock().unwrap().contains(&pair) {
+            return;
+        }
+        // Only a callee that resolves for this tenant is a dependency: one of
+        // its own tools, or a shared tool named `<owner>.<name>`.
+        let resolves = match callee.split_once('.') {
+            Some((owner_ns, local)) => crate::sharing::resolve_shared_tool(
+                &self.state,
+                &self.tenant,
+                owner_ns,
+                local,
+                crate::sharing::ShareScope::Call,
+            )
+            .await
+            .is_ok(),
+            None => matches!(self.state.db.get_tool(self.tenant.id, callee.to_string()).await, Ok(Some(_))),
+        };
+        if !resolves {
+            return;
+        }
+        if let Err(e) = crate::lineage::register_edge_runtime(
+            &self.state,
+            self.tenant.id,
+            &self.lineage_memo,
+            (NodeKind::Tool, callee, callee),
+            (caller_kind, caller, caller),
+            "runtime_call",
+        )
+        .await
+        {
+            tracing::warn!(error = %e, tenant = %self.tenant.namespace, caller = %caller, callee = %callee, "lineage runtime_call writer failed");
+        }
+    }
+
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
         let result = match op {
             "create" => tables::table_create(&self.state, &self.tenant, &args).await,
@@ -7037,6 +7139,9 @@ impl TableBackend for TenantTableBridge {
                 "table": value.get("table").cloned().unwrap_or(Value::Null),
                 "rows": value.get("appended").cloned().unwrap_or(Value::Null),
             }));
+        }
+        if result.is_ok() && matches!(op, "query" | "chart") {
+            self.record_runtime_reads(&args).await;
         }
         result.map_err(app_error_to_kind_error)
     }
@@ -8888,6 +8993,8 @@ impl McpHostHandler {
                 tenant: tenant.clone(),
                 dry_run: None,
                 end_user: end_user.cloned(),
+                tool_name: Some(local_name.to_string()),
+                lineage_memo: crate::lineage::new_run_memo(),
             }),
             docs: Arc::new(TenantDocsBridge {
                 state: self.state.clone(),
@@ -9491,6 +9598,8 @@ impl McpHostHandler {
             tenant: tenant.clone(),
             dry_run: Some(dry_run.clone()),
             end_user: None,
+            tool_name: None,
+            lineage_memo: crate::lineage::new_run_memo(),
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
@@ -10441,6 +10550,8 @@ impl McpHostHandler {
             tenant: tenant.clone(),
             dry_run: None,
             end_user: None,
+            tool_name: None,
+            lineage_memo: crate::lineage::new_run_memo(),
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
@@ -10883,6 +10994,8 @@ impl McpHostHandler {
             tenant: tenant.clone(),
             dry_run: dry_run.clone(),
             end_user: None,
+            tool_name: Some(local_name.clone()),
+            lineage_memo: crate::lineage::new_run_memo(),
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),

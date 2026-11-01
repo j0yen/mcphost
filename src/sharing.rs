@@ -551,6 +551,17 @@ pub async fn tool_fork(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
         .await?;
     let forked_from = format!("{owner_ns}.{tool}");
     state.db.set_forked_from(tenant.id, new_name.clone(), forked_from.clone()).await?;
+    // PRD-mcphost-lineage-runtime-edge-writers R5: the copy gets the edges a
+    // publish of the same spec would give it, in the forking tenant's graph
+    // only (the owner's graph is untouched). Best-effort, like a publish.
+    let lineage_result = if row.kind == "chain" {
+        crate::lineage::register_chain_publish(state, tenant.id, &new_name, &row.spec).await
+    } else {
+        crate::lineage::register_tool_publish(state, tenant.id, &new_name, &row.kind, &row.spec).await
+    };
+    if let Err(e) = lineage_result {
+        tracing::warn!(error = %e, tenant = %tenant.namespace, tool = %new_name, "failed to register lineage edges for fork");
+    }
     Ok(json!({
         "name": format!("{}.{new_name}", tenant.namespace),
         "kind": row.kind,
