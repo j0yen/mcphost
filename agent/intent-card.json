@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-query-names-missing-table.md",
-  "intent_slug": "mcphost-table-query-names-missing-table",
-  "root_motivation": "WHO: an agent that writes SQL against a table it has not declared yet (dpb_03, persona truth_drop_table_safely). WHAT: host.table.query on an undeclared table answered `internal error; request_id=…` while host.state.query on the same name answered the real cause; the diagnosis was computed and filed in query_log only. WHY: the rusqlite no-such-table error became AppError::Storage and the host swaps every Storage error for the internal-error reply.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-trusted-discovery-catalog-receipts.md",
+  "intent_slug": "mcphost-trusted-discovery-catalog-receipts",
+  "root_motivation": "**Who.** An agent (Claude Code, an SDK client, a synthorg persona) that calls `host.catalog.search` to find a shared tool it can call instead of writing one; Joe reading the anonymous catalog as the public face of the host; the operator judging whether the catalog proves anything.",
   "user_persona": "An agent whose first SELECT names a table or column it has not declared, and must learn from the reply which table or column is missing and which declared names are closest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tenant with tables `orders` and `customers` declared, When `host.table.query` runs `SELECT * FROM staging_orders`, Then the JSON-RPC error code is `-32602`, `data.error_code` is `table_not_found`, `data.table` is `staging_orders`, `data.candidates[0]` is `orders`, `data.hint` is a non-empty string, and the message does not contain `internal error` or `request_id`.",
-      "test": "tests/tqnf_ac01_missing_table_names_the_table.rs"
+      "description": "Given a tenant with a published tool, When host.tool_test, or require_tested on host.tool_share, returns pass or will_fail on the current version, Then the row stores that verdict with the version it judged, tested_version moves exactly as today, after a republish the entry shows test_verdict null and the tool ranks as untested until retested, and catalog.search shows test_verdict only when it judged the current version.",
+      "test": "tests/tdisc_ac01_verdict_stored_with_version.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same tenant, When `host.table.query` runs `SELECT totl FROM orders`, Then `data.error_code` is `table_column_not_found`, `data.column` is `totl`, `data.table` is `orders`, and `data.candidates[0]` is `total` (the declared column).",
-      "test": "tests/tqnf_ac02_missing_column_names_the_column.rs"
+      "description": "Given tools of a synthetic-marked, a disabled and a plain owner shared public, When the well-known document is read and a plain and another synthetic-marked tenant each call catalog.search and tool_list_shared, Then the anonymous and plain reads list only the plain owner's tool, the synthetic tenant's reads add the synthetic owner's tool, none lists the disabled owner's tool, and include_synthetic is in the contract dump.",
+      "test": "tests/tdisc_ac02_view_by_owner_mark.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a rusqlite error `parse_bind_error` does not recognise (a tenant database file overwritten with non-SQLite bytes, so `prepare` returns `file is not a database`; works as root too), When `host.table.query` runs a valid `SELECT` on a declared table, Then the reply is the internal-error swap with a `request_id` and no table-family `data.error_code` (R3 guardrail).",
-      "test": "tests/tqnf_ac03_unrecognised_sqlite_error_keeps_the_swap.rs"
+      "description": "Given a public tool called by its owner, twice by a plain tenant (one ok, one error), once by a synthetic-marked tenant and once 31 days ago, When a plain caller searches, Then the entry carries calls_30d n 2 ok 1; a synthetic-marked caller sees n 3 ok 2; the old call counts in neither; and no entry carries a caller or tenant id, only the owner namespace.",
+      "test": "tests/tdisc_ac03_calls_30d_receipts.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `host.table.count`, `host.table.chart` and `host.table.query_diagnose` with `staging_orders`, When each runs, Then count and chart return the AC 1 error, and `query_diagnose` returns a success result whose `data` block equals AC 1's `data`.",
-      "test": "tests/tqnf_ac04_count_chart_and_diagnose_agree.rs"
+      "description": "Given five plain owners' public tools A pass 1/1, B pass 95/100, C untested with no calls, D republished after a pass then tested will_fail with 100/100, E equal to C but shared later, all calls by plain tenants, When a sixth plain tenant runs catalog.search and tool_list_shared and the well-known document is read, Then all three return the order B, A, E, C, D, ordered by the one search_catalog SQL.",
+      "test": "tests/tdisc_ac04_order_on_receipts.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `host.state.query {\"table\": \"staging_orders\"}` on the same tenant, When it runs, Then its `error_code` and numeric code equal AC 1's, and its message equals AC 1's message with everything from the first `;` onward removed (the two paths agree on the sentence; only the SQL path adds the `; closest:` suffix).",
-      "test": "tests/tqnf_ac05_state_query_and_sql_path_agree.rs"
+      "description": "Given the committed host-output-schemas.v1.json, When a test serializes a fully populated catalog.search result, Then at every level, including tools.items, calls_30d and view, every emitted key is declared and every declared key is emitted, each of those objects sets additionalProperties false, and removing any emitted field, nested or not, from the schema fails the test naming the key path.",
+      "test": "tests/tdisc_ac05_schema_two_way.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `errors.json`, When the test lists the INVALID_PARAMS arm, Then `table_column_not_found` is present with family Table, class AgentFault, `retryable: false`, and `ERROR_CODES` is regenerated from `error_registry` rather than hand-edited.",
-      "test": "tests/tqnf_ac06_column_code_is_a_registry_row.rs"
+      "description": "Given 1,000 public tools over 300 owners and 100,000 calls rows seeded in a test, When 8 concurrent callers search with no q, a q matching nothing and limit 50, Then no q returns 50 entries with view.owners counting the distinct owners in the view, the no-match q returns tools [] with view present, and p95 over 20 runs stays under 250 ms.",
+      "test": "tests/tdisc_ac06_catalog_search_at_scale.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given `tools/list`, When the `host.table.query` descriptor is read, Then its description (from `host-tools.v1.json` via `gendocs`) names both codes once each, and the generated docs page shows the same sentence.",
-      "test": "tests/tqnf_ac07_descriptor_names_both_codes.rs"
+      "description": "Given an in-process TestServer, When tests/live/tdisc_live_receipts_rank.py runs under python3 -I against its base_url/mcp, Then its last stdout line is `tdisc_live first=tested receipts=ok hidden=2 view=real offboarded rc=0`, it exits 0, both tenants it signed up are offboarded and no key is printed; against a closed loopback port its last line ends rc=2 and it exits 2.",
+      "test": "tests/tdisc_ac07_live_driver.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after the deploy that carries this PRD, When the AC 8 command in \u00a7 Live evidence commands runs from the build host, Then its last two lines are the driver's `rc=0` line and `rc=0` (Live; evidence: python3 -I tests/live/tdisc_live_receipts_rank.py https://mcphost.dev/mcp from the build host, last two lines tdisc_live first=tested receipts=ok hidden=2 view=real offboarded rc=0 and rc=0)",
+      "test": "deferred: Live (prod; evidence: python3 -I tests/live/tdisc_live_receipts_rank.py https://mcphost.dev/mcp from the build host, last two lines tdisc_live first=tested receipts=ok hidden=2 view=real offboarded rc=0 and rc=0)"
     }
   ],
   "scope": [

@@ -4,14 +4,16 @@
 //! same.
 
 use crate::common;
-use common::{McpClient, TestServer, extract_structured, signup};
+use common::{McpClient, TestServer, extract_structured, signup, signup_plain};
 use serde_json::json;
 
 #[tokio::test]
 async fn catalog_search_and_well_known_document_agree() {
     let server = TestServer::start().await;
 
-    let (ns_a, key_a) = signup(&server.base_url, "Tenant A").await;
+    // PRD-mcphost-trusted-discovery-catalog-receipts R2: the anonymous document lists
+    // only real owners, so the owner signs up as a plain (non-loopback) tenant.
+    let (ns_a, key_a) = signup_plain(&server.base_url, "Tenant A").await;
     let client_a = McpClient::with_bearer(&server.base_url, &key_a);
     client_a
         .tools_call(

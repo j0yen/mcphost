@@ -150,6 +150,8 @@ mod tcse_ac05_python_catches_table_error;
 mod tcse_ac06_uncaught_table_error_keeps_code;
 #[path = "tdf_ac06_as_mcp_call_publishes.rs"]
 mod tdf_ac06_as_mcp_call_publishes;
+#[path = "tdisc_ac07_live_driver.rs"]
+mod tdisc_ac07_live_driver;
 #[path = "testtruth_ac04_python_compose_unverifiable_in_dry_run.rs"]
 mod testtruth_ac04_python_compose_unverifiable_in_dry_run;
 #[path = "testtruth_ac05_verdict_on_every_kind_dry_run.rs"]

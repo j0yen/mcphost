@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.123.0 — 2026-11-01
+
+Released by wm-build land: loop: mcphost-trusted-discovery-catalog-receipts.
+
 ## v0.122.0 — 2026-10-30
 
 Released by wm-build land: loop: mcphost-table-query-names-missing-table.

@@ -2060,6 +2060,26 @@ pub async fn signup(base_url: &str, display_name: &str) -> (String, String) {
     (tenant, key)
 }
 
+/// Same as [`signup`], from a non-loopback source address (`x-forwarded-for`,
+/// honoured because the test server's peer is loopback): the tenant is stored
+/// `origin = 'unattributed'` with no synthetic label, i.e. a plain tenant.
+/// [`signup`] itself arrives from loopback, so its tenants carry
+/// `origin = 'synthetic'` (PRD-mcphost-trusted-discovery-catalog-receipts).
+pub async fn signup_plain(base_url: &str, display_name: &str) -> (String, String) {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let ip = format!("203.0.{}.{}", (n / 250) % 250, n % 250 + 1);
+    let result = McpClient::new(base_url)
+        .tools_call_with_headers("signup", json!({"name": display_name}), &[("x-forwarded-for", ip.as_str())])
+        .await
+        .unwrap_or_else(|e| panic!("plain signup failed: {} {}", e.code, e.message));
+    let structured = extract_structured(&result);
+    (
+        structured["tenant"].as_str().expect("tenant field").to_string(),
+        structured["key"].as_str().expect("key field").to_string(),
+    )
+}
+
 /// Same as [`signup`], but the `signup` call carries an
 /// `x-mcphost-synthetic: <header_value>` header -- returns the raw
 /// `signup` result `Value` (not just `(tenant, key)`) so a test can also
