@@ -18,7 +18,8 @@ pub mod effects;
 pub mod graph;
 pub mod scan;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
@@ -48,11 +49,41 @@ pub struct CachedGraph {
 }
 
 /// requirement 3: per-tenant, 30s-TTL in-memory cache of the loaded graph --
-/// same `Arc<Mutex<HashMap<i64, _>>>` shape as [`crate::billing::AcceptedUsageCache`].
-pub type LineageCache = Arc<Mutex<HashMap<i64, CachedGraph>>>;
+/// same `Arc<Mutex<HashMap<i64, _>>>` shape as [`crate::billing::AcceptedUsageCache`],
+/// plus (PRD-mcphost-lineage-runtime-edge-writers R1) an always-on count of
+/// invalidations so a test can prove a run dropped the cache once, not once
+/// per repeated query.
+#[derive(Default)]
+pub struct LineageCacheInner {
+    graphs: Mutex<HashMap<i64, CachedGraph>>,
+    drops: AtomicU64,
+}
+
+impl LineageCacheInner {
+    pub fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<i64, CachedGraph>> {
+        self.graphs.lock().unwrap()
+    }
+
+    /// How many times [`invalidate_cache`] has run on this cache.
+    pub fn invalidations(&self) -> u64 {
+        self.drops.load(Ordering::Relaxed)
+    }
+}
+
+pub type LineageCache = Arc<LineageCacheInner>;
 
 pub fn new_cache() -> LineageCache {
-    Arc::new(Mutex::new(HashMap::new()))
+    Arc::new(LineageCacheInner::default())
+}
+
+/// PRD-mcphost-lineage-runtime-edge-writers R1: the pairs one run has
+/// already written (`(upstream_id, downstream_id)`), shared by the run's
+/// table bridge and every composed child's, so a pair repeated inside a run
+/// costs one set lookup after its first write.
+pub type RunMemo = Arc<Mutex<HashSet<(String, String)>>>;
+
+pub fn new_run_memo() -> RunMemo {
+    Arc::new(Mutex::new(HashSet::new()))
 }
 
 /// requirement 8 (AC7): a stored, pageable trace result. Scoped by
@@ -99,7 +130,7 @@ fn arg_i64_opt(args: &Value, name: &str) -> Option<i64> {
 pub async fn load_graph(state: &AppState, tenant_id: i64) -> Result<Arc<LineageGraph>, AppError> {
     let now = now_unix();
     {
-        let cache = state.lineage_cache.lock().unwrap();
+        let cache = state.lineage_cache.lock();
         if let Some(cached) = cache.get(&tenant_id)
             && now - cached.loaded_at < CACHE_TTL_SECS
         {
@@ -127,15 +158,31 @@ pub async fn load_graph(state: &AppState, tenant_id: i64) -> Result<Arc<LineageG
         graph.add_edge(&row.upstream_id, &row.downstream_id, &row.evidence);
     }
     let graph = Arc::new(graph);
-    let mut cache = state.lineage_cache.lock().unwrap();
+    let mut cache = state.lineage_cache.lock();
     cache.insert(tenant_id, CachedGraph { graph: graph.clone(), loaded_at: now });
     Ok(graph)
 }
 
 /// requirement 3: "invalidated on any edge write for that tenant".
 pub fn invalidate_cache(state: &AppState, tenant_id: i64) {
-    let mut cache = state.lineage_cache.lock().unwrap();
+    state.lineage_cache.drops.fetch_add(1, Ordering::Relaxed);
+    let mut cache = state.lineage_cache.lock();
     cache.remove(&tenant_id);
+}
+
+/// PRD-mcphost-lineage-runtime-edge-writers R2: the one table-name
+/// normalizer. Strips a schema prefix and identifier quoting (`"`, `` ` ``,
+/// `[` `]`) and does not fold case -- exactly what `scan.rs` has always done
+/// to the names it writes, so every `table:<name>` id it wrote before this
+/// PRD is unchanged. Idempotent.
+pub fn table_node_name(raw: &str) -> String {
+    let last = raw.rsplit('.').next().unwrap_or(raw);
+    last.trim_matches(|c| c == '"' || c == '`' || c == '[' || c == ']').to_string()
+}
+
+/// R2: `table:<name>` for a raw table reference, through [`table_node_name`].
+pub fn table_node_id(raw: &str) -> String {
+    node_id(NodeKind::Table, &table_node_name(raw))
 }
 
 /// requirement 4: registers one edge, creating both endpoint nodes (if they
@@ -163,6 +210,48 @@ pub async fn register_edge(
     state.db.lineage_insert_edge(tenant_id, upstream_id, downstream_id, evidence.to_string(), now).await?;
     invalidate_cache(state, tenant_id);
     Ok(())
+}
+
+/// PRD-mcphost-lineage-runtime-edge-writers R1: registers one edge
+/// observed at run time. The edge row is upserted first with
+/// [`crate::db::Db::lineage_insert_edge_runtime`] (a runtime observation
+/// replaces publish-derived evidence on the pair and nothing replaces a
+/// runtime observation); only when that changed a row are the two nodes
+/// upserted and the tenant's graph cache dropped. Returns whether a row
+/// changed. `memo` (the run's [`RunMemo`]) keeps a pair already written in
+/// this run off the database.
+#[allow(clippy::too_many_arguments)]
+pub async fn register_edge_runtime(
+    state: &AppState,
+    tenant_id: i64,
+    memo: &RunMemo,
+    upstream: (NodeKind, &str, &str),
+    downstream: (NodeKind, &str, &str),
+    evidence: &str,
+) -> Result<bool, AppError> {
+    let (up_kind, up_name, up_label) = upstream;
+    let (down_kind, down_name, down_label) = downstream;
+    let upstream_id = node_id(up_kind, up_name);
+    let downstream_id = node_id(down_kind, down_name);
+    let key = (upstream_id.clone(), downstream_id.clone());
+    if memo.lock().unwrap().contains(&key) {
+        return Ok(false);
+    }
+    let now = now_unix();
+    let changed = state
+        .db
+        .lineage_insert_edge_runtime(tenant_id, upstream_id.clone(), downstream_id.clone(), evidence.to_string(), now)
+        .await?;
+    if changed {
+        state.db.lineage_upsert_node(tenant_id, upstream_id, up_kind.as_str().to_string(), up_label.to_string(), now).await?;
+        state
+            .db
+            .lineage_upsert_node(tenant_id, downstream_id, down_kind.as_str().to_string(), down_label.to_string(), now)
+            .await?;
+        invalidate_cache(state, tenant_id);
+    }
+    memo.lock().unwrap().insert(key);
+    Ok(changed)
 }
 
 /// requirement 4 (AC1): scans a `python` tool's source for
@@ -202,6 +291,44 @@ pub async fn register_tool_publish(
         )
         .await?;
     }
+    Ok(())
+}
+
+/// R6: the evidence strings a publish derives from a tool's own spec; the
+/// only ones a later publish or rollback retires.
+const PUBLISH_EVIDENCE: [&str; 2] = ["source_scan", "declared_reads"];
+
+/// PRD-mcphost-lineage-runtime-edge-writers R6: makes `tool_name`'s
+/// publish-derived edges describe the version that now runs -- deletes its
+/// incoming `source_scan`/`declared_reads` edges, then registers the ones
+/// `spec` gives. Its `uses`, its outgoing edges (a chain that uses it) and
+/// every `runtime_*` edge stay. A `chain` has no publish-derived tool edges
+/// of this shape and is left alone.
+pub async fn refresh_tool_publish_edges(
+    state: &AppState,
+    tenant_id: i64,
+    tool_name: &str,
+    kind_name: &str,
+    spec: &Value,
+) -> Result<(), AppError> {
+    if kind_name == "chain" {
+        return Ok(());
+    }
+    let evidences = PUBLISH_EVIDENCE.iter().map(|e| e.to_string()).collect();
+    let deleted = state.db.lineage_delete_incoming_edges(tenant_id, node_id(NodeKind::Tool, tool_name), evidences).await?;
+    if deleted > 0 {
+        invalidate_cache(state, tenant_id);
+    }
+    register_tool_publish(state, tenant_id, tool_name, kind_name, spec).await
+}
+
+/// R6: `host.tool_remove` -- drops the tool's (or chain's) node and every
+/// edge that names it, runtime edges included.
+pub async fn forget_tool(state: &AppState, tenant_id: i64, name: &str) -> Result<(), AppError> {
+    for kind in [NodeKind::Tool, NodeKind::Chain] {
+        state.db.lineage_delete_node_and_edges(tenant_id, node_id(kind, name)).await?;
+    }
+    invalidate_cache(state, tenant_id);
     Ok(())
 }
 
