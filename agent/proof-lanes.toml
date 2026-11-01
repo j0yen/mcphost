@@ -466,3 +466,11 @@ required_commands = [
   "cargo test --workspace mcphost_external_class_positive_evidence_ac06",
   "cargo test --workspace mcphost_external_class_positive_evidence_ac07",
 ]
+
+[[lane]]
+id = "ci-test-partition-land"
+description = "ci-test-partition.sh check --land (post-merge pending-age refusal on the PR and merge-queue legs): its hermetic bash test over a temp git fixture. scripts/ci-test-partition.sh itself stays routed by the ci-scripts lane. Given its own lane since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline."
+globs = ["tests/scripts/ci-test-partition-land.test.sh"]
+required_commands = [
+  "bash tests/scripts/ci-test-partition-land.test.sh",
+]
