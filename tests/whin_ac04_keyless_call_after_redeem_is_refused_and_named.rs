@@ -71,7 +71,7 @@ async fn a_peer_with_no_redeem_in_ten_minutes_still_gets_implicit_signup() {
     server
         .state
         .redeemed_peers
-        .record_at(&peer, "t_stale", mcphost::state::now_unix() - PEER_TTL_SECS - 1);
+        .record_at(&peer, "t_stale", None, mcphost::state::now_unix() - PEER_TTL_SECS - 1);
 
     let published = extract_structured(
         &McpClient::new(&server.base_url)

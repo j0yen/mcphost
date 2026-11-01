@@ -178,7 +178,7 @@ fn bounded(spec: &Value, field: &str, min: u64, max: u64, default: u64) -> Resul
 
 fn parse_spec(spec: &Value) -> Result<JqSpec, KindError> {
     if !spec.is_object() {
-        return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
+        return Err(super::not_a_json_object("spec", spec));
     }
     let program = spec
         .get("program")

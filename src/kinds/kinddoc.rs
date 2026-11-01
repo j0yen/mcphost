@@ -126,7 +126,7 @@ pub fn derive_requiredness<K: super::Kind + ?Sized>(kind: &K) -> Vec<(FieldDoc, 
 /// envelope ones: the `err_code!` row for `invalid_spec` reads this, so
 /// `/errors.json`, `docs/errors.md` and both SDKs list exactly these.
 pub const INVALID_SPEC_DATA_KEYS: &[&str] =
-    &["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names"];
+    &["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names", "received_type"];
 
 /// Cap on the serialized `fields` plus `minimal_specs` of an `invalid_spec`
 /// refusal (PRD-mcphost-invalid-spec-error-carries-kind-fields R5).

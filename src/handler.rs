@@ -2250,6 +2250,7 @@ fn host_tools_part_03() -> Vec<Tool> {
                 json!({
                     "q": {"type": "string", "description": "Substring to match; omit for every public tool."},
                     "limit": {"type": "integer", "description": "Max results; default 20."},
+                    "include_synthetic": {"type": "boolean", "description": "List tools of synthetic-marked owners too. Default: true for a synthetic-marked caller, false otherwise; owners that offboarded are never listed."},
                 }),
                 &[],
             ),
@@ -2768,7 +2769,9 @@ fn host_tools_part_04() -> Vec<Tool> {
              each refusal names the rule or bound it hit. handle: true materialises the result \
              as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a \
              20-row sample, per-column stats over every row) naming a hdl_<id> you can later \
-             reference in FROM or a CTE through this same tool.",
+             reference in FROM or a CTE through this same tool. A table the tenant never \
+             declared answers table_not_found and an unknown column table_column_not_found \
+             (-32602), each with data.candidates and data.hint.",
             host_schema(
                 json!({
                     "sql": {
@@ -3050,14 +3053,20 @@ fn host_tools_part_05() -> Vec<Tool> {
         // the search PRD will index from -- a third data-ish store
         // alongside host.state.*'s KV namespace and host.table.*'s real SQL
         // rows, for whole documents rather than small values or table rows.
+        // PRD-mcphost-docs-import-and-stated-boundary R3: the boundary sentence
+        // (`docs::DOCS_BOUNDARY`) leads the description.
         Tool::new(
             "host.docs.put",
-            "Write (or, for an already-used name, create a new version of) a document in this \
-             tenant's document store. mime is detected from name and content when omitted; \
-             allowed mimes are text/plain, text/markdown, application/json, text/csv. content \
-             (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES \
-             (default 2 MiB). Identical content to the current version is a no-op that repeats \
-             the current version.",
+            format!(
+                "{} Write (or, for an already-used name, create a new version of) a document in \
+                 this tenant's document store. mime is detected from name and content when \
+                 omitted; allowed mimes are text/plain, text/markdown, application/json, \
+                 text/csv. content (or content_base64 for arbitrary bytes) must be at most \
+                 MCPHOST_DOC_MAX_BYTES (default 2 MiB). Identical content to the current version \
+                 is a no-op that repeats the current version. Loading many documents: \
+                 host.docs.put_many takes up to 50 per call.",
+                crate::docs::DOCS_BOUNDARY
+            ),
             host_schema_any(
                 json!({
                     "name": {"type": "string", "minLength": 1, "description": "Document name; same name on a later put creates a new version of the same id."},
@@ -3068,6 +3077,46 @@ fn host_tools_part_05() -> Vec<Tool> {
                 }),
                 &["name"],
                 &["content", "content_base64"],
+            ),
+        ),
+        // PRD-mcphost-docs-import-and-stated-boundary R1: up to 50 documents per
+        // call, each through `docs::doc_put`, one result row per input.
+        Tool::new(
+            "host.docs.put_many",
+            format!(
+                "{} Write up to {max} documents to this tenant's document store in one call. \
+                 documents is an array of 1-{max} objects, each the arguments host.docs.put takes \
+                 (name, one of content / content_base64, optional mime and metadata); on_conflict \
+                 is replace (default: an existing name gets a new version) or skip (an existing \
+                 name is left unchanged). Each document is its own write: results has one row per \
+                 input, in order, with status stored / replaced / skipped / refused (refused rows \
+                 carry the error_code and message host.docs.put would return, e.g. quota_docs), so \
+                 one refusal never undoes another and the call itself succeeds. More than {max} \
+                 documents is invalid_params and writes nothing.",
+                crate::docs::DOCS_BOUNDARY,
+                max = crate::docs::PUT_MANY_MAX
+            ),
+            host_schema(
+                json!({
+                    "documents": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": crate::docs::PUT_MANY_MAX,
+                        "description": "1-50 documents, each the arguments host.docs.put takes.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "Document name; same name on a later put creates a new version of the same id."},
+                                "content": {"type": "string", "description": "Document content as text; use content_base64 instead for arbitrary bytes."},
+                                "content_base64": {"type": "string", "description": "Document content, base64-encoded; use content instead for plain text."},
+                                "mime": {"type": "string", "enum": crate::docs::ALLOWED_MIMES, "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted."},
+                                "metadata": {"type": ANY_JSON_TYPES, "description": "Arbitrary caller metadata stored alongside the document; any JSON value."},
+                            },
+                        },
+                    },
+                    "on_conflict": {"type": "string", "enum": crate::docs::ON_CONFLICT_MODES, "description": "replace (default): an existing name gets a new version; skip: an existing name is left unchanged and reported skipped."},
+                }),
+                &["documents"],
             ),
         ),
         // PRD-mcphost-blob-put-get-signed-url R1: any file, stored in one
@@ -3313,7 +3362,10 @@ fn host_tools_part_06() -> Vec<Tool> {
             "This tenant's document store counters: documents, bytes, text_bytes, the current \
              change watermark, this plan's document/byte quotas, and an index block (mode, \
              indexed_watermark, lag_seconds, pending_documents, chunks, rebuilding, \
-             quota_chunks_reached) describing the search index's own freshness.",
+             quota_chunks_reached) describing the search index's own freshness. \
+             import_paths names how a document gets in (content, content_base64, put_many), \
+             put_many_max the most documents one host.docs.put_many takes, and doc_max_bytes \
+             the per-document byte cap.",
             host_schema(json!({}), &[]),
         ),
         // PRD-mcphost-docs-semantic-search P0 requirements 2-5, P1
@@ -7340,21 +7392,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 230 forwardable ids is 1,019,904 B (every id measures it:
+/// maximum over all 230 forwardable ids is 1,028,096 B (every id measures it:
 /// `test:host.trigger.set`, `call:host.whoami`,
 /// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
-/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-21 with the implicit-signup rollback guard on the first-call path: 983,040 -> 991,232 B; and 2026-10-23 with the schema-shape validators on the argument path: 991,232 -> 1,007,616 B; and 2026-10-24 CI's debug build measured `call:host.whoami` at 1,011,712 B (PR #515 run 40094459445; a CI figure, not `scripts/fwd-stack-measure.sh all`, so a script re-run must not lower it); and 2026-10-24 merged with the progress-token sink on the call path: CI figure, run 40114224490 (debug build), `call:host.whoami` minimum stack 1019904 bytes, so a script re-run must not lower it), after the dispatch table
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-21 with the implicit-signup rollback guard on the first-call path: 983,040 -> 991,232 B; and 2026-10-23 with the schema-shape validators on the argument path: 991,232 -> 1,007,616 B; and 2026-10-24 CI's debug build measured `call:host.whoami` at 1,011,712 B (PR #515 run 40094459445; a CI figure, not `scripts/fwd-stack-measure.sh all`, so a script re-run must not lower it); and 2026-10-24 merged with the progress-token sink on the call path: CI figure, run 40114224490 (debug build), `call:host.whoami` minimum stack 1019904 bytes, so a script re-run must not lower it; and 2026-10-27 merged with the subscriptions-listen stream: `scripts/fwd-stack-measure.sh call:host.whoami` (debug build) 1,024,000 B, +4,096 B over main; the branch alone measured 995,328 B; and 2026-10-30 with the per-session implicit-signup peer-recent gate on the first-call path: `scripts/fwd-stack-measure.sh` (debug build) 1,024,000 -> 1,028,096 B on `test:host.trigger.set`, `call:host.whoami`, `call:host.webhook_inbox.create` and `call:host.vault.status`), after the dispatch table
 /// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
 /// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
 /// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
 /// compiling its error-envelope report on the caller's stack) and the
-/// budget is that + 25 % = 1,274,880 B, so CI's 2 MiB test thread keeps
+/// budget is that + 25 % = 1,285,120 B, so CI's 2 MiB test thread keeps
 /// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_274_880;
+pub const FORWARD_STACK_BUDGET: usize = 1_285_120;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
 /// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
@@ -7704,7 +7756,11 @@ impl McpHostHandler {
     ) -> Result<Value, AppError> {
         // PRD-mcphost-resources-for-tenant-data requirements 4 and 6: the
         // one place a committed write tells resource subscribers.
-        let hint = crate::resources::write_hint(name, &args);
+        // Boxed: this frame is re-entered once per forwarding level (FORWARD_STACK_BUDGET).
+        let hint = crate::resources::write_hint(name, &args).map(Box::new);
+        // PRD-mcphost-subscriptions-listen R4: what a tools/list-changing verb
+        // needs remembered from before it ran; boxed so this frame stays small.
+        let listen = Box::pin(crate::listen::Pending::begin(&self.state, tenant, name, &args)).await;
         // The forwarding boundary. A wrapper verb (`FORWARDING_WRAPPERS`) re-enters
         // this dispatcher with the verb it forwards, so it is on the stack UNDER
         // the forwarded verb. Dispatched the usual way it would hold the
@@ -7728,20 +7784,27 @@ impl McpHostHandler {
         } else {
             // `Box::pin`: run 945 verbfwd_ac01 stack overflow (CI 39080964983) -- the hint
             // locals added here grew this frame past the 2 MiB test-thread stack.
-            Box::pin(self.dispatch_tenant_tool_dry_run(
-                tenant,
-                subject,
-                auth_method,
-                calls_auth_method,
-                end_user,
-                session_id,
-                name,
-                args,
+            // The task-local rides inside the same box (PRD-mcphost-subscriptions-listen R5).
+            Box::pin(crate::listen::CURRENT_VERB.scope(
+                crate::listen::canonical_verb(name).to_string(),
+                self.dispatch_tenant_tool_dry_run(
+                    tenant,
+                    subject,
+                    auth_method,
+                    calls_auth_method,
+                    end_user,
+                    session_id,
+                    name,
+                    args,
+                ),
             ))
             .await
         };
         if let (Some(hint), Ok(out)) = (hint, &result) {
-            crate::resources::after_write(&self.state, tenant.id, hint, out);
+            crate::resources::after_write(&self.state, tenant.id, *hint, out);
+        }
+        if let (Some(listen), Ok(out)) = (listen, &result) {
+            Box::pin(listen.finish(&self.state, tenant, out)).await;
         }
         self.attach_data_quota(tenant, name, result).await
     }
@@ -8283,7 +8346,12 @@ impl McpHostHandler {
                     .get::<crate::session_bind::SessionPresented>()
                     .is_some_and(|p| p.0);
                 if !presented {
-                    self.state.redeemed_peers.record_at(&request_peer_key(parts), &tenant.namespace, now_unix());
+                    self.state.redeemed_peers.record_at(
+                        &request_peer_key(parts),
+                        &tenant.namespace,
+                        session_id,
+                        now_unix(),
+                    );
                 }
                 return Ok(value);
             }
@@ -9983,7 +10051,7 @@ impl McpHostHandler {
         // same `validate` a real `host.tool_publish` would run, so a spec
         // that would be rejected at publish time fails identically here,
         // before any request is attempted.
-        if let Err(e) = kind.validate(&spec) {
+        if let Err(e) = KindRegistry::validate_checked(kind.as_ref(), &spec) {
             let err = crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), AppError::from(e));
             return Err(crate::hooks::enrich_own_hook_refusal(&self.state, tenant, &spec, err).await);
         }
@@ -10131,14 +10199,21 @@ impl McpHostHandler {
     async fn tool_test_stamping(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
         let name = args.get("name").and_then(Value::as_str).map(str::to_string);
         let mut out = self.tool_test(tenant, args).await?;
+        let verdict = out.get("verdict").and_then(Value::as_str).map(str::to_string);
         if let Some(name) = name
-            && out.get("verdict").and_then(Value::as_str) == Some("pass")
+            && let Some(verdict) = verdict
             && let Some(row) = self.state.db.get_tool(tenant.id, name.clone()).await?
         {
-            self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
-            if let Value::Object(map) = &mut out {
-                map.insert("tested_version".to_string(), json!(row.current_version));
-                map.insert("stale_test".to_string(), json!(false));
+            // PRD-mcphost-trusted-discovery-catalog-receipts R1: every verdict is
+            // stored with the version it judged; only `pass` stamps `tested_version`.
+            let passed = verdict == "pass";
+            self.state.db.record_test_verdict(tenant.id, name.clone(), row.current_version, verdict).await?;
+            if passed {
+                self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
+                if let Value::Object(map) = &mut out {
+                    map.insert("tested_version".to_string(), json!(row.current_version));
+                    map.insert("stale_test".to_string(), json!(false));
+                }
             }
         }
         Ok(out)
@@ -10304,7 +10379,7 @@ impl McpHostHandler {
             return Err(AppError::sandbox_unavailable(&status, retry_after_s));
         }
 
-        if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
+        if let Some(err) = AppError::from_kind_violations(KindRegistry::validate_all_checked(kind.as_ref(), &spec)) {
             return Err(crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), err));
         }
         kind.validate_async(&spec)
@@ -11810,7 +11885,7 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> (Result<Value, AppError>, bool) {
-        let tracked = matches!(name, "host.tool.publish" | "host.tool.remove");
+        let tracked = crate::listen::tracks_prompts(name);
         let kind_before = match (tracked, args.get("name").and_then(Value::as_str)) {
             (true, Some(tool)) => self
                 .state
@@ -11832,6 +11907,9 @@ impl McpHostHandler {
             }
             _ => false,
         };
+        if changed {
+            self.state.listen_hub.notify(tenant.id, crate::listen::ListChange::Prompts);
+        }
         (result, changed)
     }
 }
@@ -11846,6 +11924,78 @@ async fn notify_prompt_list_changed(peer: &Peer<RoleServer>, namespace: &str) {
     .await
     {
         tracing::warn!(tenant = %namespace, error = %e, "notify_prompt_list_changed failed");
+    }
+}
+
+impl McpHostHandler {
+    /// PRD-mcphost-subscriptions-listen R2/R6: the body of `ServerHandler::listen`.
+    async fn listen_stream(&self, context: rmcp::service::SubscriptionContext) -> Result<(), McpError> {
+        let base = Some(self.state.public_url.as_str());
+        let parts = get_parts(context.request_context())?;
+        let mut sub_key = None;
+        let auth = match resolve_path_secret_auth(&self.state, parts, "")
+            .await
+            .map_err(|e| e.into_error_data_at(base))?
+        {
+            Some(a) => a,
+            None => resolve_auth(&self.state, parts, &mut sub_key, "")
+                .await
+                .map_err(|e| e.into_error_data_at(base))?,
+        };
+        let tenant = match auth {
+            Auth::Tenant(tenant, _) => tenant,
+            Auth::Invalid => return Err(AppError::TenantKeyInvalid.into_error_data_at(base)),
+            // No key: nothing to listen for. The graceful result closes the stream.
+            Auth::Anonymous | Auth::Admin => return Ok(()),
+        };
+        if let Some(ns) = tenant_path_namespace(parts)
+            && tenant.namespace != ns
+        {
+            return Err(AppError::WrongTenant.into_error_data_at(base));
+        }
+        let plan = self
+            .state
+            .plans
+            .get(&tenant.plan)
+            .ok_or_else(|| AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan)))
+            .map_err(|e| e.into_error_data_at(base))?;
+        let limit = plan.listen_streams_max;
+        let mut guard = match self.state.listen_hub.open_within(tenant.id, limit) {
+            Ok(guard) => guard,
+            Err(used) => {
+                let fleet = self.state.fleet_ips.contains(&source_ip(parts));
+                self.state.listen_hub.record_refusal(crate::state::now_unix(), fleet);
+                return Err(AppError::Structured {
+                    code: crate::listen::LISTEN_STREAMS_MAX,
+                    message: format!("this tenant already has {used} open listen streams, the {} plan maximum", plan.name),
+                    data: json!({"limit": limit, "used": used, "plan": plan.name}),
+                }
+                .into_error_data_at(base));
+            }
+        };
+        let sink = context.sink().clone();
+        let mut pending = Vec::new();
+        loop {
+            let change = tokio::select! {
+                _ = context.cancelled() => return Ok(()),
+                change = guard.next(&mut pending) => match change {
+                    Some(change) => change,
+                    None => return Ok(()),
+                },
+            };
+            let sent = match change {
+                crate::listen::ListChange::Tools => sink.notify_tool_list_changed().await,
+                crate::listen::ListChange::Prompts => sink.notify_prompt_list_changed().await,
+            };
+            match sent {
+                // The client did not ask for this list.
+                Ok(()) | Err(rmcp::service::SubscriptionSendError::NotificationNotAccepted(_)) => {}
+                Err(e) => {
+                    tracing::debug!(tenant = %tenant.namespace, error = %e, "listen stream ended on send");
+                    return Ok(());
+                }
+            }
+        }
     }
 }
 
@@ -11952,6 +12102,36 @@ impl ServerHandler for McpHostHandler {
             ),
         ))
         .with_instructions(instructions)
+    }
+
+    /// PRD-mcphost-subscriptions-listen R1: the list notifications this host
+    /// can deliver on a listen stream. rmcp intersects this with the request and
+    /// with `get_info`'s capabilities. Resource notifications stay out (Non-goals).
+    fn accepted_subscription_filter(
+        &self,
+        requested: &rmcp::model::SubscriptionFilter,
+    ) -> Option<rmcp::model::SubscriptionFilter> {
+        let mut filter = rmcp::model::SubscriptionFilter::builder();
+        if requested.tools_list_changed == Some(true) {
+            filter = filter.tools_list_changed();
+        }
+        if requested.prompts_list_changed == Some(true) {
+            filter = filter.prompts_list_changed();
+        }
+        Some(filter.build())
+    }
+
+    /// PRD-mcphost-subscriptions-listen R2/R6: hold one stream for the tenant
+    /// the Authorization header names, until the client closes it or the server
+    /// shuts down. Resolution is read-only: no tenant is created and no
+    /// session memory is written.
+    fn listen(
+        &self,
+        context: rmcp::service::SubscriptionContext,
+    ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
+        // Boxed: rmcp's `handle_request` poll frame holds every arm's future, and
+        // this one is large (FORWARD_STACK_BUDGET's shared level).
+        Box::pin(self.listen_stream(context))
     }
 
     // PRD-mcphost-resources-for-tenant-data requirement 2: one entry per
@@ -12393,6 +12573,44 @@ impl McpHostHandler {
         )
     }
 
+    /// PRD-mcphost-external-class-positive-evidence requirement (b): classify
+    /// this authenticated call (peer IP against `MCPHOST_FLEET_IPS` and
+    /// loopback, `X-Mcphost-Synthetic` present) and act on it. A fleet,
+    /// loopback or header-stamped call taints an `unattributed` tenant for
+    /// good; a clean call on a later UTC day (>= 6 h after signup) promotes
+    /// it, and is offered to a `synthetic` tenant only so the refusal is
+    /// counted. Best-effort: never fails the call it describes.
+    async fn note_origin_evidence(&self, parts: &http::request::Parts, tenant: &Tenant, source: &str) {
+        use crate::state::Origin;
+        if tenant.origin != Origin::Unattributed.as_str() && tenant.origin != Origin::Synthetic.as_str() {
+            return;
+        }
+        if source.parse::<std::net::IpAddr>().is_err() {
+            return;
+        }
+        let tainted = crate::state::is_loopback_source_ip(source)
+            || self.state.fleet_ips.contains(source)
+            || synthetic_header(parts).is_some();
+        let result = if tainted {
+            if tenant.origin == Origin::Unattributed.as_str() {
+                self.state.db.stamp_origin_taint(tenant.id).await
+            } else {
+                Ok(())
+            }
+        } else if let Some(days) = tenant.created_unix.and_then(|c| crate::state::returned_days(c, now_unix())) {
+            let evidence = crate::db::OriginEvidence::Returned {
+                days,
+                ip_hash: self.state.secrets.salted_hash(source),
+            };
+            self.state.db.promote_origin(tenant.id, evidence).await.map(|_| ())
+        } else {
+            Ok(())
+        };
+        if let Err(e) = result {
+            tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record origin evidence");
+        }
+    }
+
     /// PRD-mcphost-same-user-second-agent R2: which client of `tenant` is
     /// calling -- the sibling the join just created, else the sibling whose
     /// `/u/` secret is on the path, else the one this session joined as,
@@ -12624,13 +12842,34 @@ impl McpHostHandler {
             && crate::tenant_clients::join_path_code(parts).is_none()
         {
             let peer = request_peer_key(parts);
-            if let Some(namespace) = self.state.redeemed_peers.lookup(&peer, now_unix()) {
+            // PRD-mcphost-implicit-signup-per-session-not-per-peer R2: the gate
+            // holds a request that presented no host-minted session, or the
+            // very session that redeemed. A request presenting a DIFFERENT
+            // host-minted session is another agent behind the same address and
+            // reaches implicit signup. `SessionPresented` is false for a forged
+            // or foreign id (the transport replaced it), so a forged header
+            // never turns the gate off.
+            let presented = parts.extensions.get::<crate::session_bind::SessionPresented>().is_some_and(|p| p.0);
+            let recent = self.state.redeemed_peers.lookup(&peer, now_unix());
+            let yields = recent
+                .as_ref()
+                .is_some_and(|(_, redeemer)| presented && redeemer.as_deref() != session_id.as_deref());
+            if yields {
+                // R5: the journal splits a yield (a session of its own) from a
+                // refusal (none); neither line names a key or a namespace.
+                tracing::info!(
+                    peer_recent_yielded = true,
+                    tool = %body_name,
+                    "host.* call proceeds to implicit signup: peer redeemed recently but this request presents a different session"
+                );
+            }
+            if !yields && let Some((namespace, _)) = recent {
                 match self.state.db.find_tenant_by_namespace(namespace.clone()).await {
                     Ok(Some(t)) if !t.disabled => {
                         tracing::warn!(
-                            tenant = %t.namespace,
+                            session_presented = presented,
                             tool = %body_name,
-                            "host.* call refused: peer just redeemed, tenant_key missing"
+                            "host.* call refused: peer just redeemed, request presented no session of its own"
                         );
                         Box::pin(self.note_implicit_peer_refused(parts)).await;
                         return Err(AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent)
@@ -12844,6 +13083,14 @@ impl McpHostHandler {
         {
             tracing::warn!(code = err.code(), tenant = %tenant.namespace, tool = %body_name, "call refused: tenant banned");
             return Err(err.into_error_data_at(Some(&self.state.public_url)));
+        }
+        // PRD-mcphost-external-class-positive-evidence: a later-day return is
+        // the second way an `unattributed` tenant earns `external`; its own
+        // `Box::pin`'d fn keeps this future under the size bound.
+        if let Auth::Tenant(tenant, _) = &auth
+            && body_name != "signup"
+        {
+            Box::pin(self.note_origin_evidence(parts, tenant, &source)).await;
         }
         // PRD-mcphost-end-user-identity requirement 1/2: resolved once,
         // before dispatch, from either the OAuth bearer this call's `auth`
@@ -13198,6 +13445,7 @@ impl McpHostHandler {
                     self.state.redeemed_peers.record_at(
                         &request_peer_key(parts),
                         &redeemed_tenant.namespace,
+                        session_id.as_deref(),
                         now_unix(),
                     );
                 }
@@ -13430,6 +13678,19 @@ impl McpHostHandler {
             Some(tool) => e.with_tool(tool),
             None => e,
         });
+        // PRD-mcphost-refusals-name-their-cause R4: a published-tool call that
+        // finds nothing, on a connection whose own tenant implicit sign-up made
+        // moments ago, says so. Reads the bound tenant row only.
+        let outcome = outcome.map_err(|e| match &auth {
+            Auth::Tenant(tenant, _)
+                if !body_name.starts_with("host.")
+                    && !body_name.starts_with("billing.")
+                    && !body_name.starts_with("admin.") =>
+            {
+                e.on_implicit_tenant(&tenant.namespace, tenant.signup_source.as_deref(), tenant.created_unix, now_unix())
+            }
+            _ => e,
+        });
         // PRD-mcphost-usage-in-every-response R2: `_meta.usage` is built BEFORE
         // the idempotency store captures the response, so a replay returns the
         // first response's usage verbatim (no replay-path query). A replay
@@ -13546,14 +13807,15 @@ impl McpHostHandler {
                     )
                     .await;
                     // requirement 2 (AC2): "first successful host.tool_publish"
-                    // -- gated on `origin == "external"` (never fleet, never
-                    // synthetic) and `owner_verified_at` still null;
+                    // -- gated on `origin` being `external` or `unattributed`
+                    // (never fleet, never synthetic: a claim link is what turns
+                    // an unattributed tenant into an external one) and `owner_verified_at` still null;
                     // `mark_claim_nudged_if_unset`'s own atomic `UPDATE ...
                     // WHERE claim_nudged_unix IS NULL` is what makes this
                     // "exactly once ever", not just "once per call".
                     if (body_name == "host.tool_publish" || body_name == "host.tool.publish")
                         && tenant.owner_verified_at.is_none()
-                        && tenant.origin == "external"
+                        && matches!(tenant.origin.as_str(), "external" | "unattributed")
                         && self
                             .state
                             .db

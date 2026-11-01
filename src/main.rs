@@ -1040,6 +1040,7 @@ async fn main() -> anyhow::Result<()> {
             } else if json {
                 let mut body = report.to_json();
                 if let Some(obj) = body.as_object_mut() {
+                    obj.extend(mcphost::funnel::origin_report(&db).await?);
                     obj.insert("by_surface".to_string(), by_surface);
                     obj.insert("probe".to_string(), probe);
                     obj.insert(
@@ -2235,6 +2236,7 @@ async fn main() -> anyhow::Result<()> {
                 confirm_clock_offset_secs: Default::default(),
                 onboarding_cache: Default::default(),
                 resource_subs: Default::default(),
+                listen_hub: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

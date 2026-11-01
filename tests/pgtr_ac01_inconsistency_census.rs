@@ -114,11 +114,14 @@ async fn census_counts_list_verbs_cursors_and_end_of_list_conventions() {
     // (PRD-mcphost-connect-start-and-callback, one row per registry provider,
     // registered unpaged in `paged::UNPAGED_VERBS`), plus host.sync.list
     // (PRD-mcphost-sync-source-registry-and-create, bounded by the plan's
-    // `syncs_max`, registered unpaged in `paged::UNPAGED_VERBS`).
+    // `syncs_max`, registered unpaged in `paged::UNPAGED_VERBS`), minus
+    // host.catalog.search (PRD-mcphost-trusted-discovery-catalog-receipts R2:
+    // its result carries `view` beside `tools`, so it is a record, no longer a
+    // pure single-array list).
     assert_eq!(
         list_shaped.len(),
-        41,
-        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list + host.calls.list + host.index.list + host.note.list + host.notify.channel_list + host.notify.receipts + host.email.sends + host.connect.list + host.sync.list - host.secret.list: {list_shaped:?}"
+        40,
+        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list + host.calls.list + host.index.list + host.note.list + host.notify.channel_list + host.notify.receipts + host.email.sends + host.connect.list + host.sync.list - host.secret.list - host.catalog.search: {list_shaped:?}"
     );
     assert_eq!(
         conventions,

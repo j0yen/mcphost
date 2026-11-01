@@ -28,7 +28,7 @@ required_commands = [
 [[lane]]
 id = "rust-tests"
 description = "Test-only changes (only allowed via intent-card amendment). .config/nextest.toml folded in 2026-09-12 (PRD-mcphost-test-suite-consolidation): it only configures how the existing test suite runs (JUnit output location/timing), same proof as a tests/**/*.rs edit -- same gap class as every other 'no lane matched a new config-adjacent path' fix already documented in this file."
-globs = ["tests/**/*.rs", "tests/fixtures/**", ".config/nextest.toml", "tests/txn_allowlist.txt", "tests/txnhelp_parity_table.tsv", "tests/golden/**", "tests/live/**"]
+globs = ["tests/**/*.rs", "tests/fixtures/**", ".config/nextest.toml", "tests/txn_allowlist.txt", "tests/txnhelp_parity_table.tsv", "tests/golden/**", "tests/live/**", "scripts/chainmap_incidents.py"]
 required_commands = [
   "cargo test --workspace",
 ]
@@ -456,4 +456,13 @@ description = "PRD-mcphost-table-import-url-live-proof: scripts/live/tblurlp_imp
 globs = ["scripts/live/tblurlp_import_live.py"]
 required_commands = [
   "cargo test --workspace tblurlp_ac03",
+]
+
+[[lane]]
+id = "origin-counts-script"
+description = "PRD-mcphost-external-class-positive-evidence: scripts/ops/origin-counts.py, the counts-only read-only origin tally the operator runs on mcphost-1 (AC8, Live). Added project-locally: the scaffold has no lane for operator scripts; the script's six counts are proven equal to /healthz by the AC6 test, and its origin list equal to the Rust enum by the AC7 test."
+globs = ["scripts/ops/origin-counts.py"]
+required_commands = [
+  "cargo test --workspace mcphost_external_class_positive_evidence_ac06",
+  "cargo test --workspace mcphost_external_class_positive_evidence_ac07",
 ]

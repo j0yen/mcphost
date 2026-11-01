@@ -106,6 +106,7 @@ fn a_row_with_empty_methods_fails_naming_the_row() {
         probe: "widgets",
         alternative: None,
         help_code: "capability_unsupported",
+        proving_cell: None,
     };
     let problem = methods_problem(&row).expect("an empty methods list is a problem");
     assert!(problem.contains("widgets"), "{problem}");

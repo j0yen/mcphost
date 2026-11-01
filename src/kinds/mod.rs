@@ -922,6 +922,36 @@ fn check_ui_spec(ui: &Value) -> Option<KindError> {
     None
 }
 
+/// The JSON type word a "received <type>" suffix names.
+pub fn json_type_word(value: &Value) -> &'static str {
+    match value {
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Number(_) => "number",
+        Value::Bool(_) => "boolean",
+        Value::Null => "null",
+        Value::Object(_) => "object",
+    }
+}
+
+/// PRD-mcphost-refusals-name-their-cause R5: `invalid_spec` for a value at
+/// `site` (`spec`, `spec.steps[0]`, ...) of the wrong JSON type. The message is
+/// `invalid spec: <site>: <requirement>, received <type>`; `data.received_type`
+/// carries the same word beside the `field`/`expected` every shape error has.
+pub fn wrong_json_type(site: &str, requirement: &str, got: &Value) -> KindError {
+    let received = json_type_word(got);
+    KindError::structured_with(
+        crate::errors::INVALID_SPEC,
+        format!("invalid spec: {site}: {requirement}, received {received}"),
+        json!({"field": site, "expected": format!("{requirement}, received {received}"), "received_type": received}),
+    )
+}
+
+/// [`wrong_json_type`] for a value that must be a JSON object.
+pub fn not_a_json_object(site: &str, got: &Value) -> KindError {
+    wrong_json_type(site, "must be a JSON object", got)
+}
+
 /// Requirement 1's structured `invalid_spec` shape: `field` (a dotted path),
 /// `got` (the JSON type found there), `expected` (a plain phrase), `example`
 /// (one accepted value) -- message `invalid spec: <field>: expected
@@ -2844,6 +2874,28 @@ impl KindRegistry {
         // it in `names()`/`publish_kind_enum()`.
         (name == crate::uptime::KIND_NAME)
             .then(|| Arc::new(crate::uptime::UptimeKind::new(self.kinds.get("http").cloned())) as Arc<dyn Kind>)
+    }
+
+    /// PRD-mcphost-refusals-name-their-cause R5: the one place a spec's shape
+    /// is checked, before any kind's `validate`/`validate_all`: a spec that is
+    /// not a JSON object is refused for every kind, present or future, as
+    /// `spec: must be a JSON object, received <type>`.
+    pub fn check_spec_shape(spec: &Value) -> Result<(), KindError> {
+        if spec.is_object() { Ok(()) } else { Err(not_a_json_object("spec", spec)) }
+    }
+
+    /// [`Kind::validate_all`] behind [`Self::check_spec_shape`].
+    pub fn validate_all_checked(kind: &dyn Kind, spec: &Value) -> Vec<KindError> {
+        match Self::check_spec_shape(spec) {
+            Ok(()) => kind.validate_all(spec),
+            Err(e) => vec![e],
+        }
+    }
+
+    /// [`Kind::validate`] behind [`Self::check_spec_shape`].
+    pub fn validate_checked(kind: &dyn Kind, spec: &Value) -> Result<(), KindError> {
+        Self::check_spec_shape(spec)?;
+        kind.validate(spec)
     }
 
     /// Registered kind names, stable order, for error messages.
