@@ -500,6 +500,12 @@
         "dry_run"
       ]
     },
+    "host.docs.put_many": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
     "host.docs.reindex": {
       "unreached": [],
       "variants": []
@@ -3081,6 +3087,12 @@
       "variants": []
     },
     "host_docs_put": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_docs_put_many": {
       "unreached": [],
       "variants": [
         "dry_run"

@@ -95,7 +95,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/gen/schema_ir.rs` (<1k) PRD-mcphost-typescript-sdk-generated R6: the one JSON-Schema reader both SDK generators (`sdk_python`, `gen...
 - `src/gen/sdk_ts.rs` (<1k) PRD-mcphost-typescript-sdk-generated R1: `mcphost gen sdk ts` renders `sdk/ts/src/` from `contracts/host-to...
 - `src/gendocs.rs` (~1k) `mcphost gen-docs` -- PRD-mcphost-first-hour-support-surface requirement 3: regenerates `docs/plans.md` fro...
-- `src/handler.rs` (~13k) The `rmcp::ServerHandler` implementation: `initialize`, `list_tools` and `call_tool`.
+- `src/handler.rs` (~14k) The `rmcp::ServerHandler` implementation: `initialize`, `list_tools` and `call_tool`.
   - sections: static control-plane / admin tool descriptors | secret resolver / call log, bridging async DB to the sync Kind API | the handler
 - `src/handler/arms.rs` (~1k) One function per dotted host verb: the arm bodies `dispatch_tenant_tool_inner` used to hold in a single `ma...
 - `src/handler/preauth.rs` (<1k) Boxed helpers for the verbs `call_tool_inner` answers in its own `match (auth, name)` (PRD-mcphost-generate...
@@ -117,6 +117,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/invites.rs` (<1k) Business logic for `host.invite.create`/`list`/`revoke`, the `/i/{code}/mcp` redemption path, and the `_met...
 - `src/kinds/aliases.rs` (<1k) PRD-mcphost-unknown-kind-routes-to-recipe: the kind-alias table.
 - `src/kinds/chain.rs` (~2k) The `chain` kind: `spec` is an ordered list of steps, each naming a tool in the same tenant and a mapping f...
+  - sections: near-miss
 - `src/kinds/conformance.rs` (<1k) The `Kind` conformance suite (PRD requirement 5, AC17): a reusable check any `Kind` implementation — this c...
 - `src/kinds/contract.rs` (<1k) `KindContract` (PRD-mcphost-kind-contract-conformance-generated): the one value every [`Kind`] publishes ab...
 - `src/kinds/docs.rs` (<1k) Single source for every registered kind's "what does a minimal example spec look like" content, embedded fr...
@@ -143,6 +144,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/lineage/graph.rs` (<1k) PRD-mcphost-lineage-blast-radius requirement 1: the dependency-graph model, ported from `~/projects/ai-stac...
 - `src/lineage/mod.rs` (<1k) PRD-mcphost-lineage-blast-radius: "what breaks if this table changes, before it changes".
 - `src/lineage/scan.rs` (<1k) PRD-mcphost-lineage-blast-radius requirement 4 / technical considerations ("source scanning"): a scan over...
+- `src/listen.rs` (<1k) PRD-mcphost-subscriptions-listen: the per-tenant hub that feeds open `subscriptions/listen` streams.
 - `src/llms_txt.rs` (<1k) PRD-mcphost-surface-fluidity requirement 4 (P0, AC5): `www/llms.txt`'s tool list is generated from the same...
 - `src/longpoll.rs` (<1k) PRD-mcphost-msg-wait-long-poll-contract The one place the long-poll ceiling lives: `host.msg.wait`, `host.r...
 - `src/main.rs` (~2k) The `mcphost` binary: CLI entry point that wires the database, kinds and servers.
@@ -267,6 +269,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `CORE_METHODS` in `src/capabilities.rs`
 - `CORE_NOT_HANDLED` in `src/capabilities.rs`
 - `LEGACY_ONLY_METHODS` in `src/capabilities.rs`
+- `NEW_ONLY_METHODS` in `src/capabilities.rs`
 - `EXIT_CODE_TABLE` in `src/client.rs`
 - `REFUSAL_TABLE` in `src/compat_report.rs`
 - `STATUSES` in `src/consent.rs`
@@ -275,7 +278,9 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `DEAD_LETTER_REASONS` in `src/deadletters.rs`
 - `DISPATCH_TABLE` in `src/dispatch_table.rs`
 - `ALLOWED_MIMES` in `src/docs.rs`
+- `IMPORT_PATHS` in `src/docs.rs`
 - `INDEX_PROVIDERS` in `src/docs.rs`
+- `ON_CONFLICT_MODES` in `src/docs.rs`
 - `SEARCH_MODES` in `src/docs.rs`
 - `DOCTOR_FIXTURES` in `src/doctor.rs`
 - `DOCTOR_NEXT` in `src/doctor.rs`
@@ -286,6 +291,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `ARG_OWNERS` in `src/errors.rs`
 - `HOST_FAULT_CODES` in `src/errors.rs`
 - `REFUSAL_FIELDS` in `src/errors.rs`
+- `TOOL_NOT_FOUND_FIELDS` in `src/errors.rs`
 - `CLIENT_TAGS` in `src/examples.rs`
 - `EXAMPLE_USE_CASES` in `src/examples.rs`
 - `NON_RECIPE_DIRS` in `src/examples.rs`
@@ -328,6 +334,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `BRIDGE_MODULES` in `src/kinds/python.rs`
 - `BRIDGE_RETURNS` in `src/kinds/python.rs`
 - `LINT_RULES` in `src/kinds/python_lint.rs`
+- `TOOLS_LIST_OPS` in `src/listen.rs`
 - `NETWORK_VALUES` in `src/network_policy.rs`
 - `VERBS` in `src/notify.rs`
 - `ISSUER_REJECTION_CASES` in `src/oauth.rs`

@@ -672,7 +672,8 @@ MAX_PER_SUITE = {"core": 505, "sandbox": 110}
 # 12 -> 13 on 2026-10-18 for the fourth normal core bucket (see MAX_PER_SUITE above):
 # 7 exclusive singletons + 4 normal core buckets + 2 sandbox suites.
 # 13 -> 15 on 2026-10-20 for the second and third normal sandbox buckets (see MAX_PER_SUITE above).
-MAX_SUITES = 16
+# 16 -> 17 on 2026-10-30 for the fourth sandbox suite: the refreshed weights put suite_sandbox_02 at 183 s (> 160 s, cishard_ac01), so the sandbox cap 110 now yields 3 normal buckets + the singleton.
+MAX_SUITES = 17
 
 # scripts/ci-suite-weights.json is generated with the suites: its keys are
 # EXACTLY the generated suite names (plus `lib`, the --lib run), so a new suite

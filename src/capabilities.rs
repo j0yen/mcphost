@@ -24,10 +24,14 @@ pub const META_PROTOCOL_VERSION_KEY: &str = "io.modelcontextprotocol/protocolVer
 /// the two resource subscription methods, and `ping` is gone).
 pub const LEGACY_ONLY_METHODS: &[&str] = &["ping", "resources/subscribe", "resources/unsubscribe"];
 
+/// Methods rmcp dispatches only from [`NOT_FOUND_STATUS_FROM`] on: on an older
+/// revision (or with no revision at all) it answers `-32601` for them.
+pub const NEW_ONLY_METHODS: &[&str] = &["subscriptions/listen"];
+
 /// The [`CORE_METHODS`] rmcp routes but this host's handler leaves at rmcp's
 /// default method-not-found, so the allowlist omits them (the R9c drift test
 /// fails when one starts answering, or when a listed one stops).
-pub const CORE_NOT_HANDLED: &[&str] = &["subscriptions/listen", "tasks/get", "tasks/update", "tasks/cancel"];
+pub const CORE_NOT_HANDLED: &[&str] = &["tasks/get", "tasks/update", "tasks/cancel"];
 
 crate::err_code! {
     pub METHOD_UNKNOWN,
@@ -59,6 +63,9 @@ pub struct Capability {
     /// The tool to use instead while the capability is unimplemented.
     pub alternative: Option<&'static str>,
     pub help_code: &'static str,
+    /// The synthorg conformance cell that proves this row's `list_changed`
+    /// delivery. Every row with `list_changed: true` names one.
+    pub proving_cell: Option<&'static str>,
 }
 
 /// Methods every client may send that belong to no primitive row: the
@@ -78,6 +85,10 @@ pub const CORE_METHODS: &[&str] = &[
     "tasks/cancel",
 ];
 
+/// The synthorg conformance cell that proves `subscriptions/listen` delivers
+/// list changes (PRD-mcphost-subscriptions-listen R11b).
+pub const PROVING_CELL_LISTEN: &str = "subscriptions_listen";
+
 pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "tools",
@@ -90,6 +101,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "tools",
         alternative: None,
         help_code: UNSUPPORTED_CODE,
+        proving_cell: Some(PROVING_CELL_LISTEN),
     },
     Capability {
         name: "resources",
@@ -102,12 +114,13 @@ pub const CAPABILITIES: &[Capability] = &[
         ],
         server_to_client: &[],
         implemented: true,
-        list_changed: true,
+        list_changed: false,
         subscribe: true,
         ceiling: Some("resources_max"),
         probe: "resources",
         alternative: Some("host.table.list"),
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     Capability {
         name: "prompts",
@@ -120,6 +133,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "prompts",
         alternative: Some("host.quickstart"),
         help_code: UNSUPPORTED_CODE,
+        proving_cell: Some(PROVING_CELL_LISTEN),
     },
     Capability {
         name: "completions",
@@ -132,6 +146,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "completions",
         alternative: Some("host.help.search"),
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     Capability {
         name: "sampling",
@@ -144,6 +159,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "sampling",
         alternative: None,
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     Capability {
         name: "elicitation",
@@ -156,6 +172,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "elicitation",
         alternative: Some("host.ask.create"),
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     // `logging` and `roots` are deprecated by SEP-2577 in rmcp 3.3.0:
     // registered so the table is complete, never built.
@@ -170,6 +187,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "logging",
         alternative: None,
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     Capability {
         name: "roots",
@@ -182,6 +200,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "roots",
         alternative: None,
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
 ];
 
@@ -244,9 +263,13 @@ pub fn refusal_status(protocol_version: Option<&str>) -> http::StatusCode {
 
 /// True when the host dispatches `method` on `protocol_version`: the generated
 /// allowlist, [`CORE_METHODS`] plus the client-to-server methods of implemented
-/// rows, minus [`LEGACY_ONLY_METHODS`] from [`NOT_FOUND_STATUS_FROM`] on.
+/// rows, minus [`LEGACY_ONLY_METHODS`] from [`NOT_FOUND_STATUS_FROM`] on and
+/// [`NEW_ONLY_METHODS`] before it.
 pub fn dispatches(method: &str, protocol_version: Option<&str>) -> bool {
     if refusal_status(protocol_version) == http::StatusCode::NOT_FOUND && LEGACY_ONLY_METHODS.contains(&method) {
+        return false;
+    }
+    if NEW_ONLY_METHODS.contains(&method) && !protocol_version.is_some_and(|v| v >= NOT_FOUND_STATUS_FROM) {
         return false;
     }
     (CORE_METHODS.contains(&method) && !CORE_NOT_HANDLED.contains(&method))
@@ -356,6 +379,7 @@ fn primitive_json(c: &Capability) -> Value {
         "alternative": c.alternative,
         "methods": c.methods,
         "server_to_client": c.server_to_client,
+        "proving_cell": c.proving_cell,
     });
     if let Some(transport) = transport_note(c.name) {
         row["transport"] = json!(transport);
@@ -395,9 +419,16 @@ mod tests {
             json!({
                 "tools": {"listChanged": true},
                 "prompts": {"listChanged": true},
-                "resources": {"listChanged": true, "subscribe": true}
+                "resources": {"subscribe": true}
             })
         );
+    }
+
+    #[test]
+    fn every_list_changed_row_names_a_proving_cell() {
+        for row in CAPABILITIES.iter().filter(|c| c.list_changed) {
+            assert!(row.proving_cell.is_some(), "row `{}` advertises list_changed with no proving_cell", row.name);
+        }
     }
 
     #[test]

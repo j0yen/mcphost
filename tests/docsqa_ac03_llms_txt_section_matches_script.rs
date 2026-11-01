@@ -4,7 +4,7 @@
 //! executed), Then the sequence succeeds -- the doc and the script agree.
 //!
 //! The section's five numbered steps each lead with exactly one inline-code
-//! call (`signup(...)`, `host.docs.put(...)`, `host.docs.status()`,
+//! call (`signup(...)`, `host.docs.put_many(...)`, `host.docs.status()`,
 //! `host.tool_publish(...)`, `<namespace>.ask_docs(...)`); this test parses
 //! that ordered call sequence straight out of the doc's own numbered list
 //! (a hand-rolled scan, same "no need for a whole parser crate for one
@@ -70,7 +70,7 @@ async fn doc_and_script_agree_on_the_call_sequence() {
     let parsed_calls = ordered_calls_from_section(section_text());
     assert_eq!(
         parsed_calls,
-        vec!["signup", "host.docs.put", "host.docs.status", "host.tool_publish", "ask_docs"],
+        vec!["signup", "host.docs.put_many", "host.docs.status", "host.tool_publish", "ask_docs"],
         "the doc's five numbered steps must each lead with exactly one of these calls, in order"
     );
 

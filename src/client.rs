@@ -193,6 +193,7 @@ pub const EXIT_CODE_TABLE: &[(&str, i32)] = &[
     ("invalid_tool_name", 2),
     ("unknown_kind", 2),
     ("spec_too_large", 2),
+    ("request_body_too_large", 2),
     ("too_many_tools", 2),
     ("tool_exception", 3),
     ("call_timeout", 3),

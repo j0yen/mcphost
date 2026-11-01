@@ -408,13 +408,17 @@ that made the path matter.
 
 ## Docs Q&A in a minute
 
+Documents are text the host indexes itself; a vector index built elsewhere (LlamaIndex, Chroma, pgvector) is not importable: export its source documents and put them.
+
 Turn a folder of markdown into a checkable Q&A tool, end to end, in one
 script:
 
 1. `signup(name)` — one fresh tenant.
-2. `host.docs.put(name, content)` — once per document (this recipe's own
-   corpus: 8 documents, ~22 KiB total, well under the 2 MiB per-document
-   cap).
+2. `host.docs.put_many(documents)` — up to 50 documents per call, each
+   `{name, content}` (or `content_base64`); this recipe's own corpus is one
+   call: 8 documents, ~22 KiB total, well under the 2 MiB per-document cap.
+   Every document gets its own `stored` / `replaced` / `skipped` / `refused`
+   row, so one refusal never undoes another.
 3. `host.docs.status()` — poll until `index.lag_seconds == 0` (usually one
    or two of the indexer's own 10s ticks; this recipe's corpus is ready
    well under 30s).
@@ -728,7 +732,12 @@ same constants `host.quickstart`'s `limits` object reads.
 - **Request body**: at most 1 MiB (HTTP 413 over that -- see
   `tests/ac16_request_body_too_large.rs`; the "2 MiB" in that AC's own
   description is the oversized test payload used to *prove* the 1 MiB cap,
-  not the cap itself).
+  not the cap itself). The 413 is `Content-Type: application/json` and a
+  JSON-RPC error (`code` -32600, `id` null) whose `data.error_code` is
+  `request_body_too_large`, with `limit_bytes`, `content_length` (the
+  request's own, `null` when chunked) and a `hint` naming `host.blob_put`,
+  plus the registry's `class`, `family`, `remedy`, `help_url` and
+  `request_id` like every error in `/errors.json`.
 - **Concurrency**: 20 concurrent calls host-wide; per tenant, 4 per tenant on the free plan
   (10 on pro). A refusal past your own tenant's cap is `concurrency_exceeded` with `in_flight`, `limit`,
   `scope: "tenant"` and a `retry_after_ms`; past the host-wide cap it's
@@ -997,6 +1006,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `invites_max` | 3 | 25 |
 | `job_max_s` | 300 | 900 |
 | `jobs_concurrent` | 1 | 3 |
+| `listen_streams_max` | 16 | 64 |
 | `msg_body_bytes_max` | 16384 | 16384 |
 | `msgs_per_hour` | 60 | 2000 |
 | `notes_max` | 200 | 5000 |
@@ -1064,7 +1074,7 @@ Call arguments:
 {"since": "2026-01-01"}
 ```
 
-Each step names a `tool` (unqualified, same tenant) and an `args` object mapping that step's own call arguments -- each value is either a literal JSON value or (a string starting with `"$."`) a path resolved against `{"input": <the chain's own call args>, "prev": {"result": <the previous step's result>} (null on the first step), "steps": [{"result": <step's result>}, ...] (every earlier step, by 0-based index)}`. `$.prev` has exactly one key, `result`; `$.steps[i]` has exactly one key, `result`. So the field `action` of the previous step's result is `$.prev.result.action`, never `$.prev.action`; a mapping that omits `result`, or names a field the previous step's actual result does not carry, is `will_fail` at publish and in `host.tool_test` with `did_you_mean` naming the corrected path (and `available` listing the fields the result does have). The grammar is the same dotted/indexed `$.a.b[0].c` paths `outputs` accepts elsewhere in this host -- no wildcards, filters, or recursive descent. A step whose mapping resolves to nothing fails the whole call with `error_code: compose_mapping_missing`, naming the path and `failed_step`; add `"on_error": "continue"` to a step to let the remaining steps run anyway (the parent call still ends `error`-adjacent, but names every `failed_steps` index rather than stopping at the first). A chain fired by an event or webhook trigger also reads the delivery as `$.event` (`$.event.body.ref`, `$.event.headers`, `$.event.received_unix`); on any other call `$.event` is `null` and a mapping that reads it fails `compose_mapping_missing`. Publish reports a `$.event` mapping as `unverifiable`, naming the trigger kind.
+Each step names a `tool` (unqualified, same tenant) and an `args` object mapping that step's own call arguments -- each value is either a literal JSON value or (a string starting with `"$."`) a path resolved against `{"input": <the chain's own call args>, "prev": {"result": <the previous step's result>} (null on the first step), "steps": [{"result": <step's result>}, ...] (every earlier step, by 0-based index)}`. `$.prev` has exactly one key, `result`; `$.steps[i]` has exactly one key, `result`. So the field `action` of the previous step's result is `$.prev.result.action`, never `$.prev.action`; a mapping that omits `result`, or names a field the previous step's actual result does not carry, is `will_fail` at publish and in `host.tool_test` with `did_you_mean` naming the corrected path (and `available` listing the fields the result does have). The grammar is the same dotted/indexed `$.a.b[0].c` paths `outputs` accepts elsewhere in this host -- no wildcards, filters, or recursive descent. A step whose mapping resolves to nothing fails the whole call with `error_code: compose_mapping_missing`, naming the path and `failed_step`; add `"on_error": "continue"` to a step to let the remaining steps run anyway (the parent call still ends `error`-adjacent, but names every `failed_steps` index rather than stopping at the first). A chain fired by an event or webhook trigger also reads the delivery as `$.event` (`$.event.body.ref`, `$.event.headers`, `$.event.received_unix`); on any other call `$.event` is `null` and a mapping that reads it fails `compose_mapping_missing`. Publish reports a `$.event` mapping as `unverifiable`, naming the trigger kind. A value that starts with a context root (`input`, `prev`, `steps`, `event`, `result`, `item`, `index`) without `$.` and reads like a path (`steps.0.rows`, `prev.rows`, `$prev.result.rows`, or a one-key object such as `{"from": "steps.0.rows"}`) is refused at publish as `not a path`, with `did_you_mean` rebuilt as the `$.` path; `force: true` publishes it as the literal it is.
 
 The chain's own result is its last step's result, unless that step itself failed and every later step tolerated its own failure -- then it's the last step that actually ran. `host.tool_test` on a published chain dry-runs it: each step's resolved arguments are reported and a tool step whose result a later mapping reads is dry-run once (writes rolled back) so that mapping is resolved against its actual result -- `unverifiable` is reserved for a predecessor that cannot be dry-run, and a dry run never reports `pass` while a mapping is `unresolved_path`. Each step after the first lists `prev_fields`, the fields it may read from its predecessor (from the predecessor's declared `outputs` at publish, from its dry-run result in `host.tool_test`). Publish checks every `$.prev.result.<field>` and `$.steps[i].result.<field>` against three sources in order: the predecessor's declared `outputs` (`prev_fields_source: "declared"`), else the keys its completed runs actually returned (`"observed"`, with `runs_sampled`), else `unverifiable` until it has run once; a field none of them has is refused with `compose_mapping_unresolved` (`available`, `did_you_mean`) unless the publish passes `force: true`.
 

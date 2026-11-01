@@ -135,10 +135,20 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
     // PRD-mcphost-output-schema-reach-sweep-live R5: `host.doctor` gained the
     // optional `output_reach` block after the cited tree.
     edited.insert("host.doctor");
+    // PRD-mcphost-docs-import-and-stated-boundary R4: `host.docs.status` gained
+    // the optional `import_paths`/`put_many_max`/`doc_max_bytes` keys.
+    edited.insert("host.docs.status");
     // A tenant-defined value the corpus can only sample is declared free-form
     // (`output_schemas::OPAQUE_FIELDS`): `host.table.query` rows are the
     // tenant's columns.
     edited.insert("host.table.query");
+    // PRD-mcphost-table-query-names-missing-table AC4: `host.table.query_diagnose`
+    // gained the optional `data` block (the missing-table error's `data`).
+    edited.insert("host.table.query_diagnose");
+    // PRD-mcphost-trusted-discovery-catalog-receipts AC5: `host.catalog.search`
+    // declares every emitted entry field (receipts included) and `view`, each
+    // object closed with `additionalProperties: false`.
+    edited.insert("host.catalog.search");
     // PRD-mcphost-tool-call-output-root-opaque R1: the two forwarding roots
     // type only the keys the host writes (this covers `host.tool.call`'s
     // merged tenant payload, its `id` and `rows`).

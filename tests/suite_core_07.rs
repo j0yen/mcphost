@@ -8,5 +8,5 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "tenant_delete_ac08_audit_log_and_events.rs"]
-mod tenant_delete_ac08_audit_log_and_events;
+#[path = "synthetic_ac03_invalid_and_missing_header.rs"]
+mod synthetic_ac03_invalid_and_missing_header;

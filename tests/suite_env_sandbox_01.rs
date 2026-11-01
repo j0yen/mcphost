@@ -7,7 +7,13 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+#[path = "support/dimp.rs"]
+mod dimp;
+#[path = "support/docs_qa.rs"]
+mod docs_qa;
 
+#[path = "dimp_ac07_status_names_import_paths_and_recipe_uses_the_batch.rs"]
+mod dimp_ac07_status_names_import_paths_and_recipe_uses_the_batch;
 #[path = "mcphost_python_dependency_policy_ac03_advisory_fails_publish.rs"]
 mod mcphost_python_dependency_policy_ac03_advisory_fails_publish;
 #[path = "mcphost_python_dependency_policy_ac08_reaudit_flags_new_advisory.rs"]

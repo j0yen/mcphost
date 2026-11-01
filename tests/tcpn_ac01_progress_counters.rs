@@ -18,9 +18,9 @@ async fn tcpn_ac01_counters_split_by_origin() {
     let server = ac1_fixture().await;
     let health = admin_healthz(&server.base_url).await;
     let p = &health["progress_7d"];
-    assert_eq!(p["calls_total"], json!({"synthetic": 2, "external": 1, "total": 3}), "{p}");
-    assert_eq!(p["calls_with_token"], json!({"synthetic": 1, "external": 1, "total": 2}), "{p}");
-    assert_eq!(p["frames_sent"], json!({"synthetic": 0, "external": 0, "total": 0}), "{p}");
+    assert_eq!(p["calls_total"], json!({"synthetic": 2, "external": 0, "total": 3, "unattributed": 1}), "{p}");
+    assert_eq!(p["calls_with_token"], json!({"synthetic": 1, "external": 0, "total": 2, "unattributed": 1}), "{p}");
+    assert_eq!(p["frames_sent"], json!({"synthetic": 0, "external": 0, "total": 0, "unattributed": 0}), "{p}");
     let since = p["since"].as_i64().expect("since");
     let epoch = server.state.db.progress_epoch().await.expect("epoch");
     assert_eq!(since, epoch, "since is the migration's stored unix time: {p}");

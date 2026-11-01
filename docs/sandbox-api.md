@@ -88,5 +88,5 @@ exactly the same modules.
 - `mcphost.sampling` -- ask the calling client's own model one question mid-call (sampling/createMessage), metered against the plan's sampling_tokens_per_day
 - `mcphost.email` -- send an email from this tool's own address (same verb host.email.send is)
 - `mcphost.elicit` -- ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise
-- `mcphost.table.TableError` -- `.code` is one of `table_already_exists`, `table_bound_exceeded`, `table_not_found`, `table_query_rejected`, `table_row_conflict`, `table_unavailable`; `.data` carries the details (e.g. `data.column` on `table_row_conflict`)
+- `mcphost.table.TableError` -- `.code` is one of `table_already_exists`, `table_bound_exceeded`, `table_column_not_found`, `table_not_found`, `table_query_rejected`, `table_row_conflict`, `table_unavailable`; `.data` carries the details (e.g. `data.column` on `table_row_conflict`)
 <!-- mcphost-bridge-modules:end -->

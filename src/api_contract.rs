@@ -36,6 +36,18 @@ pub const DEFAULT_DEPRECATIONS_PATH: &str = "contracts/deprecations.json";
 /// the dump rather than repeated per tool.
 pub use crate::envelope::OUTPUT_ENVELOPE_FIELDS;
 
+/// PRD-mcphost-implicit-signup-per-session-not-per-peer R6: the onboarding
+/// rule a live judge reads, built from the peer-recent constants (never typed
+/// here). Implicit signup is granted per host-minted session; the peer-recent
+/// gate holds a request that presents no session for the window. Additive
+/// top-level key, as for [`tenant_lifecycle`].
+pub fn onboarding_contract() -> Value {
+    json!({
+        "implicit_signup": {"scope": "session"},
+        "peer_recent": {"window_secs": crate::peer_recent::PEER_TTL_SECS},
+    })
+}
+
 /// PRD-mcphost-synthetic-implicit-tenant-expiry: the tenant lifecycle rule,
 /// built from the retention constants (never typed here) so a changed default,
 /// env var or reason fails `contract dump --check`. Additive top-level key:
@@ -491,6 +503,7 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
         "admin_funnel": admin_funnel_contract(),
         "contract_version": CONTRACT_VERSION,
         "kinds": kind_contracts,
+        "onboarding": onboarding_contract(),
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
         "resources": crate::resources::contract_section(crate::resources::RESOURCE_TEMPLATES),
         "tenant_lifecycle": tenant_lifecycle(),

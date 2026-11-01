@@ -2274,12 +2274,35 @@
       },
       "tools": {
         "items": {
+          "additionalProperties": false,
           "properties": {
+            "calls_30d": {
+              "additionalProperties": false,
+              "properties": {
+                "n": {
+                  "type": "integer"
+                },
+                "ok": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "n",
+                "ok"
+              ],
+              "type": "object"
+            },
             "description": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "group": {
-              "type": "null"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "kind": {
               "type": "string"
@@ -2290,6 +2313,27 @@
             "owner": {
               "type": "string"
             },
+            "stale_test": {
+              "type": "boolean"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "test_verdict": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tested_version": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "visibility": {
               "type": "string"
             }
@@ -2297,6 +2341,22 @@
           "type": "object"
         },
         "type": "array"
+      },
+      "view": {
+        "additionalProperties": false,
+        "properties": {
+          "include_synthetic": {
+            "type": "boolean"
+          },
+          "owners": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "include_synthetic",
+          "owners"
+        ],
+        "type": "object"
       }
     },
     "required": [
@@ -3039,6 +3099,65 @@
     ],
     "type": "object"
   },
+  "host.docs.put_many": {
+    "properties": {
+      "index_lag_seconds": {
+        "type": "integer"
+      },
+      "refused": {
+        "type": "integer"
+      },
+      "results": {
+        "items": {
+          "properties": {
+            "bytes": {
+              "type": "integer"
+            },
+            "error_code": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "stored",
+                "replaced",
+                "skipped",
+                "refused"
+              ],
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "status"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "stored": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "index_lag_seconds",
+      "refused",
+      "results",
+      "stored"
+    ],
+    "type": "object"
+  },
   "host.docs.reindex": {
     "properties": {
       "rebuilding": {
@@ -3081,8 +3200,17 @@
       "bytes": {
         "type": "integer"
       },
+      "doc_max_bytes": {
+        "type": "integer"
+      },
       "documents": {
         "type": "integer"
+      },
+      "import_paths": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       },
       "index": {
         "properties": {
@@ -3109,6 +3237,9 @@
           }
         },
         "type": "object"
+      },
+      "put_many_max": {
+        "type": "integer"
       },
       "quota": {
         "properties": {
@@ -11928,6 +12059,9 @@
   },
   "host.table.query_diagnose": {
     "properties": {
+      "data": {
+        "type": "object"
+      },
       "diagnosis": {
         "properties": {
           "band": {
@@ -12894,16 +13028,41 @@
       "warnings": {
         "items": {
           "properties": {
-            "ceiling": {"type": "integer"},
-            "ceiling_field": {"type": "string"},
-            "code": {"type": "string"},
-            "effective": {"type": "integer"},
-            "field": {"type": "string"},
-            "message": {"type": "string"},
-            "plan": {"type": "string"},
-            "requested": {"type": "integer"}
+            "ceiling": {
+              "type": "integer"
+            },
+            "ceiling_field": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "effective": {
+              "type": "integer"
+            },
+            "field": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "plan": {
+              "type": "string"
+            },
+            "requested": {
+              "type": "integer"
+            }
           },
-          "required": ["ceiling", "ceiling_field", "code", "effective", "field", "message", "plan", "requested"],
+          "required": [
+            "ceiling",
+            "ceiling_field",
+            "code",
+            "effective",
+            "field",
+            "message",
+            "plan",
+            "requested"
+          ],
           "type": "object"
         },
         "type": "array"
