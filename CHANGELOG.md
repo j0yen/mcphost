@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.123.0 — 2026-11-01
+
+Released by wm-build land: loop: mcphost-trusted-discovery-catalog-receipts.
+
+## v0.122.0 — 2026-10-30
+
+Released by wm-build land: loop: mcphost-table-query-names-missing-table.
+
+## v0.121.0 — 2026-10-30
+
+Released by wm-build land: loop: mcphost-docs-import-and-stated-boundary.
+
+## v0.120.0 — 2026-10-30
+
+Released by wm-build land: loop: mcphost-implicit-signup-per-session-not-per-peer.
+
 ## v0.119.0 — 2026-10-30
 
 Released by wm-build land: loop: mcphost-chain-near-miss-mapping-refused.
