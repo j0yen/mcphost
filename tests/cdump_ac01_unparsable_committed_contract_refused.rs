@@ -43,9 +43,7 @@ fn dump(path: &Path) -> Output {
 #[test]
 fn conflict_markers_in_the_committed_contract_are_refused_and_the_file_untouched() {
     let scratch = Scratch::new("markers");
-    let planted = format!(
-        "{{\n  \"contract_version\": 1,\n<<<<<<< HEAD\n  \"tools\": []\n=======\n  \"tools\": [{{\"name\": \"x\"}}]\n>>>>>>> main\n}}\n"
-    );
+    let planted = "{\n  \"contract_version\": 1,\n<<<<<<< HEAD\n  \"tools\": []\n=======\n  \"tools\": [{\"name\": \"x\"}]\n>>>>>>> main\n}\n".to_string();
     std::fs::write(scratch.file(), &planted).expect("plant markers");
 
     let out = dump(&scratch.file());

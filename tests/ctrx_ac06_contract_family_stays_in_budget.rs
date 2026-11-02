@@ -3,9 +3,9 @@
 //! the `suite_contracts_*` binaries sum to <= `ctrs_ac06`'s `TARGET_SECS` (read from
 //! that file, the one place the number lives; measured 611 s on run 39200390250
 //! + 25 %), `BUDGET_SECS` stays 900, the `contract-suite` check still
-//! runs `./scripts/pin-tests.sh` with `wall_minutes = 25`, and CI's `contract
+//!   runs `./scripts/pin-tests.sh` with `wall_minutes = 25`, and CI's `contract
 //! suites` step runs the same script. The CI-log half (`pin-tests: pass <bin>`
-//! lines summing <= TARGET_SECS) is read from the PR's run, not from this tree.
+//!   lines summing <= TARGET_SECS) is read from the PR's run, not from this tree.
 
 use std::fs;
 use std::path::PathBuf;

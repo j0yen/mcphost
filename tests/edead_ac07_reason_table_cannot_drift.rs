@@ -56,10 +56,10 @@ fn declared_code(tree: &[String], name: &str) -> String {
                     .and_then(|t| t.trim_start().strip_prefix("code:"))
                     .map(str::trim_start)
             };
-            if let Some(lit) = lit.and_then(|t| t.strip_prefix('"')) {
-                if let Some(j) = lit.find('"') {
-                    found.insert(lit[..j].to_string());
-                }
+            if let Some(lit) = lit.and_then(|t| t.strip_prefix('"'))
+                && let Some(j) = lit.find('"')
+            {
+                found.insert(lit[..j].to_string());
             }
         }
     }

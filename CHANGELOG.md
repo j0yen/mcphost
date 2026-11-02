@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.124.0 — 2026-11-01
+
+Released by wm-build land: loop: mcphost-lineage-runtime-edge-writers.
+
 ## v0.123.0 — 2026-11-01
 
 Released by wm-build land: loop: mcphost-trusted-discovery-catalog-receipts.

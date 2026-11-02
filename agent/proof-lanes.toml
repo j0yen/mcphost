@@ -88,7 +88,7 @@ required_commands = [
 [[lane]]
 id = "ci-scripts"
 description = "Shell scripts that drive .github/workflows/ci.yml but live outside it (PRD-mcphost-ci-sandbox-coverage AC6: scripts/ci-test-partition.sh; scripts/gen-test-suites.sh folded in 2026-09-12, PRD-mcphost-test-suite-consolidation -- it drives the same CI test-discovery surface as ci-test-partition.sh, generating the tests/suite_*.rs files ci-test-partition.sh's own partition reads). Added project-locally: same gap class as the ci lane's own workflow-file globs, which never covered scripts/ that ci.yml merely invokes."
-globs = ["scripts/ci-test-partition.sh", "scripts/gen-test-suites.sh", "scripts/ci-suite-weights.json", "scripts/ci-suite-measured.json", "scripts/ci-refresh-weights.sh", "scripts/ci-suite-seed-selftest.sh", "scripts/ci-shard-report.sh", "scripts/pin-tests.sh", "scripts/gen-dispatch-table.sh", "scripts/fwd-stack-measure.sh", "scripts/audit-marker-check.sh", "scripts/check-example-synthetic-header.sh"]
+globs = ["scripts/ci-test-partition.sh", "scripts/gen-test-suites.sh", "scripts/ci-suite-weights.json", "scripts/ci-suite-measured.json", "scripts/ci-refresh-weights.sh", "scripts/ci-suite-seed-selftest.sh", "scripts/ci-partition-pending-age-selftest.sh", "scripts/ci-shard-report.sh", "scripts/pin-tests.sh", "scripts/gen-dispatch-table.sh", "scripts/fwd-stack-measure.sh", "scripts/audit-marker-check.sh", "scripts/check-example-synthetic-header.sh"]
 required_commands = [
   "scripts/audit.sh",
 ]
@@ -109,6 +109,14 @@ globs = ["scripts/child-proc-lint.py", "tests/fixtures/child_proc_lint/**"]
 required_commands = [
   "python3 scripts/child-proc-lint.py tests",
   "cargo test --workspace cproc_ac",
+]
+
+[[lane]]
+id = "ci-refresh-weights-auto"
+description = "mcphost auto refresh of CI suite weights on green main (ctl 5991): the refresh-weights workflow, scripts/ci-refresh-weights-auto.sh (runs ci-refresh-weights.sh, gen-test-suites.sh and ci-test-partition.sh check fail-closed, prints changed=0|1 skip=none|self) and its bash test. Added project-locally and kept separate from the ci-scripts lane for the same required_commands-immutability reason as the lanes above; the test needs no network and no cargo."
+globs = ["scripts/ci-refresh-weights-auto.sh", "tests/scripts/ci-refresh-weights-auto.test.sh", ".github/workflows/refresh-weights.yml"]
+required_commands = [
+  "bash tests/scripts/ci-refresh-weights-auto.test.sh",
 ]
 
 [[lane]]

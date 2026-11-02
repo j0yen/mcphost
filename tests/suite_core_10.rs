@@ -844,6 +844,8 @@ mod lineage_ac09_model_set_role_change_notes_chart;
 mod lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms;
 #[path = "lineage_ac11_chart_store_registers_edge_and_gates_drop.rs"]
 mod lineage_ac11_chart_store_registers_edge_and_gates_drop;
+#[path = "linrt_ac05_publish_and_rollback_follow_the_version.rs"]
+mod linrt_ac05_publish_and_rollback_follow_the_version;
 #[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac06_admin_gated_counts_only.rs"]
 mod mcphost_admin_funnel_real_surface_recipe_counter_ac06_admin_gated_counts_only;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]

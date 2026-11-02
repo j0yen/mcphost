@@ -88,8 +88,8 @@ fn seed_calls(server: &TestServer) {
             if caller == *owner {
                 caller = tenants[(next(&mut rng) as usize + 1) % tenants.len()];
             }
-            let age = if next(&mut rng) % 10 == 0 { 31 * 86_400 + 60 } else { 60 + (next(&mut rng) % (29 * 86_400)) as i64 };
-            let ok = (next(&mut rng) % 20 != 0) as i64;
+            let age = if next(&mut rng).is_multiple_of(10) { 31 * 86_400 + 60 } else { 60 + (next(&mut rng) % (29 * 86_400)) as i64 };
+            let ok = (!next(&mut rng).is_multiple_of(20)) as i64;
             insert.execute(rusqlite::params![owner, name, now - age, ok, caller]).unwrap();
         }
     }

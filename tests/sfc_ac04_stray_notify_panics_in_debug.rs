@@ -55,7 +55,7 @@ impl ServerHandler for StrayNotifier {
 
 #[tokio::test]
 async fn emit_of_a_disallowed_frame_panics_naming_request_type_and_kind() {
-    assert!(cfg!(debug_assertions), "AC4 is a debug-build contract; run it without --release");
+    const { assert!(cfg!(debug_assertions), "AC4 is a debug-build contract; run it without --release") };
     let (tx, mut rx) = mpsc::unbounded_channel();
     let config = StreamableHttpServerConfig::default().with_json_response(true).with_legacy_session_mode(false).disable_allowed_hosts();
     let service = StreamableHttpService::new(move || Ok(StrayNotifier { panics: tx.clone() }), Arc::new(LocalSessionManager::default()), config);

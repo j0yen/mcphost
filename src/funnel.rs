@@ -451,6 +451,16 @@ pub async fn onboarding_7d(db: &Db, now: i64, min_n: usize) -> Result<Value, App
     Ok(Value::Object(block))
 }
 
+/// PRD-mcphost-external-class-positive-evidence: the origin block
+/// ([`crate::state::origin_report_json`]) read from the tenants table, shared
+/// by `/healthz`, `admin.funnel` and `mcphost funnel --json` so the three
+/// cannot disagree on keys or counts.
+pub async fn origin_report(db: &crate::db::Db) -> Result<serde_json::Map<String, Value>, crate::errors::AppError> {
+    let counts = db.origin_counts(crate::db::OriginCountTable::Tenants).await?;
+    let (claimed, returned) = db.external_evidence_counts().await?;
+    Ok(crate::state::origin_report_json(&counts, claimed, returned))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,14 +473,4 @@ mod tests {
         assert_eq!(median(&mut [3, 1, 2]), Some(2.0));
         assert_eq!(median(&mut [1, 2, 3, 4]), Some(2.5));
     }
-}
-
-/// PRD-mcphost-external-class-positive-evidence: the origin block
-/// ([`crate::state::origin_report_json`]) read from the tenants table, shared
-/// by `/healthz`, `admin.funnel` and `mcphost funnel --json` so the three
-/// cannot disagree on keys or counts.
-pub async fn origin_report(db: &crate::db::Db) -> Result<serde_json::Map<String, Value>, crate::errors::AppError> {
-    let counts = db.origin_counts(crate::db::OriginCountTable::Tenants).await?;
-    let (claimed, returned) = db.external_evidence_counts().await?;
-    Ok(crate::state::origin_report_json(&counts, claimed, returned))
 }

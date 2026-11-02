@@ -38,7 +38,7 @@ fn cmap_ac02_db_entry_lists_every_banner_in_file_order() {
     assert_eq!(listed.len(), expected.len(), "{listed:?} vs {expected:?}");
     for (got, want) in listed.iter().zip(&expected) {
         // `:<digits>` is normalised away so the map carries no line-reference shape
-        assert_eq!(got.replace(' ', ""), want.replace(' ', "").replace(':', ""), "banner order/name");
+        assert_eq!(got.replace(' ', ""), want.replace([' ', ':'], ""), "banner order/name");
     }
 }
 

@@ -18,6 +18,12 @@ mod rgpt;
 #[path = "support/whin.rs"]
 mod whin;
 
+#[path = "retshape_ac03_list_access_is_a_named_will_fail.rs"]
+mod retshape_ac03_list_access_is_a_named_will_fail;
+#[path = "retshape_ac04_envelope_behaves_as_plain_dict.rs"]
+mod retshape_ac04_envelope_behaves_as_plain_dict;
+#[path = "retshape_ac05_starter_example_shows_rows_access.rs"]
+mod retshape_ac05_starter_example_shows_rows_access;
 #[path = "rgpt_ac04_webhook_inbox_generated_and_passes.rs"]
 mod rgpt_ac04_webhook_inbox_generated_and_passes;
 #[path = "rgpt_docs_qa_golden_path.rs"]

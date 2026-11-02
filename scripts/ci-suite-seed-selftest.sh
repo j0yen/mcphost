@@ -17,8 +17,9 @@
 #       the entry has the {pending, derived_s, since = fixture HEAD} shape, `check` prints `pending (derived)`
 #   (b) a pending entry whose measured value is edited away from derived_s fails `check` naming both numbers;
 #       2.5 vs 2.50 (numeric, not textual) still passes; a legacy date-valued mark fails
-#   (c) age from the base: 3 first-parent commits passes, 4 fails on the default branch (--main or
-#       GITHUB_REF_NAME=main); on a PR ref the count is info only; a `since` that is no ancestor fails
+#   (c) age from the base: 3 first-parent commits passes, 4 fails under `check --main`; on a default-branch push
+#       (GITHUB_REF_NAME=main) ages 4-5 WARN with rc 0 and age 6 fails; on a PR ref the count is info only; a
+#       `since` that is no ancestor fails
 #   (d) ci-refresh-weights.sh over shard-log lines measuring the suite removes the object; one omitting it exits 1
 #   (e) the unmodified tree: gen-test-suites.sh --check is ok, a plain run writes nothing, `check` is ok
 #   (g) a shallow clone: `check` deepens once and finds `since`; a `since` that is not on main fails with
@@ -183,18 +184,25 @@ if [ -n "$d" ]; then
   (cd "$d" && scripts/ci-test-partition.sh check --main >"$WORK/c.age3" 2>&1); rc3=$?
   bump "$d" 1
   (cd "$d" && scripts/ci-test-partition.sh check --main >"$WORK/c.age4" 2>&1); rc4=$?
-  (cd "$d" && GITHUB_REF_NAME=main scripts/ci-test-partition.sh check >"$WORK/c.ref_main" 2>&1); rc_ref_main=$?
+  (cd "$d" && GITHUB_REF_NAME=main scripts/ci-test-partition.sh check >"$WORK/c.ref_main" 2>&1); rc_ref_main=$?   # default-branch run at age 4: WARN rung, rc 0
+  bump "$d" 1
+  (cd "$d" && GITHUB_REF_NAME=main scripts/ci-test-partition.sh check >"$WORK/c.ref_main5" 2>&1); rc_ref_main5=$?   # age 5: still WARN
+  bump "$d" 1
+  (cd "$d" && GITHUB_REF_NAME=main scripts/ci-test-partition.sh check >"$WORK/c.ref_main6" 2>&1); rc_ref_main6=$?   # age 6: hard stop
   (cd "$d" && GITHUB_REF_NAME=496/merge scripts/ci-test-partition.sh check >"$WORK/c.ref_pr" 2>&1); rc_ref_pr=$?
   orphan="$(g "$d" commit-tree -m orphan "$(g "$d" mktree </dev/null)")"
   m="$d/scripts/ci-suite-measured.json"; setj "$m" ".\"_provisional\".suite_core_02.since = \"$orphan\""
   (cd "$d" && scripts/ci-test-partition.sh check >"$WORK/c.orphan" 2>&1); rc_orphan=$?
   if [ "$rc3" = 0 ] && grep -q 'pending (derived) suite_core_02 since .* (3 first-parent commits' "$WORK/c.age3" \
      && [ "$rc4" != 0 ] && grep -q 'suite_core_02 since .* is 4 first-parent commits behind HEAD (max 3)' "$WORK/c.age4" && grep -q 'scripts/ci-refresh-weights.sh' "$WORK/c.age4" \
-     && [ "$rc_ref_main" != 0 ] && [ "$rc_ref_pr" = 0 ] && grep -q 'info only' "$WORK/c.ref_pr" \
+     && [ "$rc_ref_main" = 0 ] && grep -q '^WARN pending-entry-age: .*is 4 first-parent commits behind HEAD (max 3)' "$WORK/c.ref_main" \
+     && [ "$rc_ref_main5" = 0 ] && grep -q '^WARN pending-entry-age: .*is 5 first-parent' "$WORK/c.ref_main5" \
+     && [ "$rc_ref_main6" != 0 ] && ! grep -q '^WARN pending-entry-age' "$WORK/c.ref_main6" && grep -q 'is 6 first-parent commits behind HEAD (max 3)' "$WORK/c.ref_main6" \
+     && [ "$rc_ref_pr" = 0 ] && grep -q 'info only' "$WORK/c.ref_pr" \
      && [ "$rc_orphan" != 0 ] && grep -q 'is not an ancestor of HEAD' "$WORK/c.orphan"; then
-    ok "(c) age 3 passes, age 4 fails with the refresh command (--main and GITHUB_REF_NAME=main); on GITHUB_REF_NAME=496/merge age 4 is info only rc=0; a since that is no ancestor fails"
+    ok "(c) age 3 passes, age 4 fails with the refresh command under --main, WARNs rc=0 on GITHUB_REF_NAME=main (age 5 too), age 6 fails there; on GITHUB_REF_NAME=496/merge age 4 is info only rc=0; a since that is no ancestor fails"
   else
-    bad "(c) age bound" "rc3=$rc3 rc4=$rc4 rc_ref_main=$rc_ref_main rc_ref_pr=$rc_ref_pr rc_orphan=$rc_orphan :: $(grep -m1 pending "$WORK/c.age3") :: $(grep -m1 pending "$WORK/c.age4")"
+    bad "(c) age bound" "rc3=$rc3 rc4=$rc4 rc_ref_main=$rc_ref_main rc5=$rc_ref_main5 rc6=$rc_ref_main6 rc_ref_pr=$rc_ref_pr rc_orphan=$rc_orphan :: $(grep -m1 pending "$WORK/c.age3") :: $(grep -m1 pending "$WORK/c.age4")"
   fi
 fi
 
