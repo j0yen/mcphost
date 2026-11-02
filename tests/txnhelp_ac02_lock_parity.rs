@@ -28,7 +28,9 @@ fn root() -> &'static std::path::Path {
 }
 
 /// (path, fn) -> sorted behaviours the table expects (one per old site).
-fn table() -> (usize, BTreeMap<(String, String), Vec<String>>) {
+type ParityTable = BTreeMap<(String, String), Vec<String>>;
+
+fn table() -> (usize, ParityTable) {
     let text = std::fs::read_to_string(root().join("tests/txnhelp_parity_table.tsv")).expect("parity table");
     let mut rows = 0;
     let mut map: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();

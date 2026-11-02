@@ -42,7 +42,7 @@ fn fwdtab_ac05_budget_is_the_documented_maximum_plus_25_percent() {
     let max = documented_max(&doc);
     assert!(max <= MAX_CEILING, "documented maximum {max} B > {MAX_CEILING} B");
     assert_eq!(FORWARD_STACK_BUDGET, max + max / 4, "FORWARD_STACK_BUDGET is the maximum + 25 %");
-    assert!(FORWARD_STACK_BUDGET <= BUDGET_CEILING, "{FORWARD_STACK_BUDGET} B > {BUDGET_CEILING} B");
+    const { assert!(FORWARD_STACK_BUDGET <= BUDGET_CEILING, "FORWARD_STACK_BUDGET exceeds BUDGET_CEILING") };
     // The comment names the maximum, its ids and the date.
     assert!(doc.contains("`test:host.trigger.set`") && doc.contains("`call:host.whoami`"), "doc names the ids: {doc}");
     assert!(doc.contains("2026-10-18"), "doc names the date: {doc}");
