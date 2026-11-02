@@ -29,10 +29,8 @@ fn check_cmd(toml: &str, name: &str) -> Option<String> {
             } else if let Some(v) = line.strip_prefix("cmd = \"") {
                 cmd = Some(v.trim_end_matches('"').to_string());
             }
-            if matched {
-                if let Some(c) = &cmd {
-                    return Some(c.clone());
-                }
+            if matched && let Some(c) = &cmd {
+                return Some(c.clone());
             }
         }
     }

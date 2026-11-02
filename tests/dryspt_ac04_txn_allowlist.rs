@@ -35,7 +35,9 @@ fn dryspt_ac04() {
 
     // Only shrinks: no longer than the ceiling.
     let n = committed.lines().count();
-    assert!(n <= TXN_ALLOWLIST_CEILING, "allow-list has {n} lines, ceiling is {TXN_ALLOWLIST_CEILING}");
+    #[allow(clippy::absurd_extreme_comparisons)] // the ceiling is a ratchet; keep `<=` for when it is raised
+    let within_ceiling = n <= TXN_ALLOWLIST_CEILING;
+    assert!(within_ceiling, "allow-list has {n} lines, ceiling is {TXN_ALLOWLIST_CEILING}");
 
     // A new raw BEGIN IMMEDIATE in a src/ function outside the list fails
     // the lint, naming that file:line and the helper.

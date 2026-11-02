@@ -67,7 +67,7 @@ fn check(tools: &[rmcp::model::Tool], unvalidated: &[(&str, &str)], snapshot: us
 fn vbd_ac01_every_descriptor_is_validated_unless_named_in_the_shrink_only_list() {
     let tools = descriptors();
     assert!(tools.len() >= 280, "only {} descriptors", tools.len());
-    assert!(UNVALIDATED_SNAPSHOT <= 3, "the ceiling is 3");
+    const { assert!(UNVALIDATED_SNAPSHOT <= 3, "the ceiling is 3") };
     check(&tools, UNVALIDATED, UNVALIDATED_SNAPSHOT).unwrap_or_else(|e| panic!("{e}"));
 }
 
