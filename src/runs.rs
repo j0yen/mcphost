@@ -1376,6 +1376,8 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             tenant: tenant.clone(),
             dry_run: dry_run.clone(),
             end_user: None,
+            tool_name: Some(local_name.clone()),
+            lineage_memo: crate::lineage::new_run_memo(),
         }) as Arc<dyn TableBackend>,
         docs: Arc::new(TenantDocsBridge {
             state: Arc::new(state.clone()),
@@ -1868,7 +1870,7 @@ mod tests {
         assert_eq!(slot.live_pid(), Some(first.id() as i32));
         slot.clear();
         assert!(!slot.request_cancel(), "between round trips: nothing live to kill");
-        assert!(slot.set_live(first.id() as i32) == false, "the next registration is killed");
+        assert!(!slot.set_live(first.id() as i32), "the next registration is killed");
         assert!(exits_within(&mut first, Duration::from_secs(2)));
     }
 

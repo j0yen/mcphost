@@ -1359,6 +1359,23 @@ impl StateBackend for NoState {
 #[async_trait::async_trait]
 pub trait TableBackend: Send + Sync {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;
+
+    /// PRD-mcphost-lineage-runtime-edge-writers R3: the backend a composed
+    /// child named `tool_name` should use for its own table calls, so the
+    /// tables it reads are recorded against the child and not the caller.
+    /// `None` (the default) means "keep using this one": a backend that
+    /// records no lineage -- a dry run, a spec test, [`NoTable`] -- has
+    /// nothing to rescope.
+    fn scoped_to_tool(&self, _tool_name: &str) -> Option<Arc<dyn TableBackend>> {
+        None
+    }
+
+    /// R4: `caller` (a chain when `caller_is_chain`, else a tool) just
+    /// composed a call to `callee`, named as the caller named it. A backend
+    /// that records lineage writes the `runtime_call` edge, once the callee
+    /// resolves to a tool the calling tenant can reach; the default
+    /// records nothing.
+    async fn record_call_edge(&self, _caller: &str, _caller_is_chain: bool, _callee: &str) {}
 }
 
 /// A backend with no table store behind it -- [`NoState`]'s counterpart for
@@ -2014,7 +2031,11 @@ async fn compose_dispatch(
         // PRD-mcphost-tenant-tables: same reasoning as `state` above --
         // composition stays inside one tenant, so the child's
         // `mcphost.table` reaches the exact same tenant's table store.
-        table: ctx.table.clone(),
+        //
+        // PRD-mcphost-lineage-runtime-edge-writers R3: but the child is its
+        // own node in the lineage graph, so a lineage-recording backend
+        // hands back a bridge named for it (sharing the run's write memo).
+        table: ctx.table.scoped_to_tool(target_name).unwrap_or_else(|| ctx.table.clone()),
         // PRD-mcphost-document-store: same reasoning as `state`/`table`
         // above -- composition stays inside one tenant, so the child's
         // `mcphost.docs` reaches the exact same tenant's document store.
@@ -2242,6 +2263,15 @@ pub async fn compose_call_ref(
         let _ = db.insert_composed_run(row_for(parent_run_id)).await;
     }
     let result = compose_dispatch(ctx, tenant_id, target_name, args, timeout_s, &child_run_id, prev).await;
+
+    // PRD-mcphost-lineage-runtime-edge-writers R4: the caller now depends on
+    // the callee. A chain step (`step_no` is a chain concept) hangs its edge
+    // on the chain's own node. A dry run (`test_mode`) writes nothing.
+    if !ctx.test_mode
+        && let Some(caller) = ctx.tool_name.as_deref()
+    {
+        ctx.table.record_call_edge(caller, step_no.is_some(), target_name).await;
+    }
 
     if let (Some(parent_run_id), Some(db)) = (ctx.parent_run_id.clone(), ctx.compose_db.as_ref()) {
         let duration_ms = start.elapsed().as_millis() as i64;

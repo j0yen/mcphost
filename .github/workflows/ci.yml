@@ -127,7 +127,7 @@ jobs:
         run: cargo check --locked --workspace
 
       - name: cargo clippy
-        run: cargo clippy --locked --workspace -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       # Kept identical to the sandbox job's environment except for the userns
       # grant: the only intended difference between the two jobs is the

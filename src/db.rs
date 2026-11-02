@@ -22968,6 +22968,34 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-lineage-runtime-edge-writers R1: the monotone runtime
+    /// upsert. Inserts the edge, or -- when the pair exists with
+    /// publish-derived evidence -- replaces its evidence; a pair already
+    /// carrying `runtime_*` evidence is left alone. Returns whether a row
+    /// changed (`changes()` is 1 for an insert or an upgrade, 0 when the
+    /// WHERE clause declined).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn lineage_insert_edge_runtime(
+        &self,
+        tenant_id: i64,
+        upstream_id: String,
+        downstream_id: String,
+        evidence: String,
+        created_unix: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let changed = conn.execute(
+                "INSERT INTO lineage_edges (tenant_id, upstream_id, downstream_id, evidence, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5) \
+                 ON CONFLICT(tenant_id, upstream_id, downstream_id) DO UPDATE SET evidence = excluded.evidence \
+                 WHERE lineage_edges.evidence NOT LIKE 'runtime\\_%' ESCAPE '\\'",
+                params![tenant_id, upstream_id, downstream_id, evidence, created_unix],
+            )?;
+            Ok(changed > 0)
+        })
+        .await
+    }
+
     /// requirement 5: bumps `uses`/`last_used_unix` on a node that just
     /// recorded activity (a tool or chain's own node, or a table reached
     /// transitively through a registered edge). A no-op (not an error) when
@@ -22998,6 +23026,29 @@ impl Db {
                 params![tenant_id, node_id],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-lineage-runtime-edge-writers R6: deletes the edges whose
+    /// downstream is `node_id` and whose evidence is one of `evidences`.
+    /// Keeps the node, its `uses`, every edge where it is the upstream and
+    /// every edge with other evidence. Returns how many edges were deleted.
+    pub async fn lineage_delete_incoming_edges(
+        &self,
+        tenant_id: i64,
+        node_id: String,
+        evidences: Vec<String>,
+    ) -> Result<usize, AppError> {
+        self.with_conn(move |conn| {
+            let mut deleted = 0;
+            for evidence in &evidences {
+                deleted += conn.execute(
+                    "DELETE FROM lineage_edges WHERE tenant_id = ?1 AND downstream_id = ?2 AND evidence = ?3",
+                    params![tenant_id, node_id, evidence],
+                )?;
+            }
+            Ok(deleted)
         })
         .await
     }

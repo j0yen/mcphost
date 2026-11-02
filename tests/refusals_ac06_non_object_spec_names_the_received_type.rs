@@ -13,7 +13,9 @@ use mcphost::errors::AppError;
 use mcphost::kinds::{KindError, KindRegistry};
 use serde_json::{Value, json};
 
-const CASES: [(&str, fn() -> Value); 5] = [
+type CaseMaker = fn() -> Value;
+
+const CASES: [(&str, CaseMaker); 5] = [
     ("string", || json!("a string")),
     ("array", || json!([1, 2])),
     ("number", || json!(7)),

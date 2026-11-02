@@ -43,7 +43,7 @@ async fn orgm_ac03_descriptor_role_enums_and_plans_json_match_the_sources() {
     for name in TOOLS {
         let tool = tools
             .iter()
-            .find(|t| t["name"] == Value::from(*name) || t["name"] == Value::from(name.replace('.', "_")))
+            .find(|t| t["name"] == *name || t["name"] == name.replace('.', "_"))
             .unwrap_or_else(|| panic!("{name} missing from tools/list"));
         if let Some(role_enum) = tool["inputSchema"]["properties"]["role"].get("enum") {
             enums_seen += 1;
@@ -63,7 +63,7 @@ async fn orgm_ac03_descriptor_role_enums_and_plans_json_match_the_sources() {
     for plan in &server.state.plans.plans {
         let row = rows
             .iter()
-            .find(|r| r["name"] == Value::from(plan.name.clone()))
+            .find(|r| r["name"] == plan.name.clone())
             .unwrap_or_else(|| panic!("plan {} missing from /plans.json", plan.name));
         let shown = row
             .pointer("/limits/org_members_max")

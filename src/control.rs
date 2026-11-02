@@ -2496,10 +2496,12 @@ pub async fn tool_publish(
     // publish's lineage edges -- a `python`/`wasm` tool's source scan plus
     // declared `reads`, or (for `chain`) each step's own tool. Best-effort:
     // logged, never fails an otherwise-successful publish.
+    // PRD-mcphost-lineage-runtime-edge-writers R6: a republish retires the
+    // previous version's publish-derived edges before registering this one's.
     let lineage_result = if kind_name == "chain" {
         crate::lineage::register_chain_publish(state, tenant.id, &name, &spec).await
     } else {
-        crate::lineage::register_tool_publish(state, tenant.id, &name, &kind_name, &spec).await
+        crate::lineage::refresh_tool_publish_edges(state, tenant.id, &name, &kind_name, &spec).await
     };
     if let Err(e) = lineage_result {
         tracing::warn!(error = %e, tenant = %tenant.namespace, tool = %name, "failed to register lineage edges for publish");
@@ -2702,6 +2704,15 @@ pub async fn tool_rollback(state: &AppState, tenant: &Tenant, args: &Value) -> R
             for k in state.kinds.all() {
                 k.on_tool_changed(tenant.id, &name).await;
             }
+            // PRD-mcphost-lineage-runtime-edge-writers R6: the restored
+            // version's reads replace the replaced version's. Best-effort,
+            // like the publish-time registration.
+            if let Ok(Some(row)) = state.db.get_tool(tenant.id, name.clone()).await
+                && let Err(e) =
+                    crate::lineage::refresh_tool_publish_edges(state, tenant.id, &name, &row.kind, &row.spec).await
+            {
+                tracing::warn!(error = %e, tenant = %tenant.namespace, tool = %name, "failed to re-derive lineage edges after rollback");
+            }
             Ok(json!({
                 "name": format!("{}.{}", tenant.namespace, name),
                 "version": version,
@@ -2871,6 +2882,11 @@ pub async fn tool_remove(
     // (never deletes -- `host.trigger.list` still shows the history) every
     // trigger set on it, reporting how many.
     let triggers_disabled = state.db.disable_triggers_for_tool(tenant.id, name.clone()).await?;
+    // PRD-mcphost-lineage-runtime-edge-writers R6: a removed tool leaves no
+    // edge in the tenant's graph, runtime edges included. Best-effort.
+    if let Err(e) = crate::lineage::forget_tool(state, tenant.id, &name).await {
+        tracing::warn!(error = %e, tenant = %tenant.namespace, tool = %name, "failed to drop lineage edges for removed tool");
+    }
     Ok(json!({ "removed": name, "triggers_disabled": triggers_disabled }))
 }
 
@@ -3353,26 +3369,6 @@ crate::err_code! {
 }
 
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn synthetic_header_validation() {
-        assert_eq!(validate_synthetic_header(None), None);
-        assert_eq!(validate_synthetic_header(Some("")), None);
-        assert_eq!(
-            validate_synthetic_header(Some("synthorg:run-a")),
-            Some("synthorg:run-a".to_string())
-        );
-        assert_eq!(validate_synthetic_header(Some("operator")), Some("operator".to_string()));
-        // Invalid input degrades to null (and logs a warning -- see the
-        // integration test AC3 for the warning itself), never an error.
-        assert_eq!(validate_synthetic_header(Some("Bad Label!")), None);
-        assert_eq!(validate_synthetic_header(Some(" ")), None);
-    }
-}
-
 /// The invalidation step: phase 1 marks, the teardown runs, phase 2 makes the
 /// reason terminal and journals it, then one notice goes to the warn address.
 async fn invalidate_external_unclaimed(
@@ -3508,4 +3504,24 @@ async fn pre_floor_block(state: &AppState, windows: crate::retention::ExternalWi
             .collect();
     }
     Ok(block)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn synthetic_header_validation() {
+        assert_eq!(validate_synthetic_header(None), None);
+        assert_eq!(validate_synthetic_header(Some("")), None);
+        assert_eq!(
+            validate_synthetic_header(Some("synthorg:run-a")),
+            Some("synthorg:run-a".to_string())
+        );
+        assert_eq!(validate_synthetic_header(Some("operator")), Some("operator".to_string()));
+        // Invalid input degrades to null (and logs a warning -- see the
+        // integration test AC3 for the warning itself), never an error.
+        assert_eq!(validate_synthetic_header(Some("Bad Label!")), None);
+        assert_eq!(validate_synthetic_header(Some(" ")), None);
+    }
 }
