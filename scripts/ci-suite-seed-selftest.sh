@@ -183,18 +183,25 @@ if [ -n "$d" ]; then
   (cd "$d" && scripts/ci-test-partition.sh check --main >"$WORK/c.age3" 2>&1); rc3=$?
   bump "$d" 1
   (cd "$d" && scripts/ci-test-partition.sh check --main >"$WORK/c.age4" 2>&1); rc4=$?
-  (cd "$d" && GITHUB_REF_NAME=main scripts/ci-test-partition.sh check >"$WORK/c.ref_main" 2>&1); rc_ref_main=$?
+  (cd "$d" && GITHUB_REF_NAME=main scripts/ci-test-partition.sh check >"$WORK/c.ref_main" 2>&1); rc_ref_main=$?   # default-branch run at age 4: WARN rung, rc 0
+  bump "$d" 1
+  (cd "$d" && GITHUB_REF_NAME=main scripts/ci-test-partition.sh check >"$WORK/c.ref_main5" 2>&1); rc_ref_main5=$?   # age 5: still WARN
+  bump "$d" 1
+  (cd "$d" && GITHUB_REF_NAME=main scripts/ci-test-partition.sh check >"$WORK/c.ref_main6" 2>&1); rc_ref_main6=$?   # age 6: hard stop
   (cd "$d" && GITHUB_REF_NAME=496/merge scripts/ci-test-partition.sh check >"$WORK/c.ref_pr" 2>&1); rc_ref_pr=$?
   orphan="$(g "$d" commit-tree -m orphan "$(g "$d" mktree </dev/null)")"
   m="$d/scripts/ci-suite-measured.json"; setj "$m" ".\"_provisional\".suite_core_02.since = \"$orphan\""
   (cd "$d" && scripts/ci-test-partition.sh check >"$WORK/c.orphan" 2>&1); rc_orphan=$?
   if [ "$rc3" = 0 ] && grep -q 'pending (derived) suite_core_02 since .* (3 first-parent commits' "$WORK/c.age3" \
      && [ "$rc4" != 0 ] && grep -q 'suite_core_02 since .* is 4 first-parent commits behind HEAD (max 3)' "$WORK/c.age4" && grep -q 'scripts/ci-refresh-weights.sh' "$WORK/c.age4" \
-     && [ "$rc_ref_main" != 0 ] && [ "$rc_ref_pr" = 0 ] && grep -q 'info only' "$WORK/c.ref_pr" \
+     && [ "$rc_ref_main" = 0 ] && grep -q '^WARN pending-entry-age: .*is 4 first-parent commits behind HEAD (max 3)' "$WORK/c.ref_main" \
+     && [ "$rc_ref_main5" = 0 ] && grep -q '^WARN pending-entry-age: .*is 5 first-parent' "$WORK/c.ref_main5" \
+     && [ "$rc_ref_main6" != 0 ] && ! grep -q '^WARN pending-entry-age' "$WORK/c.ref_main6" && grep -q 'is 6 first-parent commits behind HEAD (max 3)' "$WORK/c.ref_main6" \
+     && [ "$rc_ref_pr" = 0 ] && grep -q 'info only' "$WORK/c.ref_pr" \
      && [ "$rc_orphan" != 0 ] && grep -q 'is not an ancestor of HEAD' "$WORK/c.orphan"; then
-    ok "(c) age 3 passes, age 4 fails with the refresh command (--main and GITHUB_REF_NAME=main); on GITHUB_REF_NAME=496/merge age 4 is info only rc=0; a since that is no ancestor fails"
+    ok "(c) age 3 passes, age 4 fails with the refresh command under --main, WARNs rc=0 on GITHUB_REF_NAME=main (age 5 too), age 6 fails there; on GITHUB_REF_NAME=496/merge age 4 is info only rc=0; a since that is no ancestor fails"
   else
-    bad "(c) age bound" "rc3=$rc3 rc4=$rc4 rc_ref_main=$rc_ref_main rc_ref_pr=$rc_ref_pr rc_orphan=$rc_orphan :: $(grep -m1 pending "$WORK/c.age3") :: $(grep -m1 pending "$WORK/c.age4")"
+    bad "(c) age bound" "rc3=$rc3 rc4=$rc4 rc_ref_main=$rc_ref_main rc5=$rc_ref_main5 rc6=$rc_ref_main6 rc_ref_pr=$rc_ref_pr rc_orphan=$rc_orphan :: $(grep -m1 pending "$WORK/c.age3") :: $(grep -m1 pending "$WORK/c.age4")"
   fi
 fi
 
