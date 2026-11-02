@@ -17,8 +17,9 @@
 #       the entry has the {pending, derived_s, since = fixture HEAD} shape, `check` prints `pending (derived)`
 #   (b) a pending entry whose measured value is edited away from derived_s fails `check` naming both numbers;
 #       2.5 vs 2.50 (numeric, not textual) still passes; a legacy date-valued mark fails
-#   (c) age from the base: 3 first-parent commits passes, 4 fails on the default branch (--main or
-#       GITHUB_REF_NAME=main); on a PR ref the count is info only; a `since` that is no ancestor fails
+#   (c) age from the base: 3 first-parent commits passes, 4 fails under `check --main`; on a default-branch push
+#       (GITHUB_REF_NAME=main) ages 4-5 WARN with rc 0 and age 6 fails; on a PR ref the count is info only; a
+#       `since` that is no ancestor fails
 #   (d) ci-refresh-weights.sh over shard-log lines measuring the suite removes the object; one omitting it exits 1
 #   (e) the unmodified tree: gen-test-suites.sh --check is ok, a plain run writes nothing, `check` is ok
 #   (g) a shallow clone: `check` deepens once and finds `since`; a `since` that is not on main fails with
