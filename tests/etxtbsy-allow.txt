@@ -24,7 +24,7 @@ tests/cishard_ac07_stale_weight_fails_check.rs:136 | committed repo script run f
 tests/cishard_ac07_stale_weight_fails_check.rs:171 | committed repo script run from the checkout, not written by the test
 tests/cishard_ac07_stale_weight_fails_check.rs:200 | committed repo script run from the checkout, not written by the test
 tests/cishard_ac07_stale_weight_fails_check.rs:235 | committed repo script run from the checkout, not written by the test
-tests/common/mod.rs:3022 | cargo-built mcphost binary under test, not a file the test writes
+tests/common/mod.rs:3045 | cargo-built mcphost binary under test, not a file the test writes
 tests/ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails.rs:42 | committed repo script run from the checkout, not written by the test
 tests/ctrm_ac04_unmarked_tree_walk_fails_the_lint.rs:35 | committed repo script run from the checkout, not written by the test
 tests/ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing.rs:29 | committed repo script run from the checkout, not written by the test
