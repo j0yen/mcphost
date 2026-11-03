@@ -221,6 +221,7 @@ pub const EXIT_CODE_TABLE: &[(&str, i32)] = &[
     ("group_not_found", 1),
     ("registry_disabled", 1),
     ("namespace_unverified", 1),
+    ("namespace_reserved", 1),
     ("share_quota_exceeded", 1),
     ("issuer_already_registered", 1),
     ("issuer_quota_exceeded", 1),

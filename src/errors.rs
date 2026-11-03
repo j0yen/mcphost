@@ -812,6 +812,12 @@ impl AppError {
 }
 
 crate::err_code! {
+    pub NAMESPACE_RESERVED => "namespace_reserved",
+    Storage, AgentFault, false,
+    "Pick another namespace: this one belonged to a tenant that was deleted and is never handed out again.",
+}
+
+crate::err_code! {
     pub ARGS_INVALID => "args_invalid",
     Args, AgentFault, false,
     "Re-send with data.field as data.expected; data.example shows a valid value.",
@@ -1241,7 +1247,7 @@ impl AppError {
                 // already uses for the analogous KV-store rejections.
                 "table_schema_violation" | "table_not_found" | "table_column_not_found" | "table_query_rejected"
                 | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
-                c if c == crate::tables::TABLE_ROW_CONFLICT => ErrorCode::INVALID_PARAMS,
+                c if c == crate::tables::TABLE_ROW_CONFLICT || c == NAMESPACE_RESERVED => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-document-store P0 requirements 2-5: a too-large
                 // put, an unsupported mime, or either quota overrun are all
                 // caller-input problems, same INVALID_PARAMS bucket as the
@@ -2297,6 +2303,40 @@ impl AppError {
             code: INVITE_INVALID,
             message: "this invite link is no longer valid".to_string(),
             data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-synthetic-tenant-purge R6: a `tenants` insert that names a
+    /// namespace in `namespace_tombstones`. Same data shape as `table_row_conflict`.
+    pub fn namespace_reserved() -> Self {
+        AppError::Structured {
+            code: NAMESPACE_RESERVED,
+            message: "row conflicts on namespace (reserved)".to_string(),
+            data: json!({"constraint": "reserved", "table": "tenants", "column": "namespace"}),
+        }
+    }
+
+    /// PRD-mcphost-synthetic-tenant-purge R6: every namespace draw collided
+    /// (taken or reserved); the `table_row_conflict` a collision always was.
+    pub fn namespace_draws_exhausted() -> Self {
+        AppError::Structured {
+            code: crate::tables::TABLE_ROW_CONFLICT,
+            message: "row conflicts on namespace (unique)".to_string(),
+            data: json!({"constraint": "unique", "table": "tenants", "column": "namespace"}),
+        }
+    }
+
+    /// Whether this error is a namespace collision a fresh draw can fix: the
+    /// `UNIQUE` conflict on `tenants.namespace` or a reserved namespace.
+    pub fn is_namespace_collision(&self) -> bool {
+        match self {
+            AppError::Structured { code, data, .. } => {
+                *code == NAMESPACE_RESERVED
+                    || (*code == crate::tables::TABLE_ROW_CONFLICT
+                        && data.get("table").and_then(Value::as_str) == Some("tenants")
+                        && data.get("column").and_then(Value::as_str) == Some("namespace"))
+            }
+            _ => false,
         }
     }
 

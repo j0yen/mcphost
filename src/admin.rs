@@ -611,12 +611,24 @@ pub async fn dependency_reaudit(state: &AppState) -> Result<Value, AppError> {
 /// P2 requirement 7 (AC10): run one retention-prune cycle on demand and
 /// return its per-table deleted counts -- the same [`crate::db::Db::prune_once`]
 /// the nightly scheduler calls.
-pub async fn prune_now(state: &AppState) -> Result<Value, AppError> {
+pub async fn prune_now(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    // PRD-mcphost-synthetic-tenant-purge R4: `dry_run` reports the policy's numbers
+    // without the sweep lock, a `prune_log` row or a delete.
+    if args.get("dry_run").and_then(Value::as_bool).unwrap_or(false) {
+        let windows = state.db.retention_windows().await?;
+        let days = windows
+            .iter()
+            .find(|(name, _)| name == crate::retention::SYNTHETIC_IMPLICIT_POLICY)
+            .map_or(0, |(_, days)| *days);
+        let block = state.db.synthetic_dry_run(crate::state::now_unix(), days).await?;
+        return Ok(json!({"synthetic_implicit_tenants": block}));
+    }
     let report = state.db.prune_once().await?;
     Ok(json!({
         "started_unix": report.started_unix,
         "finished_unix": report.finished_unix,
         "deleted": report.deleted,
+        "synthetic_implicit_tenants": report.synthetic,
     }))
 }
 
@@ -2241,6 +2253,7 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         },
         "tenants_unclaimed_expired": state.db.count_tenants_unclaimed_expired().await?,
         "tenants_unclaimed_purged": state.db.count_tenants_unclaimed_purged().await?,
+        "tenants_synthetic_purged": state.db.count_tenants_synthetic_purged().await?,
         "stages": funnel_stage_stats(&filtered, signups),
         "by_source": funnel_by_source(&by_source_rows),
         "by_origin": funnel_by_origin(&by_source_rows),
