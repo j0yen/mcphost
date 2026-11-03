@@ -6427,6 +6427,25 @@ fn admin_tools_raw() -> Vec<Tool> {
             "Clear a tenant's mesh freeze. Writes one admin_events row.",
             schema(json!({"tenant": {"type": "string"}}), &["tenant"]),
         ),
+        // PRD-mcphost-admin-signup-pause-tool requirement 1.
+        Tool::new(
+            "admin.signup_pause",
+            "Pause or resume new signups through the same pause file the host already reads \
+             (`signup` then returns signup_paused with the message and a retry time). Exactly \
+             one of `message` or `resume: true` is required: `message` (1..=512 bytes, one \
+             line) pauses, replacing any existing pause file; `until` (unix seconds, in the \
+             future) optionally bounds the pause; `resume: true` removes the file and is a no-op \
+             when none exists. Writes one admin_audit row (signup_pause / signup_resume).",
+            schema_any(
+                json!({
+                    "message": {"type": "string", "minLength": 1, "description": "Pause with this operator message (1..=512 bytes, no newline)."},
+                    "resume": {"type": "boolean", "description": "true lifts the pause; combine with no other argument."},
+                    "until": {"type": "integer", "description": "Optional unix-seconds deadline, > now; with `message` only."},
+                }),
+                &[],
+                &["message", "resume"],
+            ),
+        ),
         Tool::new(
             "admin.mesh.purge",
             "Delete messages and channel posts (and their receipts) older than \
@@ -8694,6 +8713,7 @@ impl McpHostHandler {
             "admin.mesh.thread" => admin::mesh_thread(&self.state, &args).await,
             "admin.mesh.freeze" => admin::mesh_freeze(&self.state, &args).await,
             "admin.mesh.unfreeze" => admin::mesh_unfreeze(&self.state, &args).await,
+            "admin.signup_pause" => admin::signup_pause(&self.state, &args).await,
             "admin.mesh.purge" => admin::mesh_purge(&self.state, &args).await,
             // PRD-mcphost-abuse-guard-ban-list requirement 3.
             "admin.ban.add" => admin::ban_add(&self.state, &args).await,

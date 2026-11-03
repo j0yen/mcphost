@@ -288,6 +288,9 @@ directly instead of relying on its first call to create one:
    admin healthz, but never required. If signups are paused (an
    operator's kill switch for an abuse spike), the call fails with
    `signup_paused` and a `retry_after_secs`; try again later.
+   An operator pauses and resumes signups without a shell with the admin
+   tool `admin.signup_pause` (`message` to pause, optional `until`;
+   `resume: true` to lift), which writes the same pause file.
    Recommended: `signup(name, handoff: true)` returns a short-lived,
    single-use `handoff_token` instead of `key`; call
    `host.redeem(handoff_token)` once to get the key, so a transcript of
