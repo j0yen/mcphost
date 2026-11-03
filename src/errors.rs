@@ -892,7 +892,7 @@ crate::err_code! {
 crate::err_code! {
     pub INVALID_SPEC => "invalid_spec",
     Spec, AgentFault, false,
-    "Fix the spec field named in data.field to match data.expected.",
+    "Fix the spec field named in data.field; paste a spec from data.minimal_specs (also in the message); see data.docs_url.",
     data_keys: crate::kinds::kinddoc::INVALID_SPEC_DATA_KEYS,
 }
 
