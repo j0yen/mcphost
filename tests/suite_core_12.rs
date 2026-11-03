@@ -776,6 +776,10 @@ mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
 mod tenantprm_ac07_key_and_oauth_suites_unchanged;
 #[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
 mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
+#[path = "tenp_ac02_cascade_complete_and_entangled_subject_held.rs"]
+mod tenp_ac02_cascade_complete_and_entangled_subject_held;
+#[path = "tenp_ac05_grace_clock_report_first_and_bounded_vacuum.rs"]
+mod tenp_ac05_grace_clock_report_first_and_bounded_vacuum;
 #[path = "testtruth_ac01_chain_prev_will_fail.rs"]
 mod testtruth_ac01_chain_prev_will_fail;
 #[path = "testtruth_ac02_chain_prev_result_pass.rs"]

@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 use crate::errors::AppError;
 use crate::paged::{OrderEnum as _, Paged as _};
 
+pub mod synthetic_purge;
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -368,6 +370,7 @@ const MIGRATION_0137: &str = include_str!("../migrations/0137_origin_tristate.sq
 const MIGRATION_0138: &str = include_str!("../migrations/0138_tool_test_verdict.sql");
 /// PRD-mcphost-trusted-discovery-catalog-receipts AC6: the index, receipts cache and triggers behind `calls_30d`.
 const MIGRATION_0139: &str = include_str!("../migrations/0139_catalog_receipts.sql");
+const MIGRATION_0140: &str = include_str!("../migrations/0140_synthetic_tenant_purge.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -1484,6 +1487,39 @@ pub struct TenantDeleteCounts {
     pub calls_removed: i64,
     pub logs_removed: i64,
 }
+
+/// Where the expire stage writes: the flat per-sweep counters, the policy's
+/// nested block, and whether the purge gate was closed when the sweep began.
+struct ExpireLog<'a> {
+    gate_closed: bool,
+    deleted: &'a mut std::collections::BTreeMap<String, i64>,
+    block: &'a mut serde_json::Map<String, Value>,
+}
+
+/// PRD-mcphost-synthetic-tenant-purge R3: the nullable columns that name a
+/// tenant without a cascading foreign key, NULLed before the tenant row goes.
+const TENANT_DELETE_NULLINGS: &[&str] = &[
+    "UPDATE calls SET caller_tenant_id = NULL WHERE caller_tenant_id = ?1",
+    "UPDATE runs SET caller_tenant_id = NULL WHERE caller_tenant_id = ?1",
+    "UPDATE tenants SET invited_by_tenant_id = NULL WHERE invited_by_tenant_id = ?1",
+    "UPDATE tenants SET scratch_of = NULL WHERE scratch_of = ?1",
+];
+
+/// Rows deleted by value: the two `NOT NULL` columns with no foreign key, and
+/// the tables whose `tenant_id` has no foreign key at all (`doc_chunks_fts` is
+/// a standalone FTS5 table, not content-linked).
+const TENANT_DELETE_BY_VALUE: &[&str] = &[
+    "DELETE FROM usage_daily WHERE caller_tenant_id = ?1",
+    "DELETE FROM invite_joins WHERE inviter_tenant_id = ?1",
+    "DELETE FROM call_traces WHERE tenant_id = ?1",
+    "DELETE FROM help_search_events WHERE tenant_id = ?1",
+    "DELETE FROM index_chunks WHERE tenant_id = ?1",
+    "DELETE FROM index_sources WHERE tenant_id = ?1",
+    "DELETE FROM network_denials WHERE tenant_id = ?1",
+    "DELETE FROM oauth_issuers WHERE tenant_id = ?1",
+    "DELETE FROM catalog_receipts WHERE tenant_id = ?1",
+    "DELETE FROM doc_chunks_fts WHERE tenant_id = ?1",
+];
 
 /// PRD-mcphost-provenance-audit requirement 1: how many rows migration
 /// 0012's one-shot backfill reclassified into each bucket, per table --
@@ -3210,6 +3246,13 @@ pub struct Db {
     /// Test-only: awaited between the invalidation's two phases with the ids
     /// phase 1 marked ([`Db::set_external_phase_hook_for_test`]).
     external_phase_hook: Arc<std::sync::RwLock<Option<ExternalPhaseHook>>>,
+    /// PRD-mcphost-synthetic-tenant-purge R1: the expire and purge stages run
+    /// under this one lock, `try_lock`ed, so a scheduled sweep and
+    /// `admin.prune_now` never interleave (the loser reports `busy`).
+    sweep_lock: Arc<tokio::sync::Mutex<()>>,
+    /// The control-layer cleanup the purge stage runs on each tenant it
+    /// deleted (kind hooks, table files); installed with the teardown above.
+    tenant_purge_cleanup: Arc<std::sync::RwLock<Option<TenantTeardown>>>,
 }
 
 /// See [`Db::set_external_phase_hook_for_test`].
@@ -3242,6 +3285,8 @@ impl Clone for Db {
             tenant_teardown: self.tenant_teardown.clone(),
             external_sweep: self.external_sweep.clone(),
             external_phase_hook: self.external_phase_hook.clone(),
+            sweep_lock: self.sweep_lock.clone(),
+            tenant_purge_cleanup: self.tenant_purge_cleanup.clone(),
         }
     }
 }
@@ -3285,6 +3330,8 @@ impl Db {
             tenant_teardown: Arc::new(std::sync::RwLock::new(None)),
             external_sweep: Arc::new(std::sync::RwLock::new(None)),
             external_phase_hook: Arc::new(std::sync::RwLock::new(None)),
+            sweep_lock: Arc::new(tokio::sync::Mutex::new(())),
+            tenant_purge_cleanup: Arc::new(std::sync::RwLock::new(None)),
         };
         db.migrate_sync()?;
         // PRD-mcphost-subscriptions-listen R5: debug builds check every tool-list write.
@@ -3612,6 +3659,8 @@ impl Db {
         Self::migrate_0138_tool_test_verdict(&conn)?;
         // `IF NOT EXISTS` / `INSERT OR IGNORE` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0139)?;
+        // `IF NOT EXISTS` / `INSERT OR IGNORE` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0140)?;
         Ok(())
     }
 
@@ -5660,28 +5709,33 @@ impl Db {
         let created_at = now_rfc3339();
         let created_unix = now_unix();
         self.with_conn(move |conn| {
-            conn.execute(
-                "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
-                 synthetic, source_class, client_name, client_version, created_unix, origin, origin_detail, \
-                 signup_source, funnel_origin) \
-                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                params![
-                    namespace,
-                    display_name,
-                    key_hash,
-                    created_at,
-                    synthetic,
-                    source_class,
-                    client_name,
-                    client_version,
-                    created_unix,
-                    origin,
-                    origin_detail,
-                    signup_source,
-                    funnel_origin,
-                ],
-            )?;
-            let id = conn.last_insert_rowid();
+            // PRD-mcphost-synthetic-tenant-purge R6: the reservation check and the
+            // insert are one transaction, so a delete cannot slip between them.
+            let id = crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                reject_reserved_namespace(conn, &namespace)?;
+                conn.execute(
+                    "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
+                     synthetic, source_class, client_name, client_version, created_unix, origin, origin_detail, \
+                     signup_source, funnel_origin) \
+                     VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                    params![
+                        namespace,
+                        display_name,
+                        key_hash,
+                        created_at,
+                        synthetic,
+                        source_class,
+                        client_name,
+                        client_version,
+                        created_unix,
+                        origin,
+                        origin_detail,
+                        signup_source,
+                        funnel_origin,
+                    ],
+                )?;
+                Ok(conn.last_insert_rowid())
+            })?;
             Ok(Tenant {
                 id,
                 namespace,
@@ -8478,7 +8532,7 @@ impl Db {
             };
             let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
-                Self::delete_tenant_rows(conn, &tenant, &counts, action)
+                Self::delete_tenant_rows(conn, &tenant, &counts, action, None)
             })?;
             Ok(Some((tenant, counts)))
         })
@@ -8492,43 +8546,78 @@ impl Db {
         namespace: String,
         action: &'static str,
     ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
-        self.with_conn(move |conn| {
-            let tenant = match Self::query_tenant_by_namespace(conn, &namespace)? {
-                Some(t) => t,
-                None => return Ok(None),
-            };
-            let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
-            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
-                Self::delete_tenant_rows(conn, &tenant, &counts, action)
-            })?;
-            Ok(Some((tenant, counts)))
-        })
-        .await
+        self.with_conn(move |conn| Self::delete_tenant_as_sync(conn, &namespace, action, None)).await
+    }
+
+    /// The body of [`Self::delete_tenant_as`] on the caller's connection, so the
+    /// synthetic purge can run it inside its own transaction (a nested call opens a
+    /// savepoint) after re-checking the class. `extra` is merged into the
+    /// `admin_events` detail.
+    pub(crate) fn delete_tenant_as_sync(
+        conn: &Connection,
+        namespace: &str,
+        action: &str,
+        extra: Option<Value>,
+    ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
+        let tenant = match Self::query_tenant_by_namespace(conn, namespace)? {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+        let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
+        crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+            Self::delete_tenant_rows(conn, &tenant, &counts, action, extra)
+        })?;
+        Ok(Some((tenant, counts)))
     }
 
     /// Row deletes and the `admin_events` journal line, run inside the caller's
     /// transaction. PRD-mcphost-external-unclaimed-tenant-expiry: the lifecycle
     /// events go explicitly, so the purge behaves the same with or without
     /// `foreign_keys`.
+    ///
+    /// PRD-mcphost-synthetic-tenant-purge R3: before the `tenants` row goes, the
+    /// four nullable columns that name a tenant without a cascade are NULLed
+    /// (`calls.caller_tenant_id` and `tenants.invited_by_tenant_id` are
+    /// `NO ACTION`, so the delete would fail on them), the two `NOT NULL` ones
+    /// with no foreign key are deleted by value, and the tables that carry a
+    /// `tenant_id` with no foreign key at all are cleared; every other
+    /// reference leaves with the cascade. `extra` is merged into the
+    /// `admin_events` detail (the purge's `cross_refs`).
     fn delete_tenant_rows(
         conn: &rusqlite::Connection,
         tenant: &Tenant,
         counts: &TenantDeleteCounts,
         action: &str,
+        extra: Option<Value>,
     ) -> Result<(), AppError> {
-        conn.execute("DELETE FROM tenant_lifecycle_events WHERE tenant_id = ?1", params![tenant.id])?;
-        conn.execute("DELETE FROM tenants WHERE id = ?1", params![tenant.id])?;
-        let detail = json!({
+        let id = tenant.id;
+        for sql in TENANT_DELETE_NULLINGS {
+            conn.prepare_cached(sql)?.execute(params![id])?;
+        }
+        for sql in TENANT_DELETE_BY_VALUE {
+            conn.prepare_cached(sql)?.execute(params![id])?;
+        }
+        conn.execute("DELETE FROM tenant_lifecycle_events WHERE tenant_id = ?1", params![id])?;
+        conn.execute("DELETE FROM tenants WHERE id = ?1", params![id])?;
+        // PRD-mcphost-synthetic-tenant-purge R6: the freed namespace is reserved for good,
+        // on every delete path, so text that carries it can never resolve to a later tenant.
+        conn.execute(
+            "INSERT OR IGNORE INTO namespace_tombstones (namespace, purged_unix, action) VALUES (?1, ?2, ?3)",
+            params![tenant.namespace, now_unix(), action],
+        )?;
+        let mut detail = json!({
             "namespace": tenant.namespace,
             "tools_removed": counts.tools_removed,
             "secrets_removed": counts.secrets_removed,
             "calls_removed": counts.calls_removed,
             "logs_removed": counts.logs_removed,
-        })
-        .to_string();
+        });
+        if let (Some(Value::Object(extra)), Some(obj)) = (extra, detail.as_object_mut()) {
+            obj.extend(extra);
+        }
         conn.execute(
             "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
-            params![now_rfc3339(), action, tenant.namespace, detail],
+            params![now_rfc3339(), action, tenant.namespace, detail.to_string()],
         )?;
         Ok(())
     }
@@ -16958,12 +17047,21 @@ impl Db {
         *self.tenant_teardown.write().unwrap_or_else(|e| e.into_inner()) = Some(teardown);
     }
 
+    /// Installs the cleanup the purge stage runs on each tenant it deleted.
+    pub fn set_tenant_purge_cleanup(&self, cleanup: TenantTeardown) {
+        *self.tenant_purge_cleanup.write().unwrap_or_else(|e| e.into_inner()) = Some(cleanup);
+    }
+
     // ---- synthetic implicit tenant expiry (PRD-mcphost-synthetic-implicit-tenant-expiry) ----
 
     /// Claims one batch of idle subjects (`UPDATE ... WHERE id IN (SELECT
     /// ... LIMIT)` -- the bundled SQLite lacks `UPDATE ... LIMIT`) and
     /// returns the ids this very statement flipped: a tenant is torn down
     /// only by the sweep whose UPDATE returned it.
+    ///
+    /// PRD-mcphost-synthetic-tenant-purge R2: in the same transaction each
+    /// disable writes one `tenant_lifecycle_events` row (`invalidated`, with the
+    /// `idle_since_unix` its idle run began at), which dates the purge.
     pub(crate) async fn claim_idle_synthetic_tenants(
         &self,
         now_unix: i64,
@@ -16972,17 +17070,35 @@ impl Db {
     ) -> Result<Vec<i64>, AppError> {
         let cutoff = now_unix - window_days.saturating_mul(86_400);
         self.with_conn(move |conn| {
-            let sql = format!(
-                "UPDATE tenants SET disabled = 1, disabled_reason = '{reason}' WHERE id IN \
-                 (SELECT id FROM tenants WHERE {pred} LIMIT :batch) RETURNING id",
-                reason = crate::auth_shape::IDLE_EXPIRED_REASON,
-                pred = synthetic_expiry_predicate(ExpiryTerms::SWEEP),
-            );
-            let mut stmt = conn.prepare(&sql)?;
-            let ids = stmt
-                .query_map(named_params! {":cutoff": cutoff, ":batch": batch}, |r| r.get::<_, i64>(0))?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(ids)
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                let sql = format!(
+                    "UPDATE tenants SET disabled = 1, disabled_reason = '{reason}' WHERE id IN \
+                     (SELECT id FROM tenants WHERE {pred} LIMIT :batch) RETURNING id",
+                    reason = crate::auth_shape::IDLE_EXPIRED_REASON,
+                    pred = synthetic_expiry_predicate(ExpiryTerms::SWEEP),
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let ids = stmt
+                    .query_map(named_params! {":cutoff": cutoff, ":batch": batch}, |r| r.get::<_, i64>(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                drop(stmt);
+                if !ids.is_empty() {
+                    conn.execute(
+                        &format!(
+                            "INSERT INTO tenant_lifecycle_events (tenant_id, policy, stage, idle_since_unix, created_unix) \
+                             SELECT t.id, ?1, 'invalidated', {}, ?2 FROM tenants t \
+                             WHERE t.id IN (SELECT value FROM json_each(?3))",
+                            synthetic_idle_since("t.")
+                        ),
+                        params![
+                            crate::retention::SYNTHETIC_IMPLICIT_POLICY,
+                            now_unix,
+                            serde_json::to_string(&ids).unwrap_or_else(|_| "[]".to_string())
+                        ],
+                    )?;
+                }
+                Ok(ids)
+            })
         })
         .await
     }
@@ -17003,8 +17119,8 @@ impl Db {
         .await
     }
 
-    /// When `tenant_id` expires if it stays idle: `COALESCE(last_seen_unix,
-    /// created_unix) + window` for a row that is `CLASS AND FLOOR`, `None`
+    /// When `tenant_id` expires if it stays idle: the start of its idle run
+    /// ([`synthetic_idle_since`]) `+ window` for a row that is `CLASS`, `None`
     /// for any other row or a window of 0 (no idle term: a subject is a
     /// subject whether or not it is idle yet).
     pub(crate) async fn tenant_expires_at(&self, tenant_id: i64) -> Result<Option<i64>, AppError> {
@@ -17014,8 +17130,8 @@ impl Db {
         }
         self.with_conn(move |conn| {
             let sql = format!(
-                "SELECT COALESCE(last_seen_unix, created_unix) + :window FROM tenants \
-                 WHERE id = :id AND {}",
+                "SELECT {} + :window FROM tenants WHERE id = :id AND {}",
+                synthetic_idle_since(""),
                 synthetic_expiry_predicate(ExpiryTerms::SUBJECT)
             );
             Ok(conn
@@ -17025,8 +17141,8 @@ impl Db {
         .await
     }
 
-    /// `admin.tenants`: every subject's expiry (`CLASS AND FLOOR`) by tenant
-    /// id; empty while the window is 0.
+    /// `admin.tenants`: every subject's expiry (`CLASS`) by tenant id; empty
+    /// while the window is 0.
     pub(crate) async fn subject_expiries(&self) -> Result<std::collections::HashMap<i64, i64>, AppError> {
         let days = self.synthetic_expiry_window_days().await?;
         if days <= 0 {
@@ -17034,7 +17150,8 @@ impl Db {
         }
         self.with_conn(move |conn| {
             let sql = format!(
-                "SELECT id, COALESCE(last_seen_unix, created_unix) + :window FROM tenants WHERE {}",
+                "SELECT id, {} + :window FROM tenants WHERE {}",
+                synthetic_idle_since(""),
                 synthetic_expiry_predicate(ExpiryTerms::SUBJECT)
             );
             let mut stmt = conn.prepare(&sql)?;
@@ -17423,6 +17540,18 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-synthetic-tenant-purge R4: tenants the synthetic purge stage deleted.
+    pub async fn count_tenants_synthetic_purged(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM admin_events WHERE action = ?1",
+                params![crate::retention::SYNTHETIC_PURGE_ACTION],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
     /// `restored` events written since `since_unix` (the previous sweep).
     pub(crate) async fn count_restored_since(&self, since_unix: i64) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
@@ -17504,25 +17633,88 @@ impl Db {
         .await
     }
 
+    /// The pre-floor backlog (R2): class rows minted before the policy floor. Their
+    /// idle clock starts at the floor. Returns the count and, for `limit > 0`, the
+    /// first `limit` rows -- never a key, secret or address.
+    pub(crate) async fn synthetic_pre_floor(&self, now_unix: i64, limit: i64) -> Result<(i64, Vec<Value>), AppError> {
+        self.with_conn(move |conn| {
+            let class = expiry_class(false);
+            let floor = "COALESCE((SELECT floor_unix FROM retention_policy WHERE table_name = 'synthetic_implicit_tenants'), 0)";
+            let count: i64 = conn.query_row(
+                &format!("SELECT COUNT(*) FROM tenants WHERE {class} AND created_unix < {floor}"),
+                [],
+                |r| r.get(0),
+            )?;
+            let mut sample = Vec::new();
+            if limit > 0 && count > 0 {
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT id, display_name, created_unix, {} FROM tenants WHERE {class} AND created_unix < {floor} \
+                     ORDER BY id LIMIT ?1",
+                    synthetic_idle_since("")
+                ))?;
+                sample = stmt
+                    .query_map(params![limit], |r| {
+                        let idle_since: i64 = r.get(3)?;
+                        Ok(json!({
+                            "tenant_id": r.get::<_, i64>(0)?,
+                            "display_name": r.get::<_, String>(1)?,
+                            "created_unix": r.get::<_, i64>(2)?,
+                            "idle_days": ((now_unix - idle_since) / 86_400).max(0),
+                        }))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+            }
+            Ok((count, sample))
+        })
+        .await
+    }
+
+    /// Subjects the sweep would still disable (`CLASS AND IDLE`).
+    async fn synthetic_expirable(&self, now_unix: i64, window_days: i64) -> Result<i64, AppError> {
+        let cutoff = now_unix - window_days.saturating_mul(86_400);
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT COUNT(*) FROM tenants WHERE {}", synthetic_expiry_predicate(ExpiryTerms::SWEEP));
+            Ok(conn.query_row(&sql, named_params! {":cutoff": cutoff}, |r| r.get(0))?)
+        })
+        .await
+    }
+
     /// The expiry pass of one `prune_once`: no-op for window 0 (stated once
     /// here: `IDLE` with a zero window would match every subject, so `0`
     /// short-circuits before any SQL). Returns the journal entries.
+    ///
+    /// PRD-mcphost-synthetic-tenant-purge R2: the idle clock starts no earlier
+    /// than the policy floor; the stage loops [`crate::retention::EXPIRE_BATCH_SIZE`]
+    /// batches while its own wall time is under its budget and reports the
+    /// remainder as `held_over`; the pre-floor backlog is counted every sweep and
+    /// listed (at most [`crate::retention::PRE_FLOOR_SAMPLE_LIMIT`] rows) on a
+    /// sweep that passes the purge gate (`gate_closed`).
     async fn expire_synthetic_implicit_tenants(
         &self,
         windows: &[(String, i64)],
         now_unix: i64,
-        deleted: &mut std::collections::BTreeMap<String, i64>,
+        log: ExpireLog<'_>,
     ) -> Result<(), AppError> {
+        let ExpireLog { gate_closed, deleted, block } = log;
         let policy = crate::retention::SYNTHETIC_IMPLICIT_POLICY;
         let Some(&(_, days)) = windows.iter().find(|(n, _)| n == policy) else {
             return Ok(());
         };
-        if days <= 0 {
+        if days <= 0 || crate::retention::env_is_off(crate::retention::SYNTHETIC_IMPLICIT_ENV) {
             return Ok(());
+        }
+        let sample_limit = if gate_closed { crate::retention::PRE_FLOOR_SAMPLE_LIMIT as i64 } else { 0 };
+        let (pre_floor, sample) = self.synthetic_pre_floor(now_unix, sample_limit).await?;
+        block.insert("pre_floor".into(), json!(pre_floor));
+        if gate_closed {
+            block.insert("pre_floor_sample".into(), Value::Array(sample));
         }
         let teardown = self.tenant_teardown.read().unwrap_or_else(|e| e.into_inner()).clone();
         let batch = crate::retention::EXPIRE_BATCH_SIZE;
+        let budget = std::time::Duration::from_secs(crate::retention::stage_budget_secs());
+        let stage_start = std::time::Instant::now();
         let mut expired = 0i64;
+        let mut exhausted = false;
         loop {
             let ids = self.claim_idle_synthetic_tenants(now_unix, days, batch).await?;
             for id in &ids {
@@ -17532,13 +17724,22 @@ impl Db {
             }
             expired += ids.len() as i64;
             if (ids.len() as i64) < batch {
+                exhausted = true;
+                break;
+            }
+            if stage_start.elapsed() >= budget {
                 break;
             }
         }
+        let held_over = if exhausted { 0 } else { self.synthetic_expirable(now_unix, days).await? };
         let (skipped_billing, would_expire) = self.synthetic_expiry_counts(now_unix, days).await?;
         deleted.insert(format!("{policy}.expired"), expired);
         deleted.insert(format!("{policy}.skipped_billing"), skipped_billing);
         deleted.insert(format!("{policy}.would_expire"), would_expire);
+        deleted.insert(format!("{policy}.held_over"), held_over);
+        block.insert("expired".into(), json!(expired));
+        block.insert("would_expire".into(), json!(would_expire));
+        block.insert("expire_held_over".into(), json!(held_over));
         Ok(())
     }
 
@@ -17552,23 +17753,56 @@ impl Db {
     /// this method only does the quick before/after bookkeeping on the
     /// shared connection.
     pub async fn prune_once(&self) -> Result<PruneReport, AppError> {
+        self.prune_once_at(crate::state::now_unix()).await
+    }
+
+    /// [`Self::prune_once`] on the caller's clock (`started` is "now" for
+    /// every stage), so a test can run sweeps on a simulated day.
+    ///
+    /// PRD-mcphost-synthetic-tenant-purge R1: the sweep holds the sweep lock;
+    /// a sweep that finds it held writes a `busy` row and does nothing else.
+    pub async fn prune_once_at(&self, started: i64) -> Result<PruneReport, AppError> {
+        let Ok(_one_sweep) = self.sweep_lock.try_lock() else {
+            return self.log_busy_sweep(started).await;
+        };
         let windows = self.retention_windows().await?;
         let windows_for_expiry = windows.clone();
         let plan_calls_days = self.plan_calls_retention();
         let path = self.path.clone();
         let cfg = self.cfg;
         let counters = self.counters.clone();
-        let started = crate::state::now_unix();
         let outcome = tokio::task::spawn_blocking(move || {
             crate::retention::prune_sync(&path, &cfg, &counters, &windows, &plan_calls_days, started)
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
         let mut outcome = outcome;
+        // PRD-mcphost-synthetic-tenant-purge: the policy's own block (both stages'
+        // numbers, `off`) rides in `deleted_json` under the policy name.
+        let mut synthetic_block = serde_json::Map::new();
+        // The purge gate is read once, before this sweep writes anything: a sweep
+        // that finds no armed `prune_log` row only reports.
+        let gate_open = match self.purge_gate_open().await {
+            Ok(open) => open,
+            Err(e) => {
+                outcome.error.get_or_insert_with(|| format!("{}: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
+                false
+            }
+        };
         if outcome.error.is_none()
             && let Err(e) = self
-                .expire_synthetic_implicit_tenants(&windows_for_expiry, started, &mut outcome.deleted)
+                .expire_synthetic_implicit_tenants(
+                    &windows_for_expiry,
+                    started,
+                    ExpireLog { gate_closed: !gate_open, deleted: &mut outcome.deleted, block: &mut synthetic_block },
+                )
                 .await
+        {
+            outcome.error = Some(format!("{}: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
+        }
+        if outcome.error.is_none()
+            && let Err(e) =
+                self.sweep_purge_block(&windows_for_expiry, started, gate_open, &mut synthetic_block).await
         {
             outcome.error = Some(format!("{}: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
         }
@@ -17593,6 +17827,12 @@ impl Db {
             && !block.is_null()
         {
             obj.insert(crate::retention::EXTERNAL_UNCLAIMED_POLICY.to_string(), block);
+        }
+        let synthetic_block = Value::Object(synthetic_block);
+        if let Some(obj) = deleted_value.as_object_mut()
+            && synthetic_block.as_object().is_some_and(|b| !b.is_empty())
+        {
+            obj.insert(crate::retention::SYNTHETIC_IMPLICIT_POLICY.to_string(), synthetic_block.clone());
         }
         let deleted_json = serde_json::to_string(&deleted_value).unwrap_or_else(|_| "{}".to_string());
         self.with_conn({
@@ -17626,9 +17866,28 @@ impl Db {
                 deleted: outcome.deleted,
                 started_unix: started,
                 finished_unix: finished,
+                synthetic: synthetic_block,
             }),
             Some(e) => Err(AppError::Storage(format!("prune failed: {e}"))),
         }
+    }
+
+    /// A sweep that found the sweep lock held: one `prune_log` row saying so,
+    /// no stage run, nothing disabled or deleted.
+    async fn log_busy_sweep(&self, started: i64) -> Result<PruneReport, AppError> {
+        let synthetic = json!({"busy": true});
+        let deleted_json = json!({ crate::retention::SYNTHETIC_IMPLICIT_POLICY: synthetic }).to_string();
+        let finished = crate::state::now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO prune_log (started_unix, finished_unix, ok, error, deleted_json) \
+                 VALUES (?1, ?2, 1, NULL, ?3)",
+                params![started, finished, deleted_json],
+            )?;
+            Ok(())
+        })
+        .await?;
+        Ok(PruneReport { deleted: Default::default(), started_unix: started, finished_unix: finished, synthetic })
     }
 
     /// P0 requirement 3 (AC5): `admin.usage`'s `db_bytes`,
@@ -24555,12 +24814,26 @@ pub struct ChunkVecRow {
     pub vector: Vec<u8>,
 }
 
+/// PRD-mcphost-synthetic-tenant-purge R6: `namespace_reserved` when `namespace`
+/// is in `namespace_tombstones`. Called inside the transaction that inserts the row.
+pub(crate) fn reject_reserved_namespace(conn: &rusqlite::Connection, namespace: &str) -> Result<(), AppError> {
+    let reserved = conn
+        .prepare_cached("SELECT 1 FROM namespace_tombstones WHERE namespace = ?1")?
+        .exists(params![namespace])?;
+    if reserved {
+        return Err(AppError::namespace_reserved());
+    }
+    Ok(())
+}
+
 /// PRD-mcphost-synthetic-implicit-tenant-expiry: the subject predicate as
-/// three named terms written once. `CLASS` is what a tenant IS (two
-/// independent synthetic markers so one mislabeled column never selects a
-/// real user); `FLOOR` is "minted at or after the policy was first seeded";
-/// `IDLE` is "unseen since `:cutoff`" (`now - window`). Callers
-/// compose them with [`synthetic_expiry_predicate`].
+/// named terms written once. `CLASS` is what a tenant IS (two independent
+/// synthetic markers so one mislabeled column never selects a real user);
+/// `IDLE` is "unseen since `:cutoff`" (`now - window`), measured from
+/// [`synthetic_idle_since`]. PRD-mcphost-synthetic-tenant-purge R2: the policy
+/// floor is no longer a class term -- a row minted before the floor is a subject
+/// whose idle clock starts at the floor. Callers compose the terms with
+/// [`synthetic_expiry_predicate`].
 fn expiry_class(billed: bool) -> String {
     format!(
         "disabled = 0 AND signup_source = '{}' AND origin = '{}' \
@@ -24571,47 +24844,50 @@ fn expiry_class(billed: bool) -> String {
         if billed { "NOT " } else { "" },
     )
 }
-const EXPIRY_FLOOR: &str = "created_unix >= (SELECT floor_unix FROM retention_policy \
-    WHERE table_name = 'synthetic_implicit_tenants')";
-const EXPIRY_BEFORE_FLOOR: &str = "created_unix < (SELECT floor_unix FROM retention_policy \
-    WHERE table_name = 'synthetic_implicit_tenants')";
-const EXPIRY_IDLE: &str = "COALESCE(last_seen_unix, created_unix) < :cutoff";
+
+/// `MAX(COALESCE(last_seen_unix, created_unix), floor_unix)`: where a subject's
+/// idle run starts (the `external_idle_since` shape). `p` is the table alias or empty.
+pub(crate) fn synthetic_idle_since(p: &str) -> String {
+    format!(
+        "MAX(COALESCE({p}last_seen_unix, {p}created_unix, 0), COALESCE((SELECT floor_unix FROM retention_policy \
+         WHERE table_name = '{}'), 0))",
+        crate::retention::SYNTHETIC_IMPLICIT_POLICY
+    )
+}
+
+/// Which idle term one caller composes.
+#[derive(Clone, Copy)]
+enum IdleTerm {
+    None,
+    Idle,
+    NotIdle,
+}
 
 /// Which terms one caller composes.
 #[derive(Clone, Copy)]
 pub(crate) struct ExpiryTerms {
     billed: bool,
-    floor: Floor,
-    idle: bool,
-}
-
-#[derive(Clone, Copy)]
-enum Floor {
-    After,
-    Before,
+    idle: IdleTerm,
 }
 
 impl ExpiryTerms {
-    /// The sweep's claim: `CLASS AND FLOOR AND IDLE`.
-    pub(crate) const SWEEP: Self = Self { billed: false, floor: Floor::After, idle: true };
-    /// What `host.doctor` / `admin.tenants` read: `CLASS AND FLOOR`.
-    pub(crate) const SUBJECT: Self = Self { billed: false, floor: Floor::After, idle: false };
-    /// `CLASS` minus `billing_ref`, with `billing_ref IS NOT NULL`, `AND FLOOR AND IDLE`.
-    pub(crate) const SKIPPED_BILLING: Self = Self { billed: true, floor: Floor::After, idle: true };
-    /// The backlog: `CLASS AND IDLE AND NOT FLOOR`.
-    pub(crate) const WOULD_EXPIRE: Self = Self { billed: false, floor: Floor::Before, idle: true };
+    /// The sweep's claim: `CLASS AND IDLE`.
+    pub(crate) const SWEEP: Self = Self { billed: false, idle: IdleTerm::Idle };
+    /// What `host.doctor` / `admin.tenants` read: `CLASS`.
+    pub(crate) const SUBJECT: Self = Self { billed: false, idle: IdleTerm::None };
+    /// `CLASS` minus `billing_ref`, with `billing_ref IS NOT NULL`, `AND IDLE`.
+    pub(crate) const SKIPPED_BILLING: Self = Self { billed: true, idle: IdleTerm::Idle };
+    /// `CLASS AND NOT IDLE`: subjects the window has not reached yet.
+    pub(crate) const WOULD_EXPIRE: Self = Self { billed: false, idle: IdleTerm::NotIdle };
 }
 
-/// Composes `CLASS`, `FLOOR` and `IDLE` per caller. The idle term binds
-/// `:cutoff` when present.
+/// Composes `CLASS` and `IDLE` per caller. The idle terms bind `:cutoff`.
 pub(crate) fn synthetic_expiry_predicate(terms: ExpiryTerms) -> String {
     let mut parts = vec![expiry_class(terms.billed)];
-    match terms.floor {
-        Floor::After => parts.push(EXPIRY_FLOOR.to_string()),
-        Floor::Before => parts.push(EXPIRY_BEFORE_FLOOR.to_string()),
-    }
-    if terms.idle {
-        parts.push(EXPIRY_IDLE.to_string());
+    match terms.idle {
+        IdleTerm::None => {}
+        IdleTerm::Idle => parts.push(format!("{} < :cutoff", synthetic_idle_since(""))),
+        IdleTerm::NotIdle => parts.push(format!("{} >= :cutoff", synthetic_idle_since(""))),
     }
     parts.join(" AND ")
 }
@@ -24721,6 +24997,8 @@ pub struct PruneReport {
     pub deleted: std::collections::BTreeMap<String, i64>,
     pub started_unix: i64,
     pub finished_unix: i64,
+    /// The synthetic tenant policy's block as the sweep logged it.
+    pub synthetic: Value,
 }
 
 /// [`Db::usage_size_stats`]'s `last_prune` field.
@@ -26276,6 +26554,7 @@ impl Db {
                 // clear; these two stored columns are read back only by
                 // the two parties' own tool calls, never by a log line).
                 let via = format!("invite:{code_plain}");
+                reject_reserved_namespace(conn, &invitee_namespace)?;
                 conn.execute(
                     "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
                      created_unix, signup_source, url_secret_hash, url_rotated_at, invited_by_tenant_id, \

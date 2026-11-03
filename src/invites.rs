@@ -239,27 +239,27 @@ pub async fn claim_on_first_call(
     funnel_origin: &str,
 ) -> Result<(Tenant, Value), AppError> {
     let code_hash = crate::auth::hash_key(code);
-    let invitee_namespace = crate::auth::generate_namespace();
     let invitee_key_hash = crate::auth::hash_key(&crate::auth::generate_key());
     let invitee_url_secret = crate::auth::generate_url_secret();
     let invitee_url_secret_hash = crate::auth::hash_key(&invitee_url_secret);
     let invitee_standing_code = crate::auth::generate_url_secret();
     let invitee_standing_code_hash = crate::auth::hash_key(&invitee_standing_code);
 
-    let claimed = state
-        .db
-        .claim_invite(
+    // PRD-mcphost-synthetic-tenant-purge R6: a namespace that is taken or reserved is re-drawn.
+    let claimed = crate::auth::with_fresh_namespace(|invitee_namespace| {
+        state.db.claim_invite(
             code.to_string(),
-            code_hash,
+            code_hash.clone(),
             invitee_namespace,
-            invitee_key_hash,
-            invitee_url_secret_hash,
-            invitee_standing_code_hash,
-            invitee_standing_code,
+            invitee_key_hash.clone(),
+            invitee_url_secret_hash.clone(),
+            invitee_standing_code_hash.clone(),
+            invitee_standing_code.clone(),
             funnel_origin.to_string(),
             crate::org::OrgCaps::from_state(state),
         )
-        .await?;
+    })
+    .await?;
 
     if let Some(session_id) = session_id {
         state

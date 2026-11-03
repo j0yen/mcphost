@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 pub mod sypul;
+pub mod tenp;
 pub mod tenx;
 pub mod texp;
 pub mod testoauth;
