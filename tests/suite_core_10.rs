@@ -32,6 +32,14 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "emsnd_ac03_html_and_text_reach_the_resend_body.rs"]
+mod emsnd_ac03_html_and_text_reach_the_resend_body;
+#[path = "emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded.rs"]
+mod emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded;
+#[path = "emsnd_ac05_unverified_tenant_mails_only_its_owner.rs"]
+mod emsnd_ac05_unverified_tenant_mails_only_its_owner;
+#[path = "emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error.rs"]
+mod emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
@@ -840,6 +848,8 @@ mod lineage_ac09_model_set_role_change_notes_chart;
 mod lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms;
 #[path = "lineage_ac11_chart_store_registers_edge_and_gates_drop.rs"]
 mod lineage_ac11_chart_store_registers_edge_and_gates_drop;
+#[path = "linrt_ac05_publish_and_rollback_follow_the_version.rs"]
+mod linrt_ac05_publish_and_rollback_follow_the_version;
 #[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac06_admin_gated_counts_only.rs"]
 mod mcphost_admin_funnel_real_surface_recipe_counter_ac06_admin_gated_counts_only;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]

@@ -85,7 +85,7 @@ fn collect_from_table_factor(factor: &sqlparser::ast::TableFactor, out: &mut Vec
     match factor {
         TableFactor::Table { name, .. } => {
             if let Some(last) = name.0.last() {
-                out.push(last.to_string().trim_matches(|c| c == '"' || c == '`' || c == '[' || c == ']').to_string());
+                out.push(super::table_node_name(&last.to_string()));
             }
         }
         TableFactor::Derived { subquery, .. } => collect_from_query(subquery, out),

@@ -85,7 +85,6 @@ async fn oauthdoc_ac05_admin_issuer_remove_clears_invalid_row_with_reason() {
     let err = admin
         .tools_call("admin.oauth.issuer_remove", json!({"tenant_id": tenant.id, "issuer": "https://keep.example.com"}))
         .await
-        .err()
-        .expect("missing reason must be refused");
+        .expect_err("missing reason must be refused");
     assert!(err.message.contains("reason"), "{}", err.message);
 }

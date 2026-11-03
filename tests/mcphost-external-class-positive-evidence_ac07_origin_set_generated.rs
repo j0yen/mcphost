@@ -76,10 +76,10 @@ fn sql_origin_literals(sql: &str) -> BTreeSet<String> {
             let tail = rest.trim_start();
             if let Some(after_eq) = tail.strip_prefix('=') {
                 let after_eq = after_eq.trim_start();
-                if let Some(lit) = after_eq.strip_prefix('\'') {
-                    if let Some(end) = lit.find('\'') {
-                        out.insert(lit[..end].to_string());
-                    }
+                if let Some(lit) = after_eq.strip_prefix('\'')
+                    && let Some(end) = lit.find('\'')
+                {
+                    out.insert(lit[..end].to_string());
                 }
             }
         }

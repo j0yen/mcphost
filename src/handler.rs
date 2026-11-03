@@ -2250,6 +2250,7 @@ fn host_tools_part_03() -> Vec<Tool> {
                 json!({
                     "q": {"type": "string", "description": "Substring to match; omit for every public tool."},
                     "limit": {"type": "integer", "description": "Max results; default 20."},
+                    "include_synthetic": {"type": "boolean", "description": "List tools of synthetic-marked owners too. Default: true for a synthetic-marked caller, false otherwise; owners that offboarded are never listed."},
                 }),
                 &[],
             ),
@@ -6427,6 +6428,25 @@ fn admin_tools_raw() -> Vec<Tool> {
             "Clear a tenant's mesh freeze. Writes one admin_events row.",
             schema(json!({"tenant": {"type": "string"}}), &["tenant"]),
         ),
+        // PRD-mcphost-admin-signup-pause-tool requirement 1.
+        Tool::new(
+            "admin.signup_pause",
+            "Pause or resume new signups through the same pause file the host already reads \
+             (`signup` then returns signup_paused with the message and a retry time). Exactly \
+             one of `message` or `resume: true` is required: `message` (1..=512 bytes, one \
+             line) pauses, replacing any existing pause file; `until` (unix seconds, in the \
+             future) optionally bounds the pause; `resume: true` removes the file and is a no-op \
+             when none exists. Writes one admin_audit row (signup_pause / signup_resume).",
+            schema_any(
+                json!({
+                    "message": {"type": "string", "minLength": 1, "description": "Pause with this operator message (1..=512 bytes, no newline)."},
+                    "resume": {"type": "boolean", "description": "true lifts the pause; combine with no other argument."},
+                    "until": {"type": "integer", "description": "Optional unix-seconds deadline, > now; with `message` only."},
+                }),
+                &[],
+                &["message", "resume"],
+            ),
+        ),
         Tool::new(
             "admin.mesh.purge",
             "Delete messages and channel posts (and their receipts) older than \
@@ -6983,10 +7003,112 @@ pub(crate) struct TenantTableBridge {
     /// user applies identically whether `host.table.query` is reached
     /// directly or via `mcphost.table.query` inside a python sandbox.
     pub(crate) end_user: Option<crate::enduser::EndUser>,
+    /// PRD-mcphost-lineage-runtime-edge-writers R3: the running tool's node
+    /// name in `tenant`'s lineage graph, set only on a real (non-dry-run)
+    /// tool run. `None` leaves the bridge silent: `host.tool_test`,
+    /// `host.spec_test` and every context with no tool behind it.
+    pub(crate) tool_name: Option<String>,
+    /// R1: the lineage pairs this run has already written, shared with every
+    /// composed child's bridge.
+    pub(crate) lineage_memo: crate::lineage::RunMemo,
+}
+
+impl TenantTableBridge {
+    /// R3: after a successful `query`/`chart`, records
+    /// `table:<t> -> tool:<tool_name>` (`runtime_query`) for every table the
+    /// statement read. Never fails the call: a writer error is a warning.
+    async fn record_runtime_reads(&self, args: &Value) {
+        let Some(tool_name) = self.tool_name.as_deref() else {
+            return;
+        };
+        if self.dry_run.is_some() {
+            return;
+        }
+        let Some(sql) = args.get("sql").and_then(Value::as_str) else {
+            return;
+        };
+        // The same statement twice in one run yields the same pairs: skip the
+        // parse and the lookups on the repeat.
+        let sql_key = (format!("sql:{sql}"), tool_name.to_string());
+        if !self.lineage_memo.lock().unwrap().insert(sql_key) {
+            return;
+        }
+        for table in tables::runtime_read_tables(sql) {
+            if let Err(e) = crate::lineage::register_edge_runtime(
+                &self.state,
+                self.tenant.id,
+                &self.lineage_memo,
+                (crate::lineage::NodeKind::Table, &table, &table),
+                (crate::lineage::NodeKind::Tool, tool_name, tool_name),
+                "runtime_query",
+            )
+            .await
+            {
+                tracing::warn!(error = %e, tenant = %self.tenant.namespace, tool = %tool_name, table = %table, "lineage runtime_query writer failed");
+            }
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl TableBackend for TenantTableBridge {
+    fn scoped_to_tool(&self, tool_name: &str) -> Option<Arc<dyn TableBackend>> {
+        // A bridge that records nothing (dry run, spec test) hands out
+        // children that record nothing.
+        if self.tool_name.is_none() || self.dry_run.is_some() {
+            return None;
+        }
+        Some(Arc::new(TenantTableBridge {
+            state: self.state.clone(),
+            tenant: self.tenant.clone(),
+            dry_run: None,
+            end_user: self.end_user.clone(),
+            tool_name: Some(tool_name.to_string()),
+            lineage_memo: self.lineage_memo.clone(),
+        }))
+    }
+
+    async fn record_call_edge(&self, caller: &str, caller_is_chain: bool, callee: &str) {
+        use crate::lineage::NodeKind;
+        if self.tool_name.is_none() || self.dry_run.is_some() {
+            return;
+        }
+        let (caller_kind, callee_id) = (if caller_is_chain { NodeKind::Chain } else { NodeKind::Tool }, crate::lineage::node_id(NodeKind::Tool, callee));
+        let pair = (callee_id, crate::lineage::node_id(caller_kind, caller));
+        if self.lineage_memo.lock().unwrap().contains(&pair) {
+            return;
+        }
+        // Only a callee that resolves for this tenant is a dependency: one of
+        // its own tools, or a shared tool named `<owner>.<name>`.
+        let resolves = match callee.split_once('.') {
+            Some((owner_ns, local)) => crate::sharing::resolve_shared_tool(
+                &self.state,
+                &self.tenant,
+                owner_ns,
+                local,
+                crate::sharing::ShareScope::Call,
+            )
+            .await
+            .is_ok(),
+            None => matches!(self.state.db.get_tool(self.tenant.id, callee.to_string()).await, Ok(Some(_))),
+        };
+        if !resolves {
+            return;
+        }
+        if let Err(e) = crate::lineage::register_edge_runtime(
+            &self.state,
+            self.tenant.id,
+            &self.lineage_memo,
+            (NodeKind::Tool, callee, callee),
+            (caller_kind, caller, caller),
+            "runtime_call",
+        )
+        .await
+        {
+            tracing::warn!(error = %e, tenant = %self.tenant.namespace, caller = %caller, callee = %callee, "lineage runtime_call writer failed");
+        }
+    }
+
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
         let result = match op {
             "create" => tables::table_create(&self.state, &self.tenant, &args).await,
@@ -7037,6 +7159,9 @@ impl TableBackend for TenantTableBridge {
                 "table": value.get("table").cloned().unwrap_or(Value::Null),
                 "rows": value.get("appended").cloned().unwrap_or(Value::Null),
             }));
+        }
+        if result.is_ok() && matches!(op, "query" | "chart") {
+            self.record_runtime_reads(&args).await;
         }
         result.map_err(app_error_to_kind_error)
     }
@@ -8589,6 +8714,7 @@ impl McpHostHandler {
             "admin.mesh.thread" => admin::mesh_thread(&self.state, &args).await,
             "admin.mesh.freeze" => admin::mesh_freeze(&self.state, &args).await,
             "admin.mesh.unfreeze" => admin::mesh_unfreeze(&self.state, &args).await,
+            "admin.signup_pause" => admin::signup_pause(&self.state, &args).await,
             "admin.mesh.purge" => admin::mesh_purge(&self.state, &args).await,
             // PRD-mcphost-abuse-guard-ban-list requirement 3.
             "admin.ban.add" => admin::ban_add(&self.state, &args).await,
@@ -8888,6 +9014,8 @@ impl McpHostHandler {
                 tenant: tenant.clone(),
                 dry_run: None,
                 end_user: end_user.cloned(),
+                tool_name: Some(local_name.to_string()),
+                lineage_memo: crate::lineage::new_run_memo(),
             }),
             docs: Arc::new(TenantDocsBridge {
                 state: self.state.clone(),
@@ -9491,6 +9619,8 @@ impl McpHostHandler {
             tenant: tenant.clone(),
             dry_run: Some(dry_run.clone()),
             end_user: None,
+            tool_name: None,
+            lineage_memo: crate::lineage::new_run_memo(),
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
@@ -10199,14 +10329,21 @@ impl McpHostHandler {
     async fn tool_test_stamping(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
         let name = args.get("name").and_then(Value::as_str).map(str::to_string);
         let mut out = self.tool_test(tenant, args).await?;
+        let verdict = out.get("verdict").and_then(Value::as_str).map(str::to_string);
         if let Some(name) = name
-            && out.get("verdict").and_then(Value::as_str) == Some("pass")
+            && let Some(verdict) = verdict
             && let Some(row) = self.state.db.get_tool(tenant.id, name.clone()).await?
         {
-            self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
-            if let Value::Object(map) = &mut out {
-                map.insert("tested_version".to_string(), json!(row.current_version));
-                map.insert("stale_test".to_string(), json!(false));
+            // PRD-mcphost-trusted-discovery-catalog-receipts R1: every verdict is
+            // stored with the version it judged; only `pass` stamps `tested_version`.
+            let passed = verdict == "pass";
+            self.state.db.record_test_verdict(tenant.id, name.clone(), row.current_version, verdict).await?;
+            if passed {
+                self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
+                if let Value::Object(map) = &mut out {
+                    map.insert("tested_version".to_string(), json!(row.current_version));
+                    map.insert("stale_test".to_string(), json!(false));
+                }
             }
         }
         Ok(out)
@@ -10434,6 +10571,8 @@ impl McpHostHandler {
             tenant: tenant.clone(),
             dry_run: None,
             end_user: None,
+            tool_name: None,
+            lineage_memo: crate::lineage::new_run_memo(),
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
@@ -10876,6 +11015,8 @@ impl McpHostHandler {
             tenant: tenant.clone(),
             dry_run: dry_run.clone(),
             end_user: None,
+            tool_name: Some(local_name.clone()),
+            lineage_memo: crate::lineage::new_run_memo(),
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),

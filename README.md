@@ -288,6 +288,9 @@ directly instead of relying on its first call to create one:
    admin healthz, but never required. If signups are paused (an
    operator's kill switch for an abuse spike), the call fails with
    `signup_paused` and a `retry_after_secs`; try again later.
+   An operator pauses and resumes signups without a shell with the admin
+   tool `admin.signup_pause` (`message` to pause, optional `until`;
+   `resume: true` to lift), which writes the same pause file.
    Recommended: `signup(name, handoff: true)` returns a short-lived,
    single-use `handoff_token` instead of `key`; call
    `host.redeem(handoff_token)` once to get the key, so a transcript of
@@ -858,6 +861,13 @@ sandbox suite with no weight, or a predicted heaviest shard above 240 s, fails
 it naming the suite and the file. Each shard reports `build wall` and `run
 wall` in the step summary; only the run wall is budgeted (warn at 240 s, fail
 above 300 s).
+
+`check` also ages a pending (derived) measured entry, counted in first-parent
+commits from the land that seeded it: the fleet alarm `pending-entry-age` fires at
+2; at 4-5 a main push prints a `WARN pending-entry-age: ` line and stays green
+(`check --main` already fails past 3); at 6 (`PENDING_HARD_MAX_AGE`) the main push
+goes red too. Refresh it with `scripts/ci-refresh-weights.sh <CI run id>`.
+`scripts/ci-partition-pending-age-selftest.sh` proves the rungs.
 
 The core suites are sharded too (PRD-mcphost-ci-core-suites-sharded): the
 required check "static analysis + core suites" was one serial job whose core

@@ -1,5 +1,5 @@
 -- compat: previous -- `CREATE INDEX IF NOT EXISTS` over existing columns and one wholly new table; an old release ignores an index and a table it never names (PRD-mcphost-migration-safety requirement 4).
--- mcphost 0138_tenant_fk_indexes: PRD-mcphost-synthetic-tenant-purge R8.
+-- mcphost 0140_tenant_fk_indexes: PRD-mcphost-synthetic-tenant-purge R8.
 --
 -- Every delete of a `tenants` row looks, in each table that references it,
 -- for the rows naming it. With no index whose first column is the foreign-key

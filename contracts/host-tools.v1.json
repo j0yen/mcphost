@@ -5480,6 +5480,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "include_synthetic": {
+            "description": "List tools of synthetic-marked owners too. Default: true for a synthetic-marked caller, false otherwise; owners that offboarded are never listed.",
+            "type": "boolean"
+          },
           "limit": {
             "description": "Max results; default 20.",
             "type": "integer"
@@ -5598,14 +5602,39 @@
           },
           "tools": {
             "items": {
+              "additionalProperties": false,
               "properties": {
+                "calls_30d": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "n": {
+                      "type": "integer"
+                    },
+                    "ok": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "n",
+                    "ok"
+                  ],
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
                 "description": {
                   "type": [
                     "string",
                     "null"
                   ]
                 },
-                "group": {},
+                "group": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "kind": {
                   "type": [
                     "string",
@@ -5624,6 +5653,33 @@
                     "null"
                   ]
                 },
+                "stale_test": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "tags": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "test_verdict": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "tested_version": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "visibility": {
                   "type": [
                     "string",
@@ -5634,6 +5690,25 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "view": {
+            "additionalProperties": false,
+            "properties": {
+              "include_synthetic": {
+                "type": "boolean"
+              },
+              "owners": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "include_synthetic",
+              "owners"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -41661,6 +41736,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "include_synthetic": {
+            "description": "List tools of synthetic-marked owners too. Default: true for a synthetic-marked caller, false otherwise; owners that offboarded are never listed.",
+            "type": "boolean"
+          },
           "limit": {
             "description": "Max results; default 20.",
             "type": "integer"

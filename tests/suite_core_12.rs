@@ -706,6 +706,18 @@ mod tdf_ac04_pack_rejects_empty;
 mod tdf_ac05_example_hello_py_packs;
 #[path = "tdf_ac07_unpack_unknown_kind.rs"]
 mod tdf_ac07_unpack_unknown_kind;
+#[path = "tdisc_ac01_verdict_stored_with_version.rs"]
+mod tdisc_ac01_verdict_stored_with_version;
+#[path = "tdisc_ac02_view_by_owner_mark.rs"]
+mod tdisc_ac02_view_by_owner_mark;
+#[path = "tdisc_ac03_calls_30d_receipts.rs"]
+mod tdisc_ac03_calls_30d_receipts;
+#[path = "tdisc_ac04_order_on_receipts.rs"]
+mod tdisc_ac04_order_on_receipts;
+#[path = "tdisc_ac05_schema_two_way.rs"]
+mod tdisc_ac05_schema_two_way;
+#[path = "tdisc_ac06_catalog_search_at_scale.rs"]
+mod tdisc_ac06_catalog_search_at_scale;
 #[path = "tenant_delete_ac01_cascade_delete.rs"]
 mod tenant_delete_ac01_cascade_delete;
 #[path = "tenant_delete_ac02_forbidden.rs"]

@@ -11,7 +11,7 @@ use crate::common::TestServer;
 use rusqlite::Connection;
 use std::collections::BTreeSet;
 
-const MIGRATION: &str = include_str!("../migrations/0138_tenant_fk_indexes.sql");
+const MIGRATION: &str = include_str!("../migrations/0140_tenant_fk_indexes.sql");
 
 /// `(table, column)` of every foreign key to `tenants` with no index whose first column it is.
 fn uncovered(conn: &Connection) -> Vec<(String, String)> {

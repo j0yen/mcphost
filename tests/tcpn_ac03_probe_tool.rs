@@ -3,7 +3,7 @@
 //! dispatch table, When it is called with `{steps: 3, step_ms: 1000}` under a
 //! test `ProgressSink` that records reports, Then the sink receives exactly
 //! `(33, "step 1/3")`, `(66, "step 2/3")`, `(100, "step 3/3")` in order with
-//! >= 1000 ms between them, the result is `{steps: 3, elapsed_ms: >= 3000}`,
+//! at least 1000 ms between them, the result is `{steps: 3, elapsed_ms: >= 3000}`,
 //! `{steps: 6, step_ms: 1000}`, `{steps: 3, step_ms: 500}` and `{steps: 3}`
 //! return the standard invalid-arguments error, and the tool appears in
 //! `tools/list` with that schema.
@@ -15,8 +15,10 @@ use serde_json::json;
 use std::sync::Mutex;
 use std::time::Instant;
 
+type Report = (Option<i64>, Option<String>, Instant);
+
 #[derive(Default)]
-struct Recorder(Mutex<Vec<(Option<i64>, Option<String>, Instant)>>);
+struct Recorder(Mutex<Vec<Report>>);
 
 impl ProgressSink for Recorder {
     fn report(&self, pct: Option<i64>, msg: Option<String>) {

@@ -2274,12 +2274,35 @@
       },
       "tools": {
         "items": {
+          "additionalProperties": false,
           "properties": {
+            "calls_30d": {
+              "additionalProperties": false,
+              "properties": {
+                "n": {
+                  "type": "integer"
+                },
+                "ok": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "n",
+                "ok"
+              ],
+              "type": "object"
+            },
             "description": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "group": {
-              "type": "null"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "kind": {
               "type": "string"
@@ -2290,6 +2313,27 @@
             "owner": {
               "type": "string"
             },
+            "stale_test": {
+              "type": "boolean"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "test_verdict": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tested_version": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "visibility": {
               "type": "string"
             }
@@ -2297,6 +2341,22 @@
           "type": "object"
         },
         "type": "array"
+      },
+      "view": {
+        "additionalProperties": false,
+        "properties": {
+          "include_synthetic": {
+            "type": "boolean"
+          },
+          "owners": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "include_synthetic",
+          "owners"
+        ],
+        "type": "object"
       }
     },
     "required": [

@@ -366,7 +366,11 @@ const MIGRATION_0136: &str = include_str!("../migrations/0136_calls_progress.sql
 /// PRD-mcphost-external-class-positive-evidence: `tenants.origin_tainted_unix`,
 /// `origin_counters`, and the one-shot tri-state backfill with its journal.
 const MIGRATION_0137: &str = include_str!("../migrations/0137_origin_tristate.sql");
-const MIGRATION_0138: &str = include_str!("../migrations/0138_tenant_fk_indexes.sql");
+/// PRD-mcphost-trusted-discovery-catalog-receipts R1: `tools.test_verdict` / `test_verdict_version`.
+const MIGRATION_0138: &str = include_str!("../migrations/0138_tool_test_verdict.sql");
+/// PRD-mcphost-trusted-discovery-catalog-receipts AC6: the index, receipts cache and triggers behind `calls_30d`.
+const MIGRATION_0139: &str = include_str!("../migrations/0139_catalog_receipts.sql");
+const MIGRATION_0140: &str = include_str!("../migrations/0140_tenant_fk_indexes.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -556,7 +560,8 @@ pub struct ObservedOutputs {
 
 const TOOL_COLUMNS: &str = "id, tenant_id, name, kind, spec, created_at, visibility, \
     share_description, shared_unix, shared_group, unshared_by, current_version, scopes, \
-    expose_spec, spec_exposed_unix, spec_reads, tags, tested_version";
+    expose_spec, spec_exposed_unix, spec_reads, tags, tested_version, test_verdict, \
+    test_verdict_version";
 
 fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
     let spec_text: String = r.get(4)?;
@@ -580,6 +585,8 @@ fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
         spec_reads: r.get(15)?,
         tags: parse_tags(&r.get::<_, String>(16)?),
         tested_version: r.get(17)?,
+        test_verdict: r.get(18)?,
+        test_verdict_version: r.get(19)?,
     })
 }
 
@@ -1111,6 +1118,15 @@ pub struct Tenant {
     pub last_seen_version: Option<String>,
 }
 
+impl Tenant {
+    /// PRD-mcphost-trusted-discovery-catalog-receipts R2: the owner mark the
+    /// catalog view selects on -- a `tenants.synthetic` label or
+    /// `origin = 'synthetic'`.
+    pub fn is_synthetic_marked(&self) -> bool {
+        self.synthetic.is_some() || self.origin == "synthetic"
+    }
+}
+
 /// Which table [`Db::origin_counts`] groups by `origin`.
 #[derive(Debug, Clone, Copy)]
 pub enum OriginCountTable {
@@ -1203,6 +1219,105 @@ pub struct ToolRow {
     pub tags: Vec<String>,
     /// The `current_version` whose dry run last passed; `None` = never.
     pub tested_version: Option<i64>,
+    /// The verdict string the last host-run `host.tool_test` returned
+    /// (migration 0138); only meaningful while `test_verdict_version`
+    /// equals `current_version` -- read it through [`ToolRow::current_verdict`].
+    pub test_verdict: Option<String>,
+    /// The `current_version` that verdict judged.
+    pub test_verdict_version: Option<i64>,
+}
+
+impl ToolRow {
+    /// The stored test verdict, but only when it judged the current version.
+    pub fn current_verdict(&self) -> Option<&str> {
+        (self.test_verdict_version == Some(self.current_version))
+            .then_some(self.test_verdict.as_deref())
+            .flatten()
+    }
+}
+
+/// PRD-mcphost-trusted-discovery-catalog-receipts R3: the window of the
+/// `calls_30d` receipt.
+pub const CATALOG_RECEIPT_WINDOW_SECS: i64 = 30 * 86_400;
+
+/// One public tool as the catalog reads it: the owner namespace, the row, and
+/// the cross-tenant call receipts of the last 30 days (`calls_n` calls, of
+/// which `calls_ok` succeeded).
+#[derive(Debug, Clone)]
+pub struct CatalogHit {
+    pub namespace: String,
+    pub tool: ToolRow,
+    pub calls_n: i64,
+    pub calls_ok: i64,
+}
+
+/// One catalog page: the ranked hits and, of the whole matching view (before
+/// `limit`), how many distinct owners it ranked (`view.owners`).
+#[derive(Debug, Clone)]
+pub struct CatalogPage {
+    pub hits: Vec<CatalogHit>,
+    pub owners: i64,
+}
+
+/// The `tools`/`tenants` filter every catalog read shares: `?1` the escaped
+/// LIKE pattern or NULL, `?3` the `include_synthetic` flag. Public tools of
+/// enabled owners only; synthetic-marked owners only when `?3 = 1`.
+const CATALOG_VIEW_WHERE: &str = "tools.visibility = 'public' \
+     AND (?1 IS NULL OR tools.name LIKE ?1 ESCAPE '\\' OR tools.share_description LIKE ?1 ESCAPE '\\') \
+     AND tenants.disabled = 0 \
+     AND (?3 = 1 OR (tenants.synthetic IS NULL AND tenants.origin != 'synthetic'))";
+
+/// R4: the one catalog order, over the columns `search_catalog`'s `ranked`
+/// layer exposes: verdict tier of the current version (`pass` 0, untested or
+/// `unverifiable` 1, `will_fail` 2) ascending, the smoothed ok ratio
+/// `(ok + 1) / (n + 2)` descending, `n` descending, newest-shared, then
+/// namespace and tool name as the total-order tail.
+const CATALOG_ORDER: &str = "r_tier ASC, (r_ok + 1.0) / (r_n + 2) DESC, r_n DESC, r_shared DESC, ns ASC, nm ASC";
+
+/// The `calls` rows a `calls_30d` receipt counts: a call by another tenant at
+/// or after `?4`; `?3 = 1` counts every such caller, else callers carrying the
+/// synthetic mark (a `tenants.synthetic` label or `origin = 'synthetic'`) are
+/// left out. Reads `calls` alone: the mark is a set probe, not a per-row join.
+const CATALOG_RECEIPT_WHERE: &str = "calls.started_unix >= ?4 AND calls.caller_tenant_id IS NOT NULL \
+     AND calls.caller_tenant_id != calls.tenant_id \
+     AND (?3 = 1 OR calls.caller_tenant_id NOT IN \
+          (SELECT id FROM tenants WHERE synthetic IS NOT NULL OR origin = 'synthetic'))";
+
+/// How long a `catalog_receipts` build is trusted when no cross-tenant call
+/// moved the generation: the 30-day window slides, and a caller's synthetic
+/// mark can change without touching `calls`.
+const CATALOG_RECEIPTS_TTL_SECS: i64 = 60;
+
+/// Brings `catalog_receipts` for one view up to date (see migration 0139): a
+/// no-op while the generation is unchanged and the build is fresh, else one
+/// transaction that rebuilds the view's aggregate from `calls`.
+fn refresh_catalog_receipts(conn: &Connection, include_synthetic: bool, now: i64) -> Result<(), AppError> {
+    let view = include_synthetic as i64;
+    let generation: i64 = conn.query_row("SELECT gen FROM catalog_receipts_gen WHERE id = 1", [], |r| r.get(0))?;
+    let built: Option<(i64, i64)> = conn
+        .query_row("SELECT gen, built_unix FROM catalog_receipts_built WHERE view = ?1", [view], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .optional()?;
+    if built.is_some_and(|(g, at)| g == generation && (0..CATALOG_RECEIPTS_TTL_SECS).contains(&(now - at))) {
+        return Ok(());
+    }
+    crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+        conn.execute("DELETE FROM catalog_receipts WHERE view = ?1", [view])?;
+        conn.execute(
+            &format!(
+                "INSERT INTO catalog_receipts (view, tenant_id, tool_name, n, ok) \
+                 SELECT ?3, calls.tenant_id, calls.tool_name, COUNT(*), SUM(calls.ok = 1) FROM calls \
+                 WHERE {CATALOG_RECEIPT_WHERE} GROUP BY calls.tenant_id, calls.tool_name"
+            ),
+            params![Option::<i64>::None, Option::<i64>::None, view, now - CATALOG_RECEIPT_WINDOW_SECS],
+        )?;
+        conn.execute(
+            "INSERT OR REPLACE INTO catalog_receipts_built (view, gen, built_unix) VALUES (?1, ?2, ?3)",
+            params![view, generation, now],
+        )?;
+        Ok(())
+    })
 }
 
 /// `tools.tags` is a JSON array text column.
@@ -3501,8 +3616,23 @@ impl Db {
         Self::migrate_0135_tenant_lifecycle_events(&conn)?;
         Self::migrate_0136_calls_progress(&conn)?;
         Self::migrate_0137_origin_tristate(&conn)?;
+        Self::migrate_0138_tool_test_verdict(&conn)?;
+        // `IF NOT EXISTS` / `INSERT OR IGNORE` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0139)?;
         // Only `CREATE INDEX IF NOT EXISTS`: idempotent as-is.
-        conn.execute_batch(MIGRATION_0138)?;
+        conn.execute_batch(MIGRATION_0140)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-trusted-discovery-catalog-receipts R1: gated on
+    /// `tools.test_verdict` (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0138_tool_test_verdict(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tools') WHERE name = 'test_verdict'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0138)?;
+        }
         Ok(())
     }
 
@@ -9539,6 +9669,29 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-trusted-discovery-catalog-receipts R1: stores the verdict a
+    /// host-run test returned together with the version it judged, but only
+    /// while `version` is still the tool's `current_version` (a republish
+    /// that raced the dry run must not be judged by the old version's run).
+    /// The verdict is data: any string the test produced is stored as is.
+    pub async fn record_test_verdict(
+        &self,
+        tenant_id: i64,
+        name: String,
+        version: i64,
+        verdict: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tools SET test_verdict = ?1, test_verdict_version = ?2 \
+                 WHERE tenant_id = ?3 AND name = ?4 AND current_version = ?2",
+                params![verdict, version, tenant_id, name],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// PRD-mcphost-scoped-tool-share: the share-scope columns of one tool row
     /// (`None` when there is no such row).
     pub async fn get_share_meta(&self, tenant_id: i64, name: String) -> Result<Option<ShareMeta>, AppError> {
@@ -9854,40 +10007,68 @@ impl Db {
     /// `host.catalog.search(q, limit)` (AC7): a `LIKE` over name and
     /// `share_description` among `visibility = 'public'` tools, joined to
     /// the owner's namespace. `q` of `None` (or empty) returns every public
-    /// tool, newest-shared first.
+    /// tool. Owners with `disabled = 1` are never listed; owners carrying the
+    /// synthetic mark are listed only when `include_synthetic`
+    /// (PRD-mcphost-trusted-discovery-catalog-receipts R2). Each hit carries
+    /// its 30-day cross-tenant call receipts as of `now` (R3). R4, the one
+    /// order every catalog reader shares: verdict tier of the current version
+    /// (`pass` 0, untested or `unverifiable` 1, `will_fail` 2), then the
+    /// smoothed ok ratio `(ok + 1) / (n + 2)` descending, then `n`
+    /// descending, then newest-shared, then namespace and name; `limit`
+    /// applies after the order.
     pub async fn search_catalog(
         &self,
         q: Option<String>,
         limit: i64,
-    ) -> Result<Vec<(String, ToolRow)>, AppError> {
+        include_synthetic: bool,
+        now: i64,
+    ) -> Result<CatalogPage, AppError> {
         self.with_conn(move |conn| {
+            // `%` and `_` in `q` are literal characters, not wildcards.
             let pattern = q
                 .as_deref()
                 .filter(|s| !s.is_empty())
-                .map(|s| format!("%{s}%"));
+                .map(|s| format!("%{}%", s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")));
             let cols: Vec<String> = TOOL_COLUMNS
                 .split(", ")
                 .map(|c| format!("tools.{c}"))
                 .collect();
+            // R3: the receipts are the owner's tool's calls by OTHER tenants in
+            // the last 30 days; the plain view leaves out synthetic-marked callers.
+            // The ranking keys are computed once, in `ranked`, over the narrow
+            // columns only, and cut to `limit` there; the wide row (spec, scopes)
+            // is fetched for the survivors alone. Both layers order by
+            // `CATALOG_ORDER`, so the outer sort is of at most `limit` rows.
             let sql = format!(
-                "SELECT tenants.namespace, {} FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
-                 WHERE tools.visibility = 'public' \
-                 AND (?1 IS NULL OR tools.name LIKE ?1 OR tools.share_description LIKE ?1) \
-                 ORDER BY tools.shared_unix DESC LIMIT ?2",
+                "SELECT ranked.ns, {}, ranked.r_n, ranked.r_ok \
+                 FROM (SELECT tools.id AS r_id, tenants.namespace AS ns, tools.name AS nm, \
+                              tools.shared_unix AS r_shared, \
+                              COALESCE(rc.n, 0) AS r_n, COALESCE(rc.ok, 0) AS r_ok, \
+                              CASE WHEN tools.test_verdict_version = tools.current_version \
+                                   THEN CASE tools.test_verdict WHEN 'pass' THEN 0 WHEN 'will_fail' THEN 2 ELSE 1 END \
+                                   ELSE 1 END AS r_tier \
+                       FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
+                       LEFT JOIN catalog_receipts AS rc \
+                              ON rc.view = ?3 AND rc.tenant_id = tools.tenant_id AND rc.tool_name = tools.name \
+                       WHERE {CATALOG_VIEW_WHERE} \
+                       ORDER BY {CATALOG_ORDER} LIMIT ?2) AS ranked \
+                 JOIN tools ON tools.id = ranked.r_id \
+                 ORDER BY {CATALOG_ORDER}",
                 cols.join(", ")
             );
+            refresh_catalog_receipts(conn, include_synthetic, now)?;
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
-                .query_map(params![pattern, limit], |r| {
+                .query_map(params![pattern, limit, include_synthetic], |r| {
                     let namespace: String = r.get(0)?;
                     // tool_from_row expects the TOOL_COLUMNS to start at
                     // index 0; here they start at index 1 because of the
                     // leading `tenants.namespace` column, so build a
                     // one-off Row-shifted reader instead of reusing it.
                     let spec_text: String = r.get(5)?;
-                    Ok((
+                    Ok(CatalogHit {
                         namespace,
-                        ToolRow {
+                        tool: ToolRow {
                             id: r.get(1)?,
                             tenant_id: r.get(2)?,
                             name: r.get(3)?,
@@ -9909,11 +10090,49 @@ impl Db {
                             spec_reads: r.get(16)?,
                             tags: parse_tags(&r.get::<_, String>(17)?),
                             tested_version: r.get(18)?,
+                            test_verdict: r.get(19)?,
+                            test_verdict_version: r.get(20)?,
                         },
-                    ))
+                        calls_n: r.get(21)?,
+                        calls_ok: r.get(22)?,
+                    })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(rows)
+            // R2: the owners the whole matching view holds, before `limit`.
+            let owners: i64 = conn.query_row(
+                &format!(
+                    "SELECT COUNT(DISTINCT tools.tenant_id) FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
+                     WHERE {CATALOG_VIEW_WHERE}"
+                ),
+                // `?2` (the limit) is the listing's alone; the shared filter skips it.
+                params![pattern, limit, include_synthetic],
+                |r| r.get(0),
+            )?;
+            Ok(CatalogPage { hits: rows, owners })
+        })
+        .await
+    }
+
+    /// PRD-mcphost-trusted-discovery-catalog-receipts R7: the `calls_30d`
+    /// receipt of one tool, `(n, ok)`, read by the same rule `search_catalog`
+    /// uses for the listing.
+    pub async fn tool_receipts(
+        &self,
+        owner_tenant_id: i64,
+        tool_name: String,
+        include_synthetic: bool,
+        now: i64,
+    ) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT COUNT(*), COALESCE(SUM(calls.ok = 1), 0) \
+                     FROM calls WHERE calls.tenant_id = ?1 AND calls.tool_name = ?2 AND {CATALOG_RECEIPT_WHERE}"
+                ),
+                params![owner_tenant_id, tool_name, include_synthetic, now - CATALOG_RECEIPT_WINDOW_SECS],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
         })
         .await
     }
@@ -10161,6 +10380,8 @@ impl Db {
                         spec_reads: r.get(16)?,
                         tags: parse_tags(&r.get::<_, String>(17)?),
                         tested_version: r.get(18)?,
+                        test_verdict: r.get(19)?,
+                        test_verdict_version: r.get(20)?,
                     };
                     Ok((namespace, tool))
                 })?
@@ -22927,6 +23148,34 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-lineage-runtime-edge-writers R1: the monotone runtime
+    /// upsert. Inserts the edge, or -- when the pair exists with
+    /// publish-derived evidence -- replaces its evidence; a pair already
+    /// carrying `runtime_*` evidence is left alone. Returns whether a row
+    /// changed (`changes()` is 1 for an insert or an upgrade, 0 when the
+    /// WHERE clause declined).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn lineage_insert_edge_runtime(
+        &self,
+        tenant_id: i64,
+        upstream_id: String,
+        downstream_id: String,
+        evidence: String,
+        created_unix: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let changed = conn.execute(
+                "INSERT INTO lineage_edges (tenant_id, upstream_id, downstream_id, evidence, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5) \
+                 ON CONFLICT(tenant_id, upstream_id, downstream_id) DO UPDATE SET evidence = excluded.evidence \
+                 WHERE lineage_edges.evidence NOT LIKE 'runtime\\_%' ESCAPE '\\'",
+                params![tenant_id, upstream_id, downstream_id, evidence, created_unix],
+            )?;
+            Ok(changed > 0)
+        })
+        .await
+    }
+
     /// requirement 5: bumps `uses`/`last_used_unix` on a node that just
     /// recorded activity (a tool or chain's own node, or a table reached
     /// transitively through a registered edge). A no-op (not an error) when
@@ -22957,6 +23206,29 @@ impl Db {
                 params![tenant_id, node_id],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-lineage-runtime-edge-writers R6: deletes the edges whose
+    /// downstream is `node_id` and whose evidence is one of `evidences`.
+    /// Keeps the node, its `uses`, every edge where it is the upstream and
+    /// every edge with other evidence. Returns how many edges were deleted.
+    pub async fn lineage_delete_incoming_edges(
+        &self,
+        tenant_id: i64,
+        node_id: String,
+        evidences: Vec<String>,
+    ) -> Result<usize, AppError> {
+        self.with_conn(move |conn| {
+            let mut deleted = 0;
+            for evidence in &evidences {
+                deleted += conn.execute(
+                    "DELETE FROM lineage_edges WHERE tenant_id = ?1 AND downstream_id = ?2 AND evidence = ?3",
+                    params![tenant_id, node_id, evidence],
+                )?;
+            }
+            Ok(deleted)
         })
         .await
     }

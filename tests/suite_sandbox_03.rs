@@ -67,6 +67,18 @@ mod limits_ac08_usage_capacity_refusals;
 mod lineage_ac01_source_scan_registers_table_edge;
 #[path = "lineage_ac12_python_bridge_trace_matches_tool.rs"]
 mod lineage_ac12_python_bridge_trace_matches_tool;
+#[path = "linrt_ac01_dynamic_reader_one_edge_one_drop.rs"]
+mod linrt_ac01_dynamic_reader_one_edge_one_drop;
+#[path = "linrt_ac02_runtime_evidence_survives_republish_and_remove.rs"]
+mod linrt_ac02_runtime_evidence_survives_republish_and_remove;
+#[path = "linrt_ac03_sibling_call_edge_in_the_callers_graph.rs"]
+mod linrt_ac03_sibling_call_edge_in_the_callers_graph;
+#[path = "linrt_ac04_fork_registers_like_a_publish.rs"]
+mod linrt_ac04_fork_registers_like_a_publish;
+#[path = "linrt_ac06_concurrent_runs_write_one_edge_per_table.rs"]
+mod linrt_ac06_concurrent_runs_write_one_edge_per_table;
+#[path = "linrt_ac07_dry_runs_and_refusals_write_nothing.rs"]
+mod linrt_ac07_dry_runs_and_refusals_write_nothing;
 #[path = "mcphost_database_in_a_minute_ac09_csv_import_batches_internally.rs"]
 mod mcphost_database_in_a_minute_ac09_csv_import_batches_internally;
 #[path = "mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run.rs"]
@@ -227,9 +239,3 @@ mod python_ac13_capacity_admission;
 mod python_ac14_cpu_budget_rate_limit;
 #[path = "qdiag_ac09_python_bridge_query_stats.rs"]
 mod qdiag_ac09_python_bridge_query_stats;
-#[path = "retshape_ac03_list_access_is_a_named_will_fail.rs"]
-mod retshape_ac03_list_access_is_a_named_will_fail;
-#[path = "retshape_ac04_envelope_behaves_as_plain_dict.rs"]
-mod retshape_ac04_envelope_behaves_as_plain_dict;
-#[path = "retshape_ac05_starter_example_shows_rows_access.rs"]
-mod retshape_ac05_starter_example_shows_rows_access;

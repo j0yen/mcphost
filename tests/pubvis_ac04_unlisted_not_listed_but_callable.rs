@@ -4,13 +4,13 @@
 //! it, while `host.catalog.get` and a cross-tenant call by full name succeed.
 
 use crate::common;
-use common::{McpClient, TestServer, extract_structured, signup};
+use common::{McpClient, TestServer, extract_structured, signup, signup_plain};
 use serde_json::json;
 
 #[tokio::test]
 async fn pubvis_ac04() {
     let server = TestServer::start().await;
-    let (ns_a, key_a) = signup(&server.base_url, "Pubvis AC4 Owner").await;
+    let (ns_a, key_a) = signup_plain(&server.base_url, "Pubvis AC4 Owner").await;
     let client_a = McpClient::with_bearer(&server.base_url, &key_a);
     let published = extract_structured(
         &client_a
