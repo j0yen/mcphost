@@ -1,70 +1,70 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-admin-signup-pause-tool.md",
-  "intent_slug": "mcphost-admin-signup-pause-tool",
-  "root_motivation": "WHO: Joe as operator of mcphost-1 when he is not at a shell, and synthorg's mtproof probe, which only reaches the host over MCP. WHAT: the signup kill switch is a file the host already reads, but nothing over MCP can create or remove it, so the mtproof kill_switch link refuses on every chain run. WHY: PRD-mcphost-signup-kill-switch-and-source requirement 8 named the tool and never had an AC, so it was never built.",
-  "user_persona": "An operator (or the probe acting for them) holding the admin key who must pause and resume signups with one MCP call each, audited, and restore the host with one call if a sequence dies halfway.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-synthetic-tenant-purge.md",
+  "intent_slug": "mcphost-synthetic-tenant-purge",
+  "root_motivation": "WHO: Joe as operator of mcphost-1 (one 1.9 GB SQLite file in WAL mode serving every tenant), rb who reads its prune_log, and the live judge that reads /contract.json. WHAT: the synthetic-tenant idle policy disables nothing on prod because its floor is a selector term, and nothing ever deletes a synthetic tenant, so about 2.3 M child rows of idle and self-offboarded synthetic tenants sit in the file. WHY: a delete on that scale must be batched under load, exactly once, complete across every table that names a tenant, held while a real tenant's row names the subject, and report-only on its first sweep.",
+  "user_persona": "An operator holding the admin key who needs the numbers (would_expire, pre_floor, would_purge, cross_refs, held_entangled) before any delete and a purge that never touches a claimed, verified, paid or billed tenant, plus the live judge reading the lifecycle rule from /contract.json.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a test server with the admin key, When the admin lists tools, Then `admin.signup_pause` is listed with `message` (string), `resume` (boolean), `until` (integer), its description says exactly one of `message` or `resume: true` is required, the arms-equal-descriptors drift test passes, and README.md § signup names the tool.",
-      "test": "tests/aspt_ac01_tool_listed_with_schema_and_readme.rs"
+      "description": "Given the § Fixture (6,000 due subjects, 20 heavy) and a host.tool_call loop on a live tenant, When the scheduled sweep and admin.prune_now start together with a budget one sweep cannot finish, Then one reports busy, every subject is deleted exactly once over two or more batches, held_over equals the remainder, loop p95 stays under 250 ms and under max(2× the idle baseline, 50 ms), and per-batch wall time in the PR body.",
+      "test": "tests/tenp_ac01_batched_purge_under_load_exactly_once.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given no pause file, When the admin calls `admin.signup_pause` with a message, Then the pause file holds it as line 1, the result is `{paused: true, changed: true, message, retry_after_secs: 3600}`, healthz reports `signups_enabled: false` plus the message, and `signup` returns `signup_paused` with it; a hand-written file is replaced the same way.",
-      "test": "tests/aspt_ac02_pause_writes_file_and_refuses_signup.rs"
+      "description": "Given a subject with a row in every table naming tenants by key or name (enumerated at test time; two-sided set = § Cascade) and, per two-sided column, a synthetic and a claimed two-marker tenant's row naming it, When sweeps run, Then it is held, held_entangled names each claimed-owned column, no row of either tenant changes; claimed rows gone, it is purged, synthetic rows get their § Cascade outcome and no row names it.",
+      "test": "tests/tenp_ac02_cascade_complete_and_entangled_subject_held.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a pause file written by the tool or by hand, When the admin calls `admin.signup_pause` with `resume: true`, Then the file is gone, the result is `{paused: false, changed: true}`, healthz reports `signups_enabled: true` with no `signup_pause_message`, and a `signup` succeeds.",
-      "test": "tests/aspt_ac03_resume_removes_file_and_reopens_signup.rs"
+      "description": "Given the migrated schema, When a test lists every foreign-key column referencing tenants through pragma_foreign_key_list, Then each has an index whose first column it is, the migration adding the missing ones takes the next free number at land time and also creates namespace_tombstones holding each tenant-delete admin_events namespace, and dropping any one of those indexes inside the test fails it naming the table and column.",
+      "test": "tests/tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given calls with no arguments, both `message` and `resume: true`, `resume: false` alone, an empty message, a newline in the message, a message over 512 bytes, and `until` not in the future, When the admin makes each, Then each returns `invalid_params` naming the field and the pause file is unchanged.",
-      "test": "tests/aspt_ac04_invalid_calls_refused_and_file_untouched.rs"
+      "description": "Given implicit synthetic unclaimed rows minted before the floor, When the sweep runs with the window elapsed since the floor, Then each is disabled idle_expired with a lifecycle event, the expire stage stops at the wall budget reporting held_over, a row idle under the window is untouched, and the sweep with no prior prune_log row carrying purge_due_unix logs pre_floor with a ≤ 200-row pre_floor_sample, no key or address.",
+      "test": "tests/tenp_ac04_idle_clock_runs_from_the_floor.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a tenant key and an anonymous client, When each calls `admin.signup_pause`, Then each is refused with the same error code every other `admin.*` tool returns to that caller (`forbidden` for a tenant key), no pause file is created, and healthz still reports `signups_enabled: true`.",
-      "test": "tests/aspt_ac05_non_admin_callers_refused.rs"
+      "description": "Given two-marker rows disabled idle_expired or self_offboard, When sweeps run on a mock clock, Then none is deleted before MAX(last_seen or created, last lifecycle event, floor) + grace, a sweep with no prior prune_log row carrying purge_due_unix only reports would_purge and cross_refs, later sweeps delete via delete_tenant_as logging tenant_purge_synthetic; each batch ends in incremental_vacuum(PURGE_VACUUM_PAGES), no VACUUM.",
+      "test": "tests/tenp_ac05_grace_clock_report_first_and_bounded_vacuum.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given no pause file, When the admin calls `resume: true` twice, Then both return `{paused: false, changed: false}`; and Given `MCPHOST_SIGNUP_PAUSE_FILE` points into a missing directory, When the admin pauses, Then the error code is `storage`, nothing panics, and healthz answers `signups_enabled: true`.",
-      "test": "tests/aspt_ac06_resume_idempotent_and_io_failure_is_storage.rs"
+      "description": "Given purge-due and pre-floor rows, When admin.prune_now is called with dry_run true, Then it returns would_expire, pre_floor, would_purge, purge_due_unix, cross_refs by column and class and held_entangled, writes no prune_log row and deletes nothing; admin.funnel carries tenants_synthetic_purged; contract dump shows the § Contract keys and contract --check fails when a constant moves.",
+      "test": "tests/tenp_ac06_dry_run_report_funnel_count_and_contract_keys.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given 20 concurrent admin calls (10 distinct messages, 10 resumes), When all complete, Then every call succeeded, no `status()` read saw a truncated file, the final state agrees with healthz, and `admin.audit_log` holds 10 `signup_pause` and 10 `signup_resume` rows with `actor_key_id`.",
-      "test": "tests/aspt_ac07_concurrent_toggles_atomic_and_audited.rs"
+      "description": "Given the § Classes rows, When sweeps pass the window and grace, Then only the both-markers unclaimed row gains event, flag and deletion, the other eight none, even if a class flips between mark and delete; grace env off purges nothing, idle-days env off disables or purges nothing; a disabled subject's old tenant_key gets tenant_key_invalid and moves no due date, and a keyless new peer still mints, never a purged namespace.",
+      "test": "tests/tenp_ac07_class_matrix_off_switches_and_namespace_reservation.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given `message: \"window\"` and `until` 600 s ahead, When paused, Then the file's line 2 is `until=<ts>`, the result and `signup`'s error carry `retry_after_secs` within 2 s of 600, and alerts `signup.paused` and `signup.resumed` are raised within `PAUSE_POLL_INTERVAL_SECS` + 2 s.",
-      "test": "tests/aspt_ac08_until_bounds_retry_and_alerts_fire.rs"
+      "description": "Given prod after this PRD's deploy, When the AC 8 command in § Live evidence commands runs from the build host with no credential, Then jq prints true on purge.grace_days 14, floor_rule idle_from_floor, zero_disables false and self_offboard among the purge reasons, and the last line is jq_rc=0 (Live; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)",
+      "test": "deferred: Live (prod; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)"
     }
   ],
   "scope": [
-    "src/handler.rs: the `admin.signup_pause` descriptor in `admin_tools_raw` and its `dispatch_admin_tool` arm; src/admin.rs: `signup_pause`, argument validation and the `admin_audit_entry` arm; src/state.rs: `SignupPause::pause` (atomic temp-file rename) and `resume` writers; README.md § signup via docs/agent-quickstart.md and the regenerated www/llms.txt."
+    "src/db/synthetic_purge.rs (purge stage, report, dry run, relation registry); src/db.rs (prune_once_at, sweep lock, idle clock from the floor, delete_tenant_rows with NULLings, by-value deletes and namespace tombstones, reserved-namespace checks in the two tenants inserts, funnel count); src/retention.rs constants and bounded incremental_vacuum; src/auth.rs namespace draw loop; src/control.rs and src/invites.rs callers; src/errors.rs namespace_reserved; src/admin.rs and src/handler.rs admin.prune_now dry_run and admin.funnel tenants_synthetic_purged; src/api_contract.rs tenant_lifecycle; migrations/0140_synthetic_tenant_purge.sql; contracts/host-tools.v1.json and the SDKs rendered from it."
   ],
   "non_goals": [
-    "Any change to how `signup` decides it is paused, to healthz fields, to alert keys or to the `signup_paused` error code; a default expiry on a tool-set pause; scheduled or per-source pauses; any synthorg change; hand-editing www/llms.txt."
+    "A full VACUUM; purging explicit synthetic sign-ups or any tenant outside the two-marker class; deleting or rewriting a text column that carries a namespace; blocking the keyless inflow; a fleet-dash field for the purge; the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -73,40 +73,45 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_schema_change": "No migration, schema change or new env var: the tool only writes the file `SignupPause::status` already reads."
+      "one_migration": "One migration at the next free number, CREATE INDEX IF NOT EXISTS and namespace_tombstones only; no table rebuild; foreign_keys stays as it is.",
+      "no_full_vacuum": "No VACUUM anywhere in the sweep; incremental_vacuum(PURGE_VACUUM_PAGES) per batch."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the mtproof kill_switch link refuse on every chain run?",
-      "a": "Its preflight requires admin.signup_pause in the admin tools/list, and the tool does not exist."
+      "q": "Why does the synthetic expiry policy leave 17,159 idle rows on prod?",
+      "a": "The policy floor is a selector term and no implicit synthetic tenant was minted after it."
     },
     {
       "why": 2,
-      "q": "Why does the tool not exist?",
-      "a": "PRD-mcphost-signup-kill-switch-and-source listed it as requirement 8 (P2) with no acceptance criterion."
+      "q": "Why does nothing delete a synthetic tenant?",
+      "a": "The policy only disables; the delete path existed for the external policy alone."
     },
     {
       "why": 3,
-      "q": "Why did a missing AC let the requirement go unbuilt?",
-      "a": "The builder derives its tests from ACs, so a requirement without one is never proven nor demanded."
+      "q": "Why not extend the external purge as is?",
+      "a": "Synthetic subjects have entangled rows in 23 tables, 26 foreign keys lack an index and one sweep cannot finish inside a request window."
     },
     {
       "why": 4,
-      "q": "Why can an operator not just touch the file?",
-      "a": "The probe cannot ssh and Joe off a shell has no path to the data dir; SignupPause had no writer."
+      "q": "Why must the first sweep only report?",
+      "a": "A delete on this scale cannot be undone without a restore, so the numbers and cross-references are read before anything is removed."
     }
   ],
-  "created_at": "2026-11-02T00:00:00Z",
+  "created_at": "2026-11-03T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Which error code do argument-validation failures carry?",
-      "resolution": "`invalid_params` via AppError::InvalidParams, not the descriptor precheck's `args_invalid`, so the descriptor declares types only and the handler enforces the 1..=512 byte, one-line and future-`until` rules."
+      "question": "Which test decides the R1 gate?",
+      "resolution": "json_type on $.synthetic_implicit_tenants.purge_due_unix, not LIKE, because the external block already carries pre_floor.purge_due_unix."
     },
     {
-      "question": "Is a resume that removed no file still audited?",
-      "resolution": "Yes: AC7 counts one `signup_resume` row per resume call, so the audit arm is unconditional on `changed`."
+      "question": "How does a namespace re-draw reach the callers without changing their signatures?",
+      "resolution": "auth::with_fresh_namespace re-runs the insert with a new draw on namespace_reserved or the UNIQUE conflict on tenants.namespace, at most NAMESPACE_DRAW_LIMIT draws."
+    },
+    {
+      "question": "Does dry_run return any key beyond the six numbers?",
+      "resolution": "No: admin.prune_now with dry_run returns only synthetic_implicit_tenants with would_expire, pre_floor, would_purge, purge_due_unix, cross_refs and held_entangled."
     }
   ]
 }
