@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.125.0 — 2026-11-03
+
+Released by wm-build land: loop: mcphost-admin-signup-pause-tool.
+
 ## v0.124.0 — 2026-11-01
 
 Released by wm-build land: loop: mcphost-lineage-runtime-edge-writers.
