@@ -1027,6 +1027,17 @@ pub fn admin_audit_entry(
             args.get("tenant").and_then(Value::as_str).map(String::from),
             None,
         )),
+        // PRD-mcphost-admin-signup-pause-tool requirement 7: a pause records
+        // its message as the detail; a resume is recorded whether or not a
+        // file existed (the call itself is the operator act).
+        "admin.signup_pause" if args.get("resume").and_then(Value::as_bool) == Some(true) => {
+            Some(("signup_resume".into(), None, None))
+        }
+        "admin.signup_pause" => Some((
+            "signup_pause".into(),
+            None,
+            args.get("message").and_then(Value::as_str).map(String::from),
+        )),
         "admin.mesh.purge" if !dry_run => Some((
             "mesh_purge".into(),
             None,
@@ -1386,6 +1397,89 @@ pub async fn mesh_unfreeze(state: &AppState, args: &Value) -> Result<Value, AppE
         .await?
         .ok_or_else(|| AppError::TenantNotFound(tenant.clone()))?;
     Ok(json!({ "tenant": unfrozen.namespace, "mesh_frozen": false }))
+}
+
+/// `admin.signup_pause`'s longest `message`, in bytes (requirement 1).
+pub const SIGNUP_PAUSE_MESSAGE_MAX_BYTES: usize = 512;
+
+/// Requirement 5: exactly one of `message` / `resume: true`; `message` is 1..=512
+/// bytes on one line; `until` (with `message` only) is in the future. Every
+/// refusal is `invalid_params` naming the field, raised before the file is touched.
+fn validate_signup_pause_args(args: &Value) -> Result<(), AppError> {
+    let invalid = |m: &str| Err(AppError::InvalidParams(m.to_string()));
+    let message = args.get("message");
+    let resume = args.get("resume").and_then(Value::as_bool);
+    match (message, resume) {
+        (Some(_), Some(true)) => return invalid("'message' and 'resume: true' are mutually exclusive; pass exactly one"),
+        (None, Some(true)) => {
+            return if args.get("until").is_some() {
+                invalid("'until' applies to 'message' only, not to 'resume: true'")
+            } else {
+                Ok(())
+            };
+        }
+        (None, Some(false)) => return invalid("'resume' must be true to resume; pass 'message' to pause"),
+        (None, None) => return invalid("exactly one of 'message' or 'resume: true' is required"),
+        _ => {}
+    }
+    let Some(message) = message.and_then(Value::as_str) else {
+        return invalid("'message' must be a string");
+    };
+    if message.is_empty() {
+        return invalid("'message' must not be empty");
+    }
+    if message.contains(['\n', '\r']) {
+        return invalid("'message' must be a single line (no newline)");
+    }
+    if message.len() > SIGNUP_PAUSE_MESSAGE_MAX_BYTES {
+        return invalid(&format!("'message' is {} bytes, over the {SIGNUP_PAUSE_MESSAGE_MAX_BYTES}-byte limit", message.len()));
+    }
+    if let Some(until) = args.get("until") {
+        match until.as_i64() {
+            Some(ts) if ts > crate::state::now_unix() => {}
+            _ => return invalid("'until' must be an integer unix timestamp in the future"),
+        }
+    }
+    Ok(())
+}
+
+/// `admin.signup_pause(message | resume: true, until?)`
+/// (PRD-mcphost-admin-signup-pause-tool requirements 3, 4): the only writer
+/// of the file `SignupPause::status` reads, so a shell operator and an MCP
+/// operator always see one state.
+pub async fn signup_pause(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    validate_signup_pause_args(args)?;
+    let pause = state.signup_pause.clone();
+    if args.get("resume").and_then(Value::as_bool) == Some(true) {
+        let changed = tokio::task::spawn_blocking(move || pause.resume())
+            .await
+            .map_err(|e| AppError::Storage(format!("signup pause task: {e}")))??;
+        return Ok(json!({ "paused": false, "changed": changed }));
+    }
+    let message = arg_str(args, "message")?;
+    let until = args.get("until").and_then(Value::as_i64);
+    let written = message.clone();
+    let status = tokio::task::spawn_blocking(move || {
+        pause.pause(&written, until)?;
+        Ok::<_, AppError>(pause.status())
+    })
+    .await
+    .map_err(|e| AppError::Storage(format!("signup pause task: {e}")))??;
+    // `status()` is read back so the result and `signup`'s own refusal agree;
+    // a concurrent resume between write and read falls back to the default.
+    let retry_after_secs = status
+        .map(|s| s.retry_after_secs)
+        .unwrap_or(crate::state::SIGNUP_PAUSE_DEFAULT_RETRY_AFTER_SECS);
+    let mut out = json!({
+        "paused": true,
+        "changed": true,
+        "message": message,
+        "retry_after_secs": retry_after_secs,
+    });
+    if let Some(ts) = until {
+        out["until"] = json!(ts);
+    }
+    Ok(out)
 }
 
 /// `admin.mesh.purge(older_than_days≥1, dry_run=true|false)` (P0

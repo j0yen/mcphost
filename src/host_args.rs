@@ -85,6 +85,7 @@ pub const SCHEMA_VALID_REFUSALS: &[SchemaValidRefusal] = &[
     SchemaValidRefusal { tool: "host.channel.read", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.oauth.audit", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.oauth.audit_export", pointer: "/until", konst: "", reason: "relational: `until` must not be before `since`", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "admin.signup_pause", pointer: "/until", konst: "", reason: "relational: `until` must be a unix timestamp after the clock now", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.enduser.list", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.enduser.audit", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.connect.start", pointer: "/provider", konst: "", reason: "referential: the providers are the catalog loaded at start", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
@@ -105,7 +106,7 @@ pub const SCHEMA_VALID_REFUSALS: &[SchemaValidRefusal] = &[
 
 /// The `SCHEMA_VALID_REFUSALS.len()` at merge; adding an entry needs this bump,
 /// which review refuses (the residue only shrinks).
-pub const SCHEMA_VALID_REFUSALS_SNAPSHOT: usize = 41;
+pub const SCHEMA_VALID_REFUSALS_SNAPSHOT: usize = 42;
 
 /// PRD-mcphost-schema-shape-agreement R4: one (descriptor `pattern`, handler
 /// check) pair. `pattern` is the `pub const` the owning module also hands the
