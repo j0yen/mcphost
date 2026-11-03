@@ -8,6 +8,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::execw;
+
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -65,7 +67,7 @@ fn run_with_fake_cargo(fail_on: Option<&str>) -> (std::process::Output, String) 
             fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
         }
     }
-    let mut cmd = Command::new(dir.join("scripts/pin-tests.sh"));
+    let mut cmd = execw::script(&dir.join("scripts/pin-tests.sh"));
     cmd.current_dir(&dir).env("CARGO", &fake);
     if let Some(f) = fail_on {
         cmd.env("FAIL_ON", f);
