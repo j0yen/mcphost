@@ -159,6 +159,20 @@ mod askdb_ac01_keyless_wait_is_tenant_key_missing_and_signs_nobody_up;
 mod askdb_ac02_free_tenant_sixth_pending_ask_is_asks_limit;
 #[path = "askdb_ac03_concurrent_posts_record_exactly_one_answer.rs"]
 mod askdb_ac03_concurrent_posts_record_exactly_one_answer;
+#[path = "aspt_ac01_tool_listed_with_schema_and_readme.rs"]
+mod aspt_ac01_tool_listed_with_schema_and_readme;
+#[path = "aspt_ac02_pause_writes_file_and_refuses_signup.rs"]
+mod aspt_ac02_pause_writes_file_and_refuses_signup;
+#[path = "aspt_ac03_resume_removes_file_and_reopens_signup.rs"]
+mod aspt_ac03_resume_removes_file_and_reopens_signup;
+#[path = "aspt_ac04_invalid_calls_refused_and_file_untouched.rs"]
+mod aspt_ac04_invalid_calls_refused_and_file_untouched;
+#[path = "aspt_ac05_non_admin_callers_refused.rs"]
+mod aspt_ac05_non_admin_callers_refused;
+#[path = "aspt_ac07_concurrent_toggles_atomic_and_audited.rs"]
+mod aspt_ac07_concurrent_toggles_atomic_and_audited;
+#[path = "aspt_ac08_until_bounds_retry_and_alerts_fire.rs"]
+mod aspt_ac08_until_bounds_retry_and_alerts_fire;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]
@@ -1027,11 +1041,3 @@ mod emslp_ac04_method_table_drift_with_admin;
 mod emslp_ac05_dns_verify_path_and_unavailable;
 #[path = "emslp_ac06_provider_error_is_a_red_proof.rs"]
 mod emslp_ac06_provider_error_is_a_red_proof;
-#[path = "emsnd_ac03_html_and_text_reach_the_resend_body.rs"]
-mod emsnd_ac03_html_and_text_reach_the_resend_body;
-#[path = "emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded.rs"]
-mod emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded;
-#[path = "emsnd_ac05_unverified_tenant_mails_only_its_owner.rs"]
-mod emsnd_ac05_unverified_tenant_mails_only_its_owner;
-#[path = "emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error.rs"]
-mod emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error;

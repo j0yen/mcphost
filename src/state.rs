@@ -180,6 +180,42 @@ impl SignupPause {
             .unwrap_or(SIGNUP_PAUSE_DEFAULT_RETRY_AFTER_SECS);
         Some(SignupPauseStatus { message, retry_after_secs })
     }
+
+    /// PRD-mcphost-admin-signup-pause-tool requirement 3: writes
+    /// `<message>\n` (plus `until=<ts>\n` when given) to a uniquely named
+    /// temp file beside [`Self::path`] and renames it over the pause file,
+    /// so [`Self::status`] never reads a partial file and an existing
+    /// (hand- or tool-written) file is replaced. Any IO failure (missing
+    /// parent directory, rename error) is `AppError::Storage`; the temp
+    /// file is removed on failure. Blocking: callers run it on the
+    /// blocking pool.
+    pub fn pause(&self, message: &str, until: Option<i64>) -> Result<(), AppError> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+        let mut body = format!("{message}\n");
+        if let Some(ts) = until {
+            body.push_str(&format!("until={ts}\n"));
+        }
+        let mut tmp = self.path.clone().into_os_string();
+        tmp.push(format!(".tmp.{}.{}", std::process::id(), TMP_SEQ.fetch_add(1, Ordering::Relaxed)));
+        let tmp = PathBuf::from(tmp);
+        let written = std::fs::write(&tmp, body).and_then(|()| std::fs::rename(&tmp, &self.path));
+        written.map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            AppError::Storage(format!("signup pause file {}: {e}", self.path.display()))
+        })
+    }
+
+    /// Requirement 4: removes the pause file. `Ok(true)` when a file was
+    /// removed, `Ok(false)` when none existed (idempotent), `Storage` on
+    /// any other IO failure. Blocking, like [`Self::pause`].
+    pub fn resume(&self) -> Result<bool, AppError> {
+        match std::fs::remove_file(&self.path) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(AppError::Storage(format!("signup pause file {}: {e}", self.path.display()))),
+        }
+    }
 }
 
 #[derive(Clone)]

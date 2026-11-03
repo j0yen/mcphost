@@ -16,6 +16,8 @@ mod exprf;
 #[path = "support/serve.rs"]
 mod serve;
 
+#[path = "aspt_ac06_resume_idempotent_and_io_failure_is_storage.rs"]
+mod aspt_ac06_resume_idempotent_and_io_failure_is_storage;
 #[path = "cproc_ac04_stalled_child_fails_within_deadline_and_is_reaped.rs"]
 mod cproc_ac04_stalled_child_fails_within_deadline_and_is_reaped;
 #[path = "cproc_ac05_ready_deadline_is_the_host_aware_timeout.rs"]
