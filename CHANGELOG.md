@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.127.0 — 2026-11-03
+
+Released by wm-build land: loop: mcphost-synthetic-tenant-purge.
+
 ## v0.126.1 — 2026-11-03
 
 Released by wm-build land: loop: mcphost-invalid-spec-message-carries-fix.

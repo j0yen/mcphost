@@ -44,6 +44,14 @@ mod heal_ac02_dry_run_writes_would_run;
 mod ntfyb_ac03_webhook_retries_to_delivered_or_failed;
 #[path = "support_ac05_support_url_rendered_or_not_configured.rs"]
 mod support_ac05_support_url_rendered_or_not_configured;
+#[path = "tenp_ac01_batched_purge_under_load_exactly_once.rs"]
+mod tenp_ac01_batched_purge_under_load_exactly_once;
+#[path = "tenp_ac04_idle_clock_runs_from_the_floor.rs"]
+mod tenp_ac04_idle_clock_runs_from_the_floor;
+#[path = "tenp_ac06_dry_run_report_funnel_count_and_contract_keys.rs"]
+mod tenp_ac06_dry_run_report_funnel_count_and_contract_keys;
+#[path = "tenp_ac07_class_matrix_off_switches_and_namespace_reservation.rs"]
+mod tenp_ac07_class_matrix_off_switches_and_namespace_reservation;
 #[path = "tenx_ac01_idle_synthetic_implicit_tenant_expires.rs"]
 mod tenx_ac01_idle_synthetic_implicit_tenant_expires;
 #[path = "tenx_ac02_window_env_seed_and_floor.rs"]

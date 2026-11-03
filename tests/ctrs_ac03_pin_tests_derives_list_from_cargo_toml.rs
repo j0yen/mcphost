@@ -58,15 +58,13 @@ fn run_with_fake_cargo(fail_on: Option<&str>) -> (std::process::Output, String) 
         ),
     )
     .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        for p in [dir.join("scripts/pin-tests.sh"), fake.clone()] {
-            fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
-        }
-    }
-    let mut cmd = Command::new(dir.join("scripts/pin-tests.sh"));
-    cmd.current_dir(&dir).env("CARGO", &fake);
+    // Both files are run through `bash`, never exec'd: executing a file this
+    // test just wrote races a sibling test thread's fork (which inherits the
+    // still-open write fd) and fails with ETXTBSY ("Text file busy").
+    let mut cmd = Command::new("bash");
+    cmd.arg(dir.join("scripts/pin-tests.sh"))
+        .current_dir(&dir)
+        .env("CARGO", format!("bash {}", fake.display()));
     if let Some(f) = fail_on {
         cmd.env("FAIL_ON", f);
     }
