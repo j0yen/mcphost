@@ -242,6 +242,10 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // "tblurlp-live-script" lane (routes scripts/live/tblurlp_import_live.py
     // to the tblurlp_ac03 proof tests) -- an intended addition since the
     // baseline.
+    // PRD-mcphost-invalid-spec-message-carries-fix added its own
+    // "spmsg-live-script" lane (routes scripts/live/spmsg_ac08.py to the
+    // spmsg_ac06/spmsg_ac07 proof tests) -- an intended addition since the
+    // baseline.
     // hotfix ci-refresh-weights-auto added its own "ci-refresh-weights-auto" lane
     // (routes the refresh-weights workflow, scripts/ci-refresh-weights-auto.sh
     // and its bash test to that test) -- an intended addition since the
@@ -292,6 +296,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "sharing-docs",
             "signup-args-doc-check",
             "spec-fields-doc-check",
+            "spmsg-live-script",
             "tblurlp-live-script",
             "tool-naming",
             "vendor",
@@ -300,7 +305,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
         "only admin-schemas, blobguard-fixtures, capabilities-wire-check, checkcompat-race-soak, child-proc-lint, ci-refresh-weights-auto, ci-test-partition-land, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
          loop-config, oauthconf-data, origin-counts-script, osrx-live-script, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sdk-python, sharing-docs, \
-         spec-fields-doc-check, tblurlp-live-script, tool-naming, vendor, and wasm-fixtures may have been added since \
+         spec-fields-doc-check, spmsg-live-script, tblurlp-live-script, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"
     );
 }

@@ -269,6 +269,10 @@ mod shp_ac05_blast_radius_change_kind_is_an_enum;
 mod shp_ac06_ask_options_are_unique_and_untrimmed;
 #[path = "shp_ac07_contract_carries_new_shape_keywords.rs"]
 mod shp_ac07_contract_carries_new_shape_keywords;
+#[path = "spmsg_ac06_driver_compiles_plans_and_fails_closed.rs"]
+mod spmsg_ac06_driver_compiles_plans_and_fails_closed;
+#[path = "spmsg_ac07_driver_passes_on_test_server.rs"]
+mod spmsg_ac07_driver_passes_on_test_server;
 #[path = "sreg_ac01_registry_single_source.rs"]
 mod sreg_ac01_registry_single_source;
 #[path = "statusfeed_ac11_deferral_is_justified.rs"]

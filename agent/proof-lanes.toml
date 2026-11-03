@@ -467,6 +467,15 @@ required_commands = [
 ]
 
 [[lane]]
+id = "spmsg-live-script"
+description = "PRD-mcphost-invalid-spec-message-carries-fix: scripts/live/spmsg_ac08.py, the live driver that signs up a synthorg-marked tenant, publishes an http spec without method, reads only the refusal message, parses the minimal spec out of it, republishes, removes and offboards, run against prod from the build host (AC8, Live). Its --plan mode and fail-closed exit are proven offline by spmsg_ac06 and the whole flow against the in-process TestServer by spmsg_ac07. Given its own lane since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the tblurlp-live-script lane)."
+globs = ["scripts/live/spmsg_ac08.py"]
+required_commands = [
+  "cargo test --workspace spmsg_ac06",
+  "cargo test --workspace spmsg_ac07",
+]
+
+[[lane]]
 id = "origin-counts-script"
 description = "PRD-mcphost-external-class-positive-evidence: scripts/ops/origin-counts.py, the counts-only read-only origin tally the operator runs on mcphost-1 (AC8, Live). Added project-locally: the scaffold has no lane for operator scripts; the script's six counts are proven equal to /healthz by the AC6 test, and its origin list equal to the Rust enum by the AC7 test."
 globs = ["scripts/ops/origin-counts.py"]

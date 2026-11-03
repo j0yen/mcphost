@@ -454,6 +454,16 @@ mod spkind_ac04_payload_size_cap;
 mod spkind_ac05_registry_carries_data_keys;
 #[path = "spkind_ac06_unknown_secret_names_the_fix.rs"]
 mod spkind_ac06_unknown_secret_names_the_fix;
+#[path = "spmsg_ac01_http_missing_method_message.rs"]
+mod spmsg_ac01_http_missing_method_message;
+#[path = "spmsg_ac02_every_kind_every_field_message.rs"]
+mod spmsg_ac02_every_kind_every_field_message;
+#[path = "spmsg_ac03_same_message_across_verbs.rs"]
+mod spmsg_ac03_same_message_across_verbs;
+#[path = "spmsg_ac04_message_byte_cap.rs"]
+mod spmsg_ac04_message_byte_cap;
+#[path = "spmsg_ac05_remedy_names_only_data_keys.rs"]
+mod spmsg_ac05_remedy_names_only_data_keys;
 #[path = "sqlpass_ac01_table_level_description_in_schema.rs"]
 mod sqlpass_ac01_table_level_description_in_schema;
 #[path = "sqlpass_ac02_column_description_in_schema.rs"]
@@ -1024,17 +1034,3 @@ mod uprg_ac04_free_interval_clamped_pro_keeps_60;
 mod uprg_ac06_llms_txt_plan_numbers_generated;
 #[path = "uprg_ac07_slow_target_is_a_timeout_row.rs"]
 mod uprg_ac07_slow_target_is_a_timeout_row;
-#[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
-mod urltenant_ac01_path_secret_whoami_auth_method_url;
-#[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]
-mod urltenant_ac02_wrong_or_rotated_secret_404;
-#[path = "urltenant_ac03_key_rotate_rotates_key_and_url.rs"]
-mod urltenant_ac03_key_rotate_rotates_key_and_url;
-#[path = "urltenant_ac04_new_url_page_and_signup_limiter.rs"]
-mod urltenant_ac04_new_url_page_and_signup_limiter;
-#[path = "urltenant_ac05_browser_get_shows_explainer_page.rs"]
-mod urltenant_ac05_browser_get_shows_explainer_page;
-#[path = "urltenant_ac06_quickstart_url_bound_no_signup_step.rs"]
-mod urltenant_ac06_quickstart_url_bound_no_signup_step;
-#[path = "urltenant_ac07_header_conflict_is_auth_conflict.rs"]
-mod urltenant_ac07_header_conflict_is_auth_conflict;

@@ -2455,6 +2455,17 @@
       "AC5": "tests/spkind_ac05_registry_carries_data_keys.rs",
       "AC6": "tests/spkind_ac06_unknown_secret_names_the_fix.rs"
     },
+    "spmsg": {
+      "_prd": "PRD-mcphost-invalid-spec-message-carries-fix.md (test_prefix: spmsg)",
+      "AC1": "tests/spmsg_ac01_http_missing_method_message.rs",
+      "AC2": "tests/spmsg_ac02_every_kind_every_field_message.rs",
+      "AC3": "tests/spmsg_ac03_same_message_across_verbs.rs",
+      "AC4": "tests/spmsg_ac04_message_byte_cap.rs",
+      "AC5": "tests/spmsg_ac05_remedy_names_only_data_keys.rs",
+      "AC6": "tests/spmsg_ac06_driver_compiles_plans_and_fails_closed.rs",
+      "AC7": "tests/spmsg_ac07_driver_passes_on_test_server.rs",
+      "AC8": "deferred: Live (prod /mcp from the build host; evidence: ~/.local/state/mcphost-live/spmsg-ac08-results.jsonl)"
+    },
     "actforlive": {
       "_prd": "PRD-mcphost-acting-for-live-proof.md (test_prefix: actforlive)",
       "AC1": "tests/actforlive_ac01_control_verbs_uncounted.rs",
