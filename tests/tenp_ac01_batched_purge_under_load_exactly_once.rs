@@ -193,7 +193,7 @@ async fn tenp_ac01_batched_purge_under_load_exactly_once() {
         let busy = blocks.iter().filter(|b| b["busy"] == true).count();
         let ran: Vec<&Value> = blocks.iter().filter(|b| b["busy"] != true).collect();
         assert_eq!(busy + ran.len(), 2);
-        assert!(ran.len() >= 1, "one sweep always runs: {blocks:?}");
+        assert!(!ran.is_empty(), "one sweep always runs: {blocks:?}");
         let ran = ran[0];
         let purged = ran["purged"].as_i64().expect("purged");
         if pairs_run == 0 {
