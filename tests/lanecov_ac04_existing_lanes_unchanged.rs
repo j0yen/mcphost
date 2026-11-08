@@ -254,6 +254,10 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // "origin-counts-script" lane (routes scripts/ops/origin-counts.py to the
     // AC6 and AC7 proof tests) -- an intended addition since the baseline, not
     // drift.
+    // PRD-mcphost-sandbox-timeout-clamp-live-probe added its own
+    // "timeout-clamp-live-script" lane (routes scripts/live/timeout-clamp.sh
+    // to the stclp_ac proof tests) -- an intended addition since the
+    // baseline, not drift.
     assert_eq!(
         added,
         vec![
@@ -298,6 +302,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "spec-fields-doc-check",
             "spmsg-live-script",
             "tblurlp-live-script",
+            "timeout-clamp-live-script",
             "tool-naming",
             "vendor",
             "wasm-fixtures",

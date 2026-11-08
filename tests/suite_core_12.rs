@@ -29,8 +29,6 @@ mod tcpn;
 mod timp;
 #[path = "support/tssdk.rs"]
 mod tssdk;
-#[path = "support/uprg.rs"]
-mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
@@ -532,6 +530,18 @@ mod statusfeed_ac07_prune_keeps_rollup;
 mod statusfeed_ac08_status_html_renders;
 #[path = "statusfeed_ac10_component_days_query.rs"]
 mod statusfeed_ac10_component_days_query;
+#[path = "stclp_ac01_selftest_passes.rs"]
+mod stclp_ac01_selftest_passes;
+#[path = "stclp_ac02_usage_and_missing_tool.rs"]
+mod stclp_ac02_usage_and_missing_tool;
+#[path = "stclp_ac03_key_hygiene_through_the_shim.rs"]
+mod stclp_ac03_key_hygiene_through_the_shim;
+#[path = "stclp_ac04_warning_in_json_and_sse.rs"]
+mod stclp_ac04_warning_in_json_and_sse;
+#[path = "stclp_ac05_unreachable_signup.rs"]
+mod stclp_ac05_unreachable_signup;
+#[path = "stclp_ac07_no_warning_is_an_error_with_receipt.rs"]
+mod stclp_ac07_no_warning_is_an_error_with_receipt;
 #[path = "stgl_ac01_grantee_list_names_group_share.rs"]
 mod stgl_ac01_grantee_list_names_group_share;
 #[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]
@@ -1022,15 +1032,3 @@ mod upgrade_ac05_billing_status_receipt;
 mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
 #[path = "upgrade_ac07_admin_upgrades_listing.rs"]
 mod upgrade_ac07_admin_upgrades_listing;
-#[path = "uprg_ac01_one_call_creates_probe_status_schedule.rs"]
-mod uprg_ac01_one_call_creates_probe_status_schedule;
-#[path = "uprg_ac02_status_tool_returns_readable_table.rs"]
-mod uprg_ac02_status_tool_returns_readable_table;
-#[path = "uprg_ac03_bad_urls_refused_nothing_created.rs"]
-mod uprg_ac03_bad_urls_refused_nothing_created;
-#[path = "uprg_ac04_free_interval_clamped_pro_keeps_60.rs"]
-mod uprg_ac04_free_interval_clamped_pro_keeps_60;
-#[path = "uprg_ac06_llms_txt_plan_numbers_generated.rs"]
-mod uprg_ac06_llms_txt_plan_numbers_generated;
-#[path = "uprg_ac07_slow_target_is_a_timeout_row.rs"]
-mod uprg_ac07_slow_target_is_a_timeout_row;

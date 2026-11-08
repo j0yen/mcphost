@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.127.1 — 2026-11-08
+
+Released by wm-build land: loop: mcphost-sandbox-timeout-clamp-live-probe.
+
 ## v0.126.1 — 2026-11-03
 
 Released by wm-build land: loop: mcphost-invalid-spec-message-carries-fix.
