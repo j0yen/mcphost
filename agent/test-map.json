@@ -2636,6 +2636,16 @@
       "AC6": "tests/linrt_ac06_concurrent_runs_write_one_edge_per_table.rs",
       "AC7": "tests/linrt_ac07_dry_runs_and_refusals_write_nothing.rs",
       "AC8": "deferred: Live (prod; evidence: mcphost-1 healthz version after deploy plus the trace and self_offboard responses in the receipt under docs/receipts/)"
+    },
+    "stclp": {
+      "_prd": "PRD-mcphost-sandbox-timeout-clamp-live-probe.md (test_prefix: stclp)",
+      "AC01": "tests/stclp_ac01_selftest_passes.rs",
+      "AC02": "tests/stclp_ac02_usage_and_missing_tool.rs",
+      "AC03": "tests/stclp_ac03_key_hygiene_through_the_shim.rs",
+      "AC04": "tests/stclp_ac04_warning_in_json_and_sse.rs",
+      "AC05": "tests/stclp_ac05_unreachable_signup.rs",
+      "AC07": "tests/stclp_ac07_no_warning_is_an_error_with_receipt.rs",
+      "AC6": "deferred: Live (prod; evidence: bash scripts/live/timeout-clamp.sh https://mcphost.dev exits 0 with status: ok, warning: timeout_s 45 -> 30 free, offboarded: tenant_disabled)"
     }
   }
 }
