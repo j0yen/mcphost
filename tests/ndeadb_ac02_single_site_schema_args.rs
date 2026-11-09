@@ -78,6 +78,22 @@ fn ndeadb_ac02_every_emitted_tool_has_its_args_in_the_schema() {
         for err in &errors {
             let next = err.next_call(ctx);
             let canonical = mcphost::tool_aliases::resolve(next.tool).unwrap_or(next.tool);
+            // PRD-mcphost-refusals-name-the-nearest-move R4 revises this
+            // contract for `signup`: `tenant_key_invalid` now names
+            // `signup {handoff: true}`. `signup` is a listed tool but not a
+            // `host_tool_descriptors` row; its arguments are the rows of
+            // `control::SIGNUP_ARGS`, the table its descriptor is built from.
+            if canonical == "signup" {
+                for key in next.args.as_object().expect("args is an object").keys() {
+                    assert!(
+                        mcphost::control::SIGNUP_ARGS.iter().any(|a| a.name == key),
+                        "{} -> signup arg '{key}' is not a SIGNUP_ARGS row",
+                        err.code()
+                    );
+                }
+                checked += 1;
+                continue;
+            }
             let tool = descriptors
                 .iter()
                 .find(|t| t.name.as_ref() == canonical)

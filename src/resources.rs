@@ -298,6 +298,7 @@ fn is_missing(e: &AppError) -> bool {
     matches!(
         e,
         AppError::Structured { code: crate::tables::TABLE_NOT_FOUND | crate::docs::DOCS_NOT_FOUND | crate::runs::RUN_NOT_FOUND, .. } | AppError::ToolNotFound(_)
+            | AppError::ToolNotFoundNear { .. }
     )
 }
 

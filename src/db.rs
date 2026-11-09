@@ -9479,6 +9479,44 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-refusals-name-the-nearest-move R1: what the public catalog
+    /// holds under a name a caller just missed -- `exact`, the count of public
+    /// tools of enabled owners whose bare name or `<owner_ns>.<name>` equals
+    /// `requested`, and `names`, up to 50 `<owner_ns>.<name>` entries whose
+    /// bare name contains `local`, so a mistyped shared name can still find
+    /// its public share. The same visibility filter as `search_catalog`
+    /// (public, enabled owner, synthetic owners only for a synthetic caller);
+    /// nothing a caller could not already list.
+    pub async fn catalog_probe(
+        &self,
+        requested: String,
+        local: String,
+        include_synthetic: bool,
+    ) -> Result<(i64, Vec<String>), AppError> {
+        self.with_conn(move |conn| {
+            let visible = "tools.visibility = 'public' AND tenants.disabled = 0 \
+                 AND (?3 = 1 OR (tenants.synthetic IS NULL AND tenants.origin != 'synthetic'))";
+            let exact: i64 = conn.query_row(
+                &format!(
+                    "SELECT COUNT(*) FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
+                     WHERE {visible} AND (tools.name = ?1 OR tenants.namespace || '.' || tools.name = ?1)"
+                ),
+                params![requested, local, include_synthetic],
+                |r| r.get(0),
+            )?;
+            let pattern = format!("%{}%", local.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
+            let mut stmt = conn.prepare(&format!(
+                "SELECT tenants.namespace || '.' || tools.name FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
+                 WHERE {visible} AND tools.name LIKE ?2 ESCAPE '\\' ORDER BY tenants.namespace, tools.name LIMIT 50"
+            ))?;
+            let names = stmt
+                .query_map(params![requested, pattern, include_synthetic], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((exact, names))
+        })
+        .await
+    }
+
     pub async fn list_tools(&self, tenant_id: i64) -> Result<Vec<ToolRow>, AppError> {
         self.with_conn(move |conn| {
             let sql = format!("SELECT {TOOL_COLUMNS} FROM tools WHERE tenant_id = ?1 ORDER BY name");

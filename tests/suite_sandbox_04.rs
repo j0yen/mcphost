@@ -18,6 +18,8 @@ mod rgpt;
 #[path = "support/whin.rs"]
 mod whin;
 
+#[path = "qdiag_ac09_python_bridge_query_stats.rs"]
+mod qdiag_ac09_python_bridge_query_stats;
 #[path = "retshape_ac03_list_access_is_a_named_will_fail.rs"]
 mod retshape_ac03_list_access_is_a_named_will_fail;
 #[path = "retshape_ac04_envelope_behaves_as_plain_dict.rs"]

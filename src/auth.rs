@@ -45,8 +45,14 @@ pub fn generate_namespace() -> String {
 /// tenant keys -- one hashing convention, not two) hashed, never in the
 /// clear (see `db::Db::create_handoff_token`).
 pub fn generate_handoff_token() -> String {
-    format!("ho_{}", generate_key())
+    format!("{HANDOFF_TOKEN_PREFIX}{}", generate_key())
 }
+
+/// The prefix [`generate_handoff_token`] puts on every handoff token --
+/// distinct from a tenant key's `t_` and a sub-key's [`SUB_KEY_PREFIX`], so
+/// a token passed where a key belongs is recognisable without looking it up
+/// (PRD-mcphost-refusals-name-the-nearest-move R4).
+pub const HANDOFF_TOKEN_PREFIX: &str = "ho_";
 
 /// PRD-mcphost-url-bound-tenants requirement 2: a tenant's secret-URL
 /// token -- 26-character Crockford base32 (same alphabet/packing

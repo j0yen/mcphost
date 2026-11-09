@@ -873,7 +873,7 @@ export class InvalidParams extends MCPHostError {
 }
 
 export class InvalidSpec extends MCPHostError {
-  static readonly dataKeys: readonly string[] = ["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names", "received_type"];
+  static readonly dataKeys: readonly string[] = ["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names", "received_type", "defs_found"];
   constructor(message: string, data: ErrorData = {}) {
     super("invalid_spec", message, data);
   }
@@ -1652,6 +1652,7 @@ export class TenantDisabled extends MCPHostError {
 }
 
 export class TenantKeyInvalid extends MCPHostError {
+  static readonly dataKeys: readonly string[] = ["hint"];
   constructor(message: string, data: ErrorData = {}) {
     super("tenant_key_invalid", message, data);
   }
@@ -1748,6 +1749,7 @@ export class ToolMissing extends MCPHostError {
 }
 
 export class ToolNotFound extends MCPHostError {
+  static readonly dataKeys: readonly string[] = ["nearest", "did_you_mean", "tools_published", "catalog_matches"];
   constructor(message: string, data: ErrorData = {}) {
     super("tool_not_found", message, data);
   }

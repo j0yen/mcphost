@@ -32,6 +32,10 @@ mod tssdk;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "refst_ac01_unimplemented_method_status_by_revision.rs"]
+mod refst_ac01_unimplemented_method_status_by_revision;
+#[path = "refst_ac03_refusal_status_rule_and_batch.rs"]
+mod refst_ac03_refusal_status_rule_and_batch;
 #[path = "refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs"]
 mod refusals_ac01_oversize_body_is_a_413_json_rpc_error;
 #[path = "refusals_ac02_tool_not_found_names_the_implicit_tenant.rs"]
