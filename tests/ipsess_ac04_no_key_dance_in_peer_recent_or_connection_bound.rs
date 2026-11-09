@@ -1,9 +1,14 @@
 //! PRD-mcphost-implicit-signup-per-session-not-per-peer
 //! AC4 (P0) -- Given every `Reason` variant, When each error's `message` and
 //! `data.hint` are rendered, Then the PeerRecent and ConnectionBound texts
-//! contain neither `pass the key` nor `tenant_key argument`, the Anonymous
-//! text is byte-identical to v0.118.8, and `errors.json` (the `error_registry`
+//! never say `pass the key that signup returned`, the Anonymous text is
+//! byte-identical to v0.118.8, and `errors.json` (the `error_registry`
 //! generator) lists the three hints under `tenant_key_missing.reasons`.
+//!
+//! Revised by PRD-mcphost-implicit-signup-key-in-hand R3/AC4: the PeerRecent
+//! text now names `onboarding.tenant_key`, the `tenant_key` argument and
+//! `initialize` (a sessionless client holds the value); ConnectionBound keeps
+//! naming a session or a tenant URL and never the argument.
 
 use crate::common::TestServer;
 use mcphost::errors::{AppError, Reason, connection_hint};
@@ -25,9 +30,15 @@ fn ipsess_ac04_texts_name_a_session_or_a_tenant_url_never_the_key() {
         let hint = err.data.as_ref().and_then(|d| d["hint"].as_str()).unwrap_or_default().to_string();
         assert!(!hint.is_empty(), "{wire}: a hint is rendered");
         for (label, text) in [("message", err.message.to_string()), ("hint", hint)] {
-            assert!(!text.contains("pass the key"), "{wire} {label}: {text}");
-            assert!(!text.contains("tenant_key argument"), "{wire} {label}: {text}");
-            assert!(text.contains("tenant URL") || text.contains("/t/"), "{wire} {label} names a remedy: {text}");
+            assert!(!text.contains("pass the key that signup returned"), "{wire} {label}: {text}");
+            if wire == "peer_recent" {
+                assert!(text.contains("onboarding.tenant_key"), "{wire} {label}: {text}");
+                assert!(text.contains("tenant_key argument"), "{wire} {label}: {text}");
+                assert!(text.contains("initialize"), "{wire} {label}: {text}");
+            } else {
+                assert!(!text.contains("tenant_key argument"), "{wire} {label}: {text}");
+                assert!(text.contains("tenant URL") || text.contains("/t/"), "{wire} {label} names a remedy: {text}");
+            }
         }
     }
 }
@@ -58,8 +69,9 @@ async fn ipsess_ac04() {
     assert_eq!(hint_of("connection_bound"), connection_hint("<namespace>"));
     assert_eq!(hint_of("peer_recent"), mcphost::errors::PEER_RECENT_HINT);
     for wire in ["connection_bound", "peer_recent"] {
-        assert!(!hint_of(wire).contains("pass the key"), "{wire}");
-        assert!(!hint_of(wire).contains("tenant_key argument"), "{wire}");
+        assert!(!hint_of(wire).contains("pass the key that signup returned"), "{wire}");
     }
+    assert!(!hint_of("connection_bound").contains("tenant_key argument"));
+    assert!(hint_of("peer_recent").contains("onboarding.tenant_key"));
     assert_eq!(json!(reasons.len()), json!(3));
 }

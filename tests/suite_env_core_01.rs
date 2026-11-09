@@ -40,6 +40,8 @@ mod flakelint_ac05_env_guard_race;
 mod flakelint_ac07_full_lint_pass_and_env_suites;
 #[path = "heal_ac02_dry_run_writes_would_run.rs"]
 mod heal_ac02_dry_run_writes_would_run;
+#[path = "kih_ac06_journal_contract_and_instructions_state_the_rule.rs"]
+mod kih_ac06_journal_contract_and_instructions_state_the_rule;
 #[path = "ntfyb_ac03_webhook_retries_to_delivered_or_failed.rs"]
 mod ntfyb_ac03_webhook_retries_to_delivered_or_failed;
 #[path = "support_ac05_support_url_rendered_or_not_configured.rs"]

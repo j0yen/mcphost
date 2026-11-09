@@ -2646,6 +2646,17 @@
       "AC05": "tests/stclp_ac05_unreachable_signup.rs",
       "AC07": "tests/stclp_ac07_no_warning_is_an_error_with_receipt.rs",
       "AC6": "deferred: Live (prod; evidence: bash scripts/live/timeout-clamp.sh https://mcphost.dev exits 0 with status: ok, warning: timeout_s 45 -> 30 free, offboarded: tenant_disabled)"
+    },
+    "kih": {
+      "_prd": "PRD-mcphost-implicit-signup-key-in-hand.md (test_prefix: kih)",
+      "AC1": "tests/kih_ac01_envelope_hands_a_sessionless_client_its_key.rs",
+      "AC2": "tests/kih_ac02_the_handed_key_runs_as_the_minted_tenant.rs",
+      "AC3": "tests/kih_ac03_sessionless_neighbours_mint_up_to_the_cap.rs",
+      "AC4": "tests/kih_ac04_refusal_text_names_the_field_the_argument_and_initialize.rs",
+      "AC5": "tests/kih_ac05_yield_and_release_branches_keep_their_answers.rs",
+      "AC6": "tests/kih_ac06_journal_contract_and_instructions_state_the_rule.rs",
+      "AC7": "tests/kih_ac07_two_sessionless_clients_driver_runs_in_the_suite.rs",
+      "AC8": "deferred: Live (prod; evidence: python3 -I tests/live/kih_ac08_two_sessionless_clients.py https://mcphost.dev/mcp prints kih_ac08 A=offboarded B=offboarded rc=0)"
     }
   }
 }

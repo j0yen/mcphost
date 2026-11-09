@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.128.0 — 2026-11-09
+
+Released by wm-build land: loop: mcphost-implicit-signup-key-in-hand.
+
 ## v0.127.1 — 2026-11-08
 
 Released by wm-build land: loop: mcphost-sandbox-timeout-clamp-live-probe.
