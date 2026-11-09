@@ -8454,9 +8454,18 @@ impl McpHostHandler {
         // timeout or a panic deletes the tenant it created and tells the caller how
         // to get a key.
         use futures_util::FutureExt as _;
+        // PRD-mcphost-implicit-signup-key-in-hand R1: a client that presented no
+        // server-issued session id cannot be recognised on its next call, so its
+        // first response hands it the key; a session-presenting client is served
+        // by the session binding and its `url`.
+        let presented = parts
+            .extensions
+            .get::<crate::session_bind::SessionPresented>()
+            .is_some_and(|p| p.0);
+        let handed_key = (!presented).then_some(key.as_str());
         let guarded = std::panic::AssertUnwindSafe(tokio::time::timeout(
             self.state.call_timeout,
-            self.implicit_after_mint(ctx, &tenant, session_id, name, args),
+            self.implicit_after_mint(ctx, &tenant, session_id, handed_key, name, args),
         ))
         .catch_unwind()
         .await;
@@ -8465,12 +8474,8 @@ impl McpHostHandler {
                 // R3: a client that presented no server-issued session id has no way
                 // to be recognised on its next call but its peer (IP + User-Agent);
                 // `redeemed_peers` is the memory the refusal block reads.
-                let presented = parts
-                    .extensions
-                    .get::<crate::session_bind::SessionPresented>()
-                    .is_some_and(|p| p.0);
                 if !presented {
-                    self.state.redeemed_peers.record_at(
+                    self.state.redeemed_peers.record_sessionless_mint_at(
                         &request_peer_key(parts),
                         &tenant.namespace,
                         session_id,
@@ -8485,6 +8490,130 @@ impl McpHostHandler {
         };
         self.rollback_implicit_signup(&tenant, session_id).await;
         Err(err.with_get_a_key(&self.state.public_url))
+    }
+
+    /// PRD-mcphost-implicit-signup-key-in-hand AC2: a call that passes the key
+    /// of the tenant its peer just obtained has adopted it, so the peer record
+    /// has nothing left to hold.
+    fn free_peer_on_key(&self, parts: &http::request::Parts, tenant: &Tenant) {
+        if !self.state.redeemed_peers.is_empty() {
+            self.state.redeemed_peers.forget_if_namespace(&request_peer_key(parts), &tenant.namespace);
+        }
+    }
+
+    /// PRD-mcphost-webhook-inbox-one-call R3 + PRD-mcphost-implicit-signup-key-in-hand
+    /// R2: the peer gate in front of implicit signup. Refuses a key-less call
+    /// from a peer that obtained a tenant recently and may not mint again, or
+    /// admits it; the reservation it returns keeps the mint counted until the
+    /// call ends.
+    async fn peer_recent_gate(
+        &self,
+        parts: &http::request::Parts,
+        body_name: &str,
+        session_id: Option<&str>,
+    ) -> Result<Option<crate::peer_recent::MintReservation>, McpError> {
+        let mut reservation: Option<crate::peer_recent::MintReservation> = None;
+        let peer = request_peer_key(parts);
+        let redeemed_peers = &self.state.redeemed_peers;
+        // PRD-mcphost-implicit-signup-per-session-not-per-peer R2: the gate
+        // holds a request that presented no host-minted session, or the
+        // very session that redeemed. A request presenting a DIFFERENT
+        // host-minted session is another agent behind the same address and
+        // reaches implicit signup. `SessionPresented` is false for a forged
+        // or foreign id (the transport replaced it), so a forged header
+        // never turns the gate off.
+        let presented = parts.extensions.get::<crate::session_bind::SessionPresented>().is_some_and(|p| p.0);
+        let recent = redeemed_peers.state(&peer, now_unix());
+        let yields = recent
+            .as_ref()
+            .is_some_and(|r| presented && r.session_id.as_deref() != session_id);
+        if yields {
+            // R5: the journal splits a yield (a session of its own) from a
+            // refusal (none); neither line names a key or a namespace.
+            tracing::info!(
+                peer_recent_yielded = true,
+                tool = %body_name,
+                "host.* call proceeds to implicit signup: peer redeemed recently but this request presents a different session"
+            );
+        }
+        if !yields && let Some(state) = recent {
+            match self.state.db.find_tenant_by_namespace(state.namespace.clone()).await {
+                Ok(Some(t)) if !t.disabled => {
+                    // PRD-mcphost-implicit-signup-key-in-hand R2: a peer whose
+                    // tenant was minted sessionless was handed its key; a
+                    // sessionless neighbour is served up to the mint cap. A
+                    // redeem always holds: its client has the key already.
+                    if state.sessionless_mint && !presented {
+                        match redeemed_peers.reserve_mint(&peer, now_unix()) {
+                            Ok(admitted) => {
+                                tracing::info!(
+                                    peer_recent_yielded = true,
+                                    session_presented = false,
+                                    mints_in_window = state.mints_in_window,
+                                    tool = %body_name,
+                                    "host.* call proceeds to implicit signup: peer minted recently, below the mint cap, request presented no session"
+                                );
+                                reservation = Some(admitted);
+                            }
+                            Err(capped) => {
+                                return Err(self.peer_recent_refusal(parts, presented, body_name, capped).await);
+                            }
+                        }
+                    } else {
+                        let held = crate::peer_recent::CapReached {
+                            mints_in_window: state.mints_in_window,
+                            retry_after_s: state.retry_after_s,
+                        };
+                        return Err(self.peer_recent_refusal(parts, presented, body_name, held).await);
+                    }
+                }
+                // A self-offboarded or idle-expired tenant no longer blocks a fresh start.
+                Ok(Some(t)) if crate::auth_shape::frees_peer(t.disabled_reason.as_deref()) => {
+                    redeemed_peers.forget(&peer);
+                }
+                Ok(Some(t)) => {
+                    redeemed_peers.forget(&peer);
+                    return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None }.into_error_data_at(Some(&self.state.public_url)));
+                }
+                Ok(None) => redeemed_peers.forget(&peer),
+                Err(e) => return Err(e.into_error_data_at(Some(&self.state.public_url))),
+            }
+        }
+        // A peer with no live record (first call, window elapsed, tenant gone)
+        // is admitted through the same lock, so the cap holds under concurrency.
+        if reservation.is_none() && !presented && !yields {
+            match redeemed_peers.reserve_mint(&peer, now_unix()) {
+                Ok(admitted) => reservation = Some(admitted),
+                Err(capped) => {
+                    return Err(self.peer_recent_refusal(parts, presented, body_name, capped).await);
+                }
+            }
+        }
+        Ok(reservation)
+    }
+
+    /// PRD-mcphost-implicit-signup-key-in-hand R3/R4: the `peer_recent` refusal.
+    /// Journals the decision, counts it, and answers with the counts and the
+    /// seconds until the oldest counted mint leaves the window.
+    async fn peer_recent_refusal(
+        &self,
+        parts: &http::request::Parts,
+        presented: bool,
+        tool: &str,
+        capped: crate::peer_recent::CapReached,
+    ) -> McpError {
+        tracing::warn!(
+            session_presented = presented,
+            mints_in_window = capped.mints_in_window,
+            tool = %tool,
+            "host.* call refused: peer obtained a tenant recently, request presented no session of its own"
+        );
+        self.note_implicit_peer_refused(parts).await;
+        crate::errors::with_peer_recent_counts(
+            AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent).into_error_data_at(Some(&self.state.public_url)),
+            capped,
+            self.state.redeemed_peers.cap(),
+        )
     }
 
     /// R4: one `signup_events` row (kind `implicit_peer_refused`) per R3 refusal,
@@ -8519,6 +8648,7 @@ impl McpHostHandler {
         ctx: &RequestContext<RoleServer>,
         tenant: &Tenant,
         session_id: Option<&str>,
+        handed_key: Option<&str>,
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
@@ -8582,42 +8712,59 @@ impl McpHostHandler {
         // just created the tenant, never on a later call on the same
         // (now session-bound) connection.
         if let Some(obj) = value.as_object_mut() {
-            obj.insert(
-                "onboarding".to_string(),
-                json!({
-                    "tenant": tenant.namespace,
-                    "url": url,
-                    // PRD-mcphost-session-bound-tenant-key P2 requirement 5
-                    // (the note "names the rule"): a later key-less call on
-                    // THIS connection is refused and named, not a second
-                    // implicit signup -- so an agent that reads this once
-                    // never has to discover `tenant_key_missing` the hard
-                    // way.
-                    "note": format!(
-                        "You are now tenant {0}. Save this URL as your mcphost server address; \
-                         it is your credential. Call host.key_rotate if it leaks. Later calls on \
-                         this connection without tenant_key will be refused, not re-signed-up as \
-                         a new tenant -- pass {0}'s own key (or reconnect over the URL above).",
-                        tenant.namespace
-                    ),
-                    // PRD-mcphost-first-call-gift requirement 3 (AC8): this
-                    // session is already URL-bound (the `url` above), so
-                    // `memory_line` carries it rather than falling back to
-                    // `host.whoami`. No `welcome_back` on this same
-                    // response -- this tenant was just created, so it has
-                    // no earlier session (mutually exclusive by
-                    // construction: the outer `auth` this call resolved
-                    // stays `Auth::Anonymous` throughout this function,
-                    // which is exactly what gates `welcome_back` off in
-                    // `call_tool`'s own success handler).
-                    "memory_line": control::memory_line(Some(&url)),
-                    "memory_hint": control::MEMORY_HINT,
-                    // PRD-mcphost-ownership-moment requirement 1 (AC1): the
-                    // same stable claim link `host.whoami` will keep
-                    // reporting until this tenant is claimed.
-                    "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, tenant),
-                }),
-            );
+            // PRD-mcphost-session-bound-tenant-key P2 requirement 5 (the note
+            // "names the rule"): a later key-less call on THIS connection is
+            // refused and named, not a second implicit signup -- so an agent
+            // that reads this once never has to discover `tenant_key_missing`
+            // the hard way. PRD-mcphost-implicit-signup-key-in-hand R1: a
+            // client with no session of its own is told where the key is.
+            let note = if handed_key.is_some() {
+                format!(
+                    "You are now tenant {0}. Save this URL as your mcphost server address; \
+                     it is your credential. Call host.key_rotate if it leaks. This connection \
+                     carries no session, so pass onboarding.tenant_key as the tenant_key \
+                     argument on every later call: a call without tenant_key will be refused, \
+                     not re-signed-up as a new tenant.",
+                    tenant.namespace
+                )
+            } else {
+                format!(
+                    "You are now tenant {0}. Save this URL as your mcphost server address; \
+                     it is your credential. Call host.key_rotate if it leaks. Later calls on \
+                     this connection without tenant_key will be refused, not re-signed-up as \
+                     a new tenant -- pass {0}'s own key (or reconnect over the URL above).",
+                    tenant.namespace
+                )
+            };
+            let mut onboarding = json!({
+                "tenant": tenant.namespace,
+                "url": url,
+                "note": note,
+                // PRD-mcphost-first-call-gift requirement 3 (AC8): this
+                // session is already URL-bound (the `url` above), so
+                // `memory_line` carries it rather than falling back to
+                // `host.whoami`. No `welcome_back` on this same
+                // response -- this tenant was just created, so it has
+                // no earlier session (mutually exclusive by
+                // construction: the outer `auth` this call resolved
+                // stays `Auth::Anonymous` throughout this function,
+                // which is exactly what gates `welcome_back` off in
+                // `call_tool`'s own success handler).
+                "memory_line": control::memory_line(Some(&url)),
+                "memory_hint": control::MEMORY_HINT,
+                // PRD-mcphost-ownership-moment requirement 1 (AC1): the
+                // same stable claim link `host.whoami` will keep
+                // reporting until this tenant is claimed.
+                "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, tenant),
+            });
+            if let (Some(key), Some(fields)) = (handed_key, onboarding.as_object_mut()) {
+                fields.insert("tenant_key".to_string(), json!(key));
+            }
+            obj.insert("onboarding".to_string(), onboarding);
+            // AC 1: the marker a sessionless client branches on, beside the key.
+            if handed_key.is_some() {
+                obj.insert("implicit".to_string(), json!(true));
+            }
         }
         Ok(value)
     }
@@ -12172,8 +12319,10 @@ impl ServerHandler for McpHostHandler {
                  every call after that; no reconnect and no Authorization header is required. \
                  A `host.*` call with no `tenant_key` and no Authorization header, on a \
                  connection that never ran signup, no longer fails `tenant_key_missing` -- it \
-                 implicitly signs that connection up as a new tenant instead; a `tenant_key` \
-                 that doesn't match any tenant still fails `tenant_key_invalid`. ",
+                 implicitly signs that connection up as a new tenant instead; a client that \
+                 sends no `Mcp-Session-Id` finds that tenant's key in the first response's \
+                 `onboarding.tenant_key` and passes it as `tenant_key` on every later call; a \
+                 `tenant_key` that doesn't match any tenant still fails `tenant_key_invalid`. ",
         );
         // The spec-field sentence is generated from the kind registry, never
         // hand-written: it cannot promise `outputs` on a kind that refuses it.
@@ -12846,6 +12995,11 @@ impl McpHostHandler {
             {
                 self.state.tenant_key_arg_memory.bind(sid, tenant.id, now_unix());
             }
+            // PRD-mcphost-implicit-signup-key-in-hand AC2: a client that now
+            // passes the key it was handed no longer needs the peer hold.
+            if let Auth::Tenant(tenant, _) = &auth {
+                self.free_peer_on_key(parts, tenant);
+            }
         }
         // PRD-mcphost-session-bound-tenant-after-signup requirements 1-2
         // (AC1, AC2, AC4, AC5): the last step of the precedence rule. Gated
@@ -12965,6 +13119,10 @@ impl McpHostHandler {
         // left no session to remember. Refuse and name that tenant rather
         // than implicit-signup a second one. The pre-auth names stay served
         // (quickstart is the page that explains the rule).
+        // PRD-mcphost-implicit-signup-key-in-hand R2: held until this call's
+        // implicit signup has run, so concurrent mints from one peer cannot
+        // pass the cap together; dropped with the call.
+        let mut _mint_reservation: Option<crate::peer_recent::MintReservation> = None;
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && (body_name.starts_with("host.") || body_name.starts_with("billing."))
@@ -12974,52 +13132,8 @@ impl McpHostHandler {
             && crate::invites::invite_path_code(parts).is_none()
             && crate::tenant_clients::join_path_code(parts).is_none()
         {
-            let peer = request_peer_key(parts);
-            // PRD-mcphost-implicit-signup-per-session-not-per-peer R2: the gate
-            // holds a request that presented no host-minted session, or the
-            // very session that redeemed. A request presenting a DIFFERENT
-            // host-minted session is another agent behind the same address and
-            // reaches implicit signup. `SessionPresented` is false for a forged
-            // or foreign id (the transport replaced it), so a forged header
-            // never turns the gate off.
-            let presented = parts.extensions.get::<crate::session_bind::SessionPresented>().is_some_and(|p| p.0);
-            let recent = self.state.redeemed_peers.lookup(&peer, now_unix());
-            let yields = recent
-                .as_ref()
-                .is_some_and(|(_, redeemer)| presented && redeemer.as_deref() != session_id.as_deref());
-            if yields {
-                // R5: the journal splits a yield (a session of its own) from a
-                // refusal (none); neither line names a key or a namespace.
-                tracing::info!(
-                    peer_recent_yielded = true,
-                    tool = %body_name,
-                    "host.* call proceeds to implicit signup: peer redeemed recently but this request presents a different session"
-                );
-            }
-            if !yields && let Some((namespace, _)) = recent {
-                match self.state.db.find_tenant_by_namespace(namespace.clone()).await {
-                    Ok(Some(t)) if !t.disabled => {
-                        tracing::warn!(
-                            session_presented = presented,
-                            tool = %body_name,
-                            "host.* call refused: peer just redeemed, request presented no session of its own"
-                        );
-                        Box::pin(self.note_implicit_peer_refused(parts)).await;
-                        return Err(AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent)
-                            .into_error_data_at(Some(&self.state.public_url)));
-                    }
-                    // A self-offboarded or idle-expired tenant no longer blocks a fresh start.
-                    Ok(Some(t)) if crate::auth_shape::frees_peer(t.disabled_reason.as_deref()) => {
-                        self.state.redeemed_peers.forget(&peer);
-                    }
-                    Ok(Some(t)) => {
-                        self.state.redeemed_peers.forget(&peer);
-                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None }.into_error_data_at(Some(&self.state.public_url)));
-                    }
-                    Ok(None) => self.state.redeemed_peers.forget(&peer),
-                    Err(e) => return Err(e.into_error_data_at(Some(&self.state.public_url))),
-                }
-            }
+            // Boxed: its state lives on the heap, not in this call's frame.
+            _mint_reservation = Box::pin(self.peer_recent_gate(parts, &body_name, session_id.as_deref())).await?;
         }
         // PRD-mcphost-invite-links requirement 2 (AC2), requirement 6: a
         // genuinely fresh session on `/i/{code}/mcp` -- no header, no

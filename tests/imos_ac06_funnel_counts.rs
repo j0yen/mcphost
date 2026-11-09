@@ -6,6 +6,9 @@
 //! `implicit_peer_refused` is `{fleet: 1, external: 1}`,
 //! `implicit_tenants_per_peer` max is 2, and `tenant_id` is set on new
 //! implicit `signup_events` rows only (rolled-back and pre-fix rows stay NULL).
+//!
+//! PRD-mcphost-implicit-signup-key-in-hand R2: the host runs with a mint cap of
+//! 1, the setting under which a sessionless peer's second call is refused.
 
 use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured};
@@ -29,6 +32,7 @@ async fn mint(client: &McpClient, ip: &str) -> String {
 #[tokio::test]
 async fn funnel_counts_zero_ok_rollbacks_peer_refusals_and_tenants_per_peer() {
     let server = TestServer::start_with_signup_rate_limit_and_fleet_ips(1000, FLEET_IP).await;
+    server.state.redeemed_peers.set_cap(1);
     let admin = McpClient::with_bearer(&server.base_url, ADMIN_KEY);
 
     // Two implicit tenants from ONE peer (both ran `initialize`): succeeded + disabled.

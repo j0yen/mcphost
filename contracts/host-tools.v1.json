@@ -324,9 +324,11 @@
   },
   "onboarding": {
     "implicit_signup": {
-      "scope": "session"
+      "scope": "session",
+      "sessionless": "tenant_key_in_envelope"
     },
     "peer_recent": {
+      "mint_cap": 50,
       "window_secs": 600
     }
   },

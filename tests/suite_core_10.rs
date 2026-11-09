@@ -744,6 +744,18 @@ mod kconb_ac01_contract_doc_drift_check;
 mod kconb_ac02_host_tools_contract_carries_kind_contracts;
 #[path = "kdr_ac04_page_set_matches_registry.rs"]
 mod kdr_ac04_page_set_matches_registry;
+#[path = "kih_ac01_envelope_hands_a_sessionless_client_its_key.rs"]
+mod kih_ac01_envelope_hands_a_sessionless_client_its_key;
+#[path = "kih_ac02_the_handed_key_runs_as_the_minted_tenant.rs"]
+mod kih_ac02_the_handed_key_runs_as_the_minted_tenant;
+#[path = "kih_ac03_sessionless_neighbours_mint_up_to_the_cap.rs"]
+mod kih_ac03_sessionless_neighbours_mint_up_to_the_cap;
+#[path = "kih_ac04_refusal_text_names_the_field_the_argument_and_initialize.rs"]
+mod kih_ac04_refusal_text_names_the_field_the_argument_and_initialize;
+#[path = "kih_ac05_yield_and_release_branches_keep_their_answers.rs"]
+mod kih_ac05_yield_and_release_branches_keep_their_answers;
+#[path = "kih_ac07_two_sessionless_clients_driver_runs_in_the_suite.rs"]
+mod kih_ac07_two_sessionless_clients_driver_runs_in_the_suite;
 #[path = "kindhonor_ac1_http_kind_honored.rs"]
 mod kindhonor_ac1_http_kind_honored;
 #[path = "kindhonor_ac3_spec_test_reports_kind.rs"]
