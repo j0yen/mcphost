@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use rmcp::ErrorData as McpError;
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, Implementation,
-    ListToolsResult, PaginatedRequestParams, ServerInfo, Tool,
+    ListToolsResult, PaginatedRequestParams, ServerConfig, Tool,
 };
 use rmcp::service::{NotificationContext, Peer, RequestContext};
 use rmcp::{RoleServer, ServerHandler};
@@ -12303,7 +12303,7 @@ impl ServerHandler for McpHostHandler {
     /// That is no longer true on the first such call on a fresh connection
     /// -- it implicitly signs up instead (requirement 1) -- so the prose
     /// says that now.
-    fn get_info(&self) -> ServerInfo {
+    fn get_info(&self) -> ServerConfig {
         let mut instructions = String::from(
             "Call `signup` with a display name to receive a bearer key. Recommended: pass \
                  `handoff: true` to signup instead -- you get a short-lived, single-use \
@@ -12372,7 +12372,7 @@ impl ServerHandler for McpHostHandler {
         // PRD-mcphost-server-capabilities-from-registry requirement 1: the
         // advertisement is generated from `capabilities::CAPABILITIES`, the
         // only place a capability is named.
-        ServerInfo::new(crate::capabilities::server_capabilities())
+        ServerConfig::new(crate::capabilities::server_capabilities())
         // PRD-mcphost-contract-version-reported R4: the crate version with
         // the contract identity as semver build metadata.
         .with_server_info(Implementation::new(

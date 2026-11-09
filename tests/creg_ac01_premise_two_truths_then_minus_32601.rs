@@ -7,7 +7,7 @@
 use crate::common;
 use common::{McpClient, TestServer};
 use rmcp::ServerHandler;
-use rmcp::model::{ServerCapabilities, ServerInfo};
+use rmcp::model::{ServerCapabilities, ServerConfig};
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
@@ -25,8 +25,8 @@ const METHODS: [(&str, &str); 3] = [
 struct StockHandler;
 
 impl ServerHandler for StockHandler {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().enable_tool_list_changed().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_tool_list_changed().build())
     }
 }
 
