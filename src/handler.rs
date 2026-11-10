@@ -12373,6 +12373,7 @@ impl ServerHandler for McpHostHandler {
         // advertisement is generated from `capabilities::CAPABILITIES`, the
         // only place a capability is named.
         ServerConfig::new(crate::capabilities::server_capabilities())
+        .with_protocol_version(crate::http::ADVERTISED_PROTOCOL_VERSION)
         // PRD-mcphost-contract-version-reported R4: the crate version with
         // the contract identity as semver build metadata.
         .with_server_info(Implementation::new(

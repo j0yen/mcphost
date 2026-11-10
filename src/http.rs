@@ -31,19 +31,24 @@ use crate::handler::McpHostHandler;
 use crate::protocol::frames::{SERVER_TIMING_HEADER, SERVER_TIMING_METRIC};
 use crate::state::{AppState, MAX_REQUEST_BODY_BYTES};
 
-/// The `MCP-Protocol-Version` value this server advertises, derived from
-/// `rmcp::model::ProtocolVersion::LATEST` rather than a string literal
-/// (PRD-mcphost-protocol-compat requirement 6): the version this
-/// middleware stamps onto responses must always be the version `rmcp`
-/// actually negotiates, so an `rmcp` upgrade that moves `LATEST` either
-/// moves this advertisement with it or fails requirement 7's test. The
-/// `HeaderValue` is computed once and cached, since `HeaderValue::from_str`
-/// is fallible and `HeaderValue::from_static` needs a `&'static str` we
-/// don't have at compile time.
+/// The one protocol version mcphost advertises: the `MCP-Protocol-Version`
+/// header [`advertised_protocol_version`] stamps onto every response and the
+/// `protocolVersion` of the `initialize` result (`handler::get_info`) both
+/// read it (PRD-mcphost-protocol-compat requirements 6 and 8). It is
+/// `ProtocolVersion::LATEST_WITH_INITIALIZE`, the newest version that still
+/// has an `initialize` handshake and sits below `STANDARD_HEADERS`, so
+/// mcphost's own advertisement never triggers SEP-2243 header validation.
+/// Adopting 2026-07-28 is a separate change.
+pub const ADVERTISED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::LATEST_WITH_INITIALIZE;
+
+/// [`ADVERTISED_PROTOCOL_VERSION`] as a header value, computed once and
+/// cached, since `HeaderValue::from_str` is fallible and
+/// `HeaderValue::from_static` needs a `&'static str` we don't have at compile
+/// time.
 fn advertised_protocol_version() -> Option<&'static HeaderValue> {
     static VALUE: OnceLock<Option<HeaderValue>> = OnceLock::new();
     VALUE
-        .get_or_init(|| HeaderValue::from_str(ProtocolVersion::LATEST.as_str()).ok())
+        .get_or_init(|| HeaderValue::from_str(ADVERTISED_PROTOCOL_VERSION.as_str()).ok())
         .as_ref()
 }
 
