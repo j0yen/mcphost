@@ -1479,7 +1479,7 @@ fn run_query_sync_with_bindings(
     if !stmt.readonly() {
         return Err(query_rejected("statement is not read-only"));
     }
-    let column_names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
+    let column_names: Vec<String> = stmt.column_names().map(str::to_string).collect();
     let mut rows_out = Vec::new();
     let sql_values: Vec<(String, rusqlite::types::Value)> =
         bindings.iter().map(|(k, v)| (k.clone(), json_to_sql_value(v))).collect();
@@ -2293,7 +2293,7 @@ fn referenced_table_names(sql: &str) -> Result<std::collections::HashSet<String>
 /// caller-facing arbitrary SQL string).
 fn select_all_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> {
     let mut stmt = conn.prepare(sql)?;
-    let column_names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
+    let column_names: Vec<String> = stmt.column_names().map(str::to_string).collect();
     let mut out = Vec::new();
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
@@ -2400,7 +2400,7 @@ fn dataset_summary_sync(
     let row_count = row_count_sync(conn, handle)?;
     let column_names: Vec<String> = {
         let stmt = conn.prepare(&format!("SELECT * FROM {} LIMIT 0", quote_ident(handle)))?;
-        stmt.column_names().into_iter().map(str::to_string).collect()
+        stmt.column_names().map(str::to_string).collect()
     };
 
     let mut columns_meta = Vec::with_capacity(column_names.len());
@@ -3147,7 +3147,7 @@ pub async fn handle_export_rows(
         }
         let column_names: Vec<String> = {
             let stmt = conn.prepare(&format!("SELECT * FROM {} LIMIT 0", quote_ident(&handle_owned)))?;
-            stmt.column_names().into_iter().map(str::to_string).collect()
+            stmt.column_names().map(str::to_string).collect()
         };
         let rows = select_all_sync(conn, &format!("SELECT * FROM {}", quote_ident(&handle_owned)))?;
         conn.execute(

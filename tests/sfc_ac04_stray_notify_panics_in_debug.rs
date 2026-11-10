@@ -10,7 +10,7 @@
 //! handler reports over a channel.
 
 use mcphost::protocol::frames::{Frame, emit};
-use rmcp::model::{ListToolsResult, PaginatedRequestParams, ServerInfo};
+use rmcp::model::{ListToolsResult, PaginatedRequestParams, ServerConfig};
 use rmcp::service::RequestContext;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
@@ -26,8 +26,8 @@ struct StrayNotifier {
 }
 
 impl ServerHandler for StrayNotifier {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::default()
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::default()
     }
 
     async fn list_tools(

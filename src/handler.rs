@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use rmcp::ErrorData as McpError;
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, Implementation,
-    ListToolsResult, PaginatedRequestParams, ServerInfo, Tool,
+    ListToolsResult, PaginatedRequestParams, ServerConfig, Tool,
 };
 use rmcp::service::{NotificationContext, Peer, RequestContext};
 use rmcp::{RoleServer, ServerHandler};
@@ -12303,7 +12303,7 @@ impl ServerHandler for McpHostHandler {
     /// That is no longer true on the first such call on a fresh connection
     /// -- it implicitly signs up instead (requirement 1) -- so the prose
     /// says that now.
-    fn get_info(&self) -> ServerInfo {
+    fn get_info(&self) -> ServerConfig {
         let mut instructions = String::from(
             "Call `signup` with a display name to receive a bearer key. Recommended: pass \
                  `handoff: true` to signup instead -- you get a short-lived, single-use \
@@ -12372,7 +12372,8 @@ impl ServerHandler for McpHostHandler {
         // PRD-mcphost-server-capabilities-from-registry requirement 1: the
         // advertisement is generated from `capabilities::CAPABILITIES`, the
         // only place a capability is named.
-        ServerInfo::new(crate::capabilities::server_capabilities())
+        ServerConfig::new(crate::capabilities::server_capabilities())
+        .with_protocol_version(crate::http::ADVERTISED_PROTOCOL_VERSION)
         // PRD-mcphost-contract-version-reported R4: the crate version with
         // the contract identity as semver build metadata.
         .with_server_info(Implementation::new(
@@ -12846,13 +12847,15 @@ impl McpHostHandler {
         let present = parts
             .and_then(|p| p.extensions.get::<crate::session_bind::SessionPresented>())
             .is_some_and(|p| p.0);
-        crate::inband::CallGate::read(
+        let mut gate = crate::inband::CallGate::read(
             self.state.session_bindings.inband(),
             id.as_deref(),
             present,
             ctx.meta.client_capabilities().is_some(),
             now_unix(),
-        )
+        );
+        gate.owner = parts.map(|p| crate::inband::caller_fingerprint(&p.headers, &p.extensions, &p.uri));
+        gate
     }
 
     /// PRD-mcphost-external-class-positive-evidence requirement (b): classify
@@ -12951,7 +12954,15 @@ impl McpHostHandler {
         // tenant_key argument at all (AC1). `None` for every other path, in
         // which case resolution falls through to the pre-existing header
         // path exactly as before this PRD.
-        let path_secret_auth = resolve_path_secret_auth(&self.state, parts, &body_name)
+        // The four credential resolvers below are `Box::pin`'d: awaited inline
+        // each one's future sits in this frame's debug stack, and a forwarded
+        // dotted verb re-enters `call_tool_inner`, so the frame is paid twice.
+        // rmcp 3.9's service-loop frames (`serve_inner`, `handle_request`,
+        // `serve_server_with_ct_inner`) grew ~+30 KiB over 3.3.0 on the same
+        // path; boxing these takes `call:host.whoami` from 1,060,864 B back to
+        // 1,011,712 B (`scripts/fwd-stack-measure.sh`), inside the documented
+        // FORWARD_STACK_BUDGET maximum.
+        let path_secret_auth = Box::pin(resolve_path_secret_auth(&self.state, parts, &body_name))
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
         let via_url_secret = path_secret_auth.is_some();
@@ -12959,7 +12970,7 @@ impl McpHostHandler {
         let mut auth = match path_secret_auth {
             Some(a) => a,
             None => {
-                resolve_auth(&self.state, parts, &mut sub_key, &body_name)
+                Box::pin(resolve_auth(&self.state, parts, &mut sub_key, &body_name))
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
@@ -12981,7 +12992,7 @@ impl McpHostHandler {
         // play for whatever `auth` becomes next.
         let via_tenant_key_arg = matches!(auth, Auth::Anonymous);
         if via_tenant_key_arg {
-            auth = resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key, &body_name)
+            auth = Box::pin(resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key, &body_name))
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
             // PRD-mcphost-session-bound-tenant-key requirement 1: this is
@@ -13014,7 +13025,7 @@ impl McpHostHandler {
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && let Some(session_id) = session_id.as_deref()
-            && let Some(bound) = resolve_session_binding(&self.state, session_id, &body_name)
+            && let Some(bound) = Box::pin(resolve_session_binding(&self.state, session_id, &body_name))
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {

@@ -31,19 +31,24 @@ use crate::handler::McpHostHandler;
 use crate::protocol::frames::{SERVER_TIMING_HEADER, SERVER_TIMING_METRIC};
 use crate::state::{AppState, MAX_REQUEST_BODY_BYTES};
 
-/// The `MCP-Protocol-Version` value this server advertises, derived from
-/// `rmcp::model::ProtocolVersion::LATEST` rather than a string literal
-/// (PRD-mcphost-protocol-compat requirement 6): the version this
-/// middleware stamps onto responses must always be the version `rmcp`
-/// actually negotiates, so an `rmcp` upgrade that moves `LATEST` either
-/// moves this advertisement with it or fails requirement 7's test. The
-/// `HeaderValue` is computed once and cached, since `HeaderValue::from_str`
-/// is fallible and `HeaderValue::from_static` needs a `&'static str` we
-/// don't have at compile time.
+/// The one protocol version mcphost advertises: the `MCP-Protocol-Version`
+/// header [`advertised_protocol_version`] stamps onto every response and the
+/// `protocolVersion` of the `initialize` result (`handler::get_info`) both
+/// read it (PRD-mcphost-protocol-compat requirements 6 and 8). It is
+/// `ProtocolVersion::LATEST_WITH_INITIALIZE`, the newest version that still
+/// has an `initialize` handshake and sits below `STANDARD_HEADERS`, so
+/// mcphost's own advertisement never triggers SEP-2243 header validation.
+/// Adopting 2026-07-28 is a separate change.
+pub const ADVERTISED_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::LATEST_WITH_INITIALIZE;
+
+/// [`ADVERTISED_PROTOCOL_VERSION`] as a header value, computed once and
+/// cached, since `HeaderValue::from_str` is fallible and
+/// `HeaderValue::from_static` needs a `&'static str` we don't have at compile
+/// time.
 fn advertised_protocol_version() -> Option<&'static HeaderValue> {
     static VALUE: OnceLock<Option<HeaderValue>> = OnceLock::new();
     VALUE
-        .get_or_init(|| HeaderValue::from_str(ProtocolVersion::LATEST.as_str()).ok())
+        .get_or_init(|| HeaderValue::from_str(ADVERTISED_PROTOCOL_VERSION.as_str()).ok())
         .as_ref()
 }
 
@@ -2149,6 +2154,17 @@ async fn refuse_unimplemented_methods(
     };
     let doc = serde_json::from_slice::<Value>(&bytes).ok();
     let labels = doc.as_ref().map(RequestLabels::from_doc).unwrap_or_default();
+    // A POSTed client JSON-RPC response that `deliver_client_response` (outside
+    // this layer) did not take is answered `202` here and goes no further:
+    // rmcp 3.6+ answers a stateless POSTed response `400` (#1326, spec
+    // alignment, not RUSTSEC-2026-0461/0462), while the in-band contract
+    // (elib AC6) is `202`, delivered nowhere. Runs after the route's own
+    // gates and after the body limit above; only that one body shape matches.
+    if doc.as_ref().is_some_and(crate::inband::is_lone_client_response) {
+        let mut response = StatusCode::ACCEPTED.into_response();
+        response.extensions_mut().insert(labels);
+        return response;
+    }
     if enabled && let Some(doc) = &doc {
         let header_version = parts
             .headers
@@ -2258,7 +2274,10 @@ async fn deliver_client_response(State(state): State<Arc<AppState>>, req: Reques
         .get::<crate::session_bind::RequestSessionId>()
         .map(|s| s.0.clone());
     let stores = state.session_bindings.inband();
-    let Some(session) = session.filter(|s| req.method() == Method::POST && stores.has_inflight(s)) else {
+    let caller = crate::inband::caller_fingerprint(req.headers(), req.extensions(), req.uri());
+    // Only the credential that made the in-flight call may answer it; any
+    // other POST holding the session id is forwarded and delivers nothing.
+    let Some(session) = session.filter(|s| req.method() == Method::POST && stores.owned_by(s, &caller)) else {
         return next.run(req).await;
     };
     let (parts, body) = req.into_parts();
@@ -2266,7 +2285,7 @@ async fn deliver_client_response(State(state): State<Arc<AppState>>, req: Reques
         return request_body_too_large(&state.public_url, declared_content_length(&parts.headers));
     };
     if let Some((id, answer)) = crate::inband::client_response(&bytes) {
-        stores.deliver(&session, &id, answer);
+        stores.deliver(&session, &id, &caller, answer);
         return StatusCode::ACCEPTED.into_response();
     }
     next.run(Request::from_parts(parts, Body::from(bytes))).await

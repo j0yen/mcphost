@@ -42,6 +42,7 @@ pub struct Outcome {
 pub struct RawClient {
     http: reqwest::Client,
     base: String,
+    path: String,
     key: String,
     /// The session id the server minted at `initialize`.
     pub session: String,
@@ -53,9 +54,14 @@ impl RawClient {
     /// `initialize`s advertising `capabilities`; `echo_session` false plays a
     /// client that never sends `Mcp-Session-Id` back.
     pub async fn open(base: &str, key: &str, capabilities: Value, echo_session: bool) -> Self {
+        Self::open_at(base, "/mcp", key, capabilities, echo_session).await
+    }
+
+    /// [`Self::open`] on another streamable-HTTP route (`/u/<secret>/mcp`, ...).
+    pub async fn open_at(base: &str, path: &str, key: &str, capabilities: Value, echo_session: bool) -> Self {
         let http = reqwest::Client::new();
         let resp = http
-            .post(format!("{base}/mcp"))
+            .post(format!("{base}{path}"))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
             .header("Authorization", format!("Bearer {key}"))
@@ -77,6 +83,7 @@ impl RawClient {
         let me = Self {
             http,
             base: base.to_string(),
+            path: path.to_string(),
             key: key.to_string(),
             session,
             echo_session,
@@ -91,7 +98,7 @@ impl RawClient {
     pub async fn post(&self, body: &Value, name: Option<&str>, session: Option<&str>) -> reqwest::Response {
         let mut req = self
             .http
-            .post(format!("{}/mcp", self.base))
+            .post(format!("{}{}", self.base, self.path))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
             .header("Authorization", format!("Bearer {}", self.key))
