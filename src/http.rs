@@ -2154,6 +2154,17 @@ async fn refuse_unimplemented_methods(
     };
     let doc = serde_json::from_slice::<Value>(&bytes).ok();
     let labels = doc.as_ref().map(RequestLabels::from_doc).unwrap_or_default();
+    // A POSTed client JSON-RPC response that `deliver_client_response` (outside
+    // this layer) did not take is answered `202` here and goes no further:
+    // rmcp 3.6+ answers a stateless POSTed response `400` (#1326, spec
+    // alignment, not RUSTSEC-2026-0461/0462), while the in-band contract
+    // (elib AC6) is `202`, delivered nowhere. Runs after the route's own
+    // gates and after the body limit above; only that one body shape matches.
+    if doc.as_ref().is_some_and(crate::inband::is_lone_client_response) {
+        let mut response = StatusCode::ACCEPTED.into_response();
+        response.extensions_mut().insert(labels);
+        return response;
+    }
     if enabled && let Some(doc) = &doc {
         let header_version = parts
             .headers
@@ -2263,7 +2274,10 @@ async fn deliver_client_response(State(state): State<Arc<AppState>>, req: Reques
         .get::<crate::session_bind::RequestSessionId>()
         .map(|s| s.0.clone());
     let stores = state.session_bindings.inband();
-    let Some(session) = session.filter(|s| req.method() == Method::POST && stores.has_inflight(s)) else {
+    let caller = crate::inband::caller_fingerprint(req.headers(), req.uri().path());
+    // Only the credential that made the in-flight call may answer it; any
+    // other POST holding the session id is forwarded and delivers nothing.
+    let Some(session) = session.filter(|s| req.method() == Method::POST && stores.owned_by(s, &caller)) else {
         return next.run(req).await;
     };
     let (parts, body) = req.into_parts();

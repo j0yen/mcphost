@@ -143,7 +143,24 @@ struct CapInner {
 
 type Answer = Result<Value, Value>;
 
+/// Who a session's in-flight request belongs to: SHA-256 over the caller's
+/// `Authorization` value and the request path (which carries the path secret
+/// or invite code on the `/u`, `/i`, `/o`, `/j` routes). A client answers on
+/// the same URL with the same credential it called with, so a different
+/// credential holding a real session id is a different caller.
+pub type Owner = [u8; 32];
+
+pub fn caller_fingerprint(headers: &http::HeaderMap, path: &str) -> Owner {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(headers.get(http::header::AUTHORIZATION).map_or(&[][..], |v| v.as_bytes()));
+    hash.update([0]);
+    hash.update(path.as_bytes());
+    hash.finalize().into()
+}
+
 struct Slot {
+    owner: Option<Owner>,
     id: Option<RequestId>,
     tx: Option<oneshot::Sender<Answer>>,
 }
@@ -234,13 +251,13 @@ impl InBandStores {
     /// R3: claims the session's one in-band slot, or `None` when it already
     /// has a request in flight (stateless mode gives every call's outbound
     /// request id 0, so a second would be ambiguous) or the route map is full.
-    fn reserve(self: &Arc<Self>, session_id: &str) -> Option<Reservation> {
+    fn reserve(self: &Arc<Self>, session_id: &str, owner: Option<Owner>) -> Option<Reservation> {
         let mut routes = self.routes.lock().ok()?;
         if routes.contains_key(session_id) || routes.len() >= MAX_INFLIGHT_ROUTES {
             return None;
         }
         let (tx, rx) = oneshot::channel();
-        routes.insert(session_id.to_string(), Slot { id: None, tx: Some(tx) });
+        routes.insert(session_id.to_string(), Slot { owner, id: None, tx: Some(tx) });
         Some(Reservation { stores: self.clone(), session: session_id.to_string(), rx })
     }
 
@@ -248,6 +265,13 @@ impl InBandStores {
     /// that keeps every other POST from having its body read).
     pub fn has_inflight(&self, session_id: &str) -> bool {
         self.routes.lock().is_ok_and(|r| r.contains_key(session_id))
+    }
+
+    /// Whether the in-flight request of `session_id` was made by `caller`
+    /// (the cheap test that keeps another credential's POST, holding a real
+    /// session id, from being read or delivered).
+    pub fn owned_by(&self, session_id: &str, caller: &Owner) -> bool {
+        self.routes.lock().is_ok_and(|r| r.get(session_id).is_some_and(|slot| slot.owner.as_ref() == Some(caller)))
     }
 
     /// Delivers a client's JSON-RPC response to the waiter registered under
@@ -310,7 +334,7 @@ pub async fn ask(
     request: ServerRequest,
     wall: Duration,
 ) -> Result<Value, AskError> {
-    let mut reservation = stores.reserve(session_id).ok_or(AskError::Busy)?;
+    let mut reservation = stores.reserve(session_id, current_gate().and_then(|g| g.owner)).ok_or(AskError::Busy)?;
     let handle = peer
         .send_request_with_option(request, PeerRequestOptions::no_options())
         .await
@@ -343,6 +367,21 @@ pub fn client_response(body: &[u8]) -> Option<(RequestId, Answer)> {
     obj.get("error").map(|error| (id, Err(error.clone())))
 }
 
+/// Whether `doc` is exactly one well-formed JSON-RPC response object: the
+/// `"2.0"` marker, a string or integer `id`, no `method`, and exactly one of
+/// `result` / `error`. A batch, a request, a notification, and a body
+/// carrying both `result` and `error` are not (rmcp rejects the last since
+/// 3.6.0 #1283 and keeps doing so).
+pub fn is_lone_client_response(doc: &Value) -> bool {
+    let Some(obj) = doc.as_object() else {
+        return false;
+    };
+    obj.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+        && !obj.contains_key("method")
+        && obj.get("id").is_some_and(|id| serde_json::from_value::<RequestId>(id.clone()).is_ok())
+        && obj.contains_key("result") != obj.contains_key("error")
+}
+
 /// What one `tools/call` may do in-band, read once from the stored
 /// advertisement (R2, R7).
 #[derive(Clone, Debug)]
@@ -353,6 +392,8 @@ pub struct CallGate {
     pub elicit: bool,
     pub sampling: bool,
     pub shape: ElicitShape,
+    /// Who made the call (see [`caller_fingerprint`]); set by the handler.
+    pub owner: Option<Owner>,
 }
 
 impl CallGate {
@@ -374,6 +415,7 @@ impl CallGate {
             elicit: usable && shape.form(),
             sampling: usable && advertised.is_some_and(|a| a.sampling),
             shape,
+            owner: None,
         }
     }
 }
@@ -414,7 +456,7 @@ mod inbandsec_tests {
     use crate::session_bind::SessionBindings;
 
     fn waiter(stores: &Arc<InBandStores>, session: &str, id: i64) -> Reservation {
-        let reservation = stores.reserve(session).expect("slot free");
+        let reservation = stores.reserve(session, None).expect("slot free");
         reservation.bind(RequestId::Number(id as _));
         reservation
     }

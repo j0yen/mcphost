@@ -12847,13 +12847,15 @@ impl McpHostHandler {
         let present = parts
             .and_then(|p| p.extensions.get::<crate::session_bind::SessionPresented>())
             .is_some_and(|p| p.0);
-        crate::inband::CallGate::read(
+        let mut gate = crate::inband::CallGate::read(
             self.state.session_bindings.inband(),
             id.as_deref(),
             present,
             ctx.meta.client_capabilities().is_some(),
             now_unix(),
-        )
+        );
+        gate.owner = parts.map(|p| crate::inband::caller_fingerprint(&p.headers, p.uri.path()));
+        gate
     }
 
     /// PRD-mcphost-external-class-positive-evidence requirement (b): classify
