@@ -176,5 +176,6 @@ pub mod vault;
 pub mod verify;
 pub mod verbforward;
 pub mod peer_recent;
+pub mod nearest;
 pub mod webhook_inbox;
 pub mod webhooks;

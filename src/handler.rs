@@ -7637,6 +7637,129 @@ impl McpHostHandler {
         Ok(caller)
     }
 
+    /// PRD-mcphost-refusals-name-the-nearest-move R1/R2/R6: the one builder of
+    /// every tenant-path `tool_not_found`. Gathers the caller-visible name
+    /// sets (its own tools, the shares it can call, the exact catalog hits, the
+    /// control-plane verbs -- `tenant: None` is the admin bearer, whose
+    /// universe is the `admin.*` names alone), scores them with
+    /// [`crate::nearest::build`] and returns the refusal carrying `nearest`,
+    /// `did_you_mean`, `tools_published`, `catalog_matches` and a `next_call`
+    /// chosen from them. Every lookup is best effort: a failed one empties its
+    /// set (or omits `catalog_matches`) and the refusal is still returned. A
+    /// non-empty `did_you_mean` writes one `record_did_you_mean` row.
+    /// `sent` is the call's own arguments, replayed in a control-plane
+    /// `next_call` with `tenant_key` removed.
+    pub(crate) async fn tool_not_found_near(&self, tenant: Option<&Tenant>, requested: &str, sent: Option<&Value>) -> AppError {
+        self.build_tool_not_found(tenant, requested, sent, true).await
+    }
+
+    /// [`Self::tool_not_found_near`] with the ledger write optional: a dry run
+    /// answers with the same refusal the real call gives and records nothing.
+    async fn build_tool_not_found(
+        &self,
+        tenant: Option<&Tenant>,
+        requested: &str,
+        sent: Option<&Value>,
+        record: bool,
+    ) -> AppError {
+        let sent = crate::nearest::sent_args(sent);
+        let (own, shared, control, catalog_matches) = match tenant {
+            Some(tenant) => {
+                let own: Vec<String> = self
+                    .state
+                    .db
+                    .list_tools(tenant.id)
+                    .await
+                    .map(|rows| rows.into_iter().map(|r| r.name).collect())
+                    .unwrap_or_default();
+                let mut shared: Vec<String> = crate::sharing::visible_shared_tools(&self.state, tenant)
+                    .await
+                    .map(|v| v.into_iter().map(|(o, r)| format!("{}.{}", o.namespace, r.name)).collect())
+                    .unwrap_or_default();
+                let local = requested.rsplit_once('.').map_or(requested, |(_, l)| l);
+                let catalog_matches = match self
+                    .state
+                    .db
+                    .catalog_probe(requested.to_string(), local.to_string(), tenant.is_synthetic_marked())
+                    .await
+                {
+                    Ok((exact, names)) => {
+                        if requested.contains('.') {
+                            for n in names {
+                                if !shared.contains(&n) && !own.contains(&n) {
+                                    shared.push(n);
+                                }
+                            }
+                        }
+                        Some(exact)
+                    }
+                    Err(_) => None,
+                };
+                let control: Vec<String> = canonical_control_plane_names(&self.state.kinds)
+                    .into_iter()
+                    .map(|c| {
+                        crate::tool_aliases::aliases_of(&c)
+                            .into_iter()
+                            .find(|a| a.starts_with("host."))
+                            .map_or(c, str::to_string)
+                    })
+                    .collect();
+                (own, shared, control, catalog_matches)
+            }
+            None => (
+                Vec::new(),
+                Vec::new(),
+                admin_tool_descriptors().into_iter().map(|t| t.name.to_string()).collect(),
+                Some(0),
+            ),
+        };
+        let tools_published = own.len() as i64;
+        let universe = crate::nearest::Universe { own: &own, shared: &shared, control: &control };
+        let mut near = crate::nearest::build(requested, &sent, &universe, tools_published, catalog_matches);
+        if tenant.is_none() && near.did_you_mean.is_empty() {
+            // The admin bearer cannot publish; `host.whoami` is the one control-plane read it holds.
+            near.next_call = json!({"tool": "host.whoami", "args": {}});
+        }
+        let called: String = requested.chars().take(128).collect();
+        tracing::info!(
+            tenant = tenant.map_or("admin", |t| t.namespace.as_str()),
+            requested = %called,
+            did_you_mean = near.did_you_mean.len(),
+            tools_published,
+            "tool_not_found"
+        );
+        if record
+            && let Some(tenant) = tenant
+            && !near.did_you_mean.is_empty()
+        {
+            self.record_did_you_mean(tenant, &called, "tool_not_found").await;
+        }
+        AppError::ToolNotFoundNear { name: requested.to_string(), near: Box::new(near) }
+    }
+
+    /// PRD-mcphost-refusals-name-the-nearest-move R1: the plain tenant-path miss
+    /// (`ToolNotFound`, raised where a call resolves its tool in
+    /// `preflight`/`runs`/`sharing`) or the cross-tenant
+    /// [`crate::errors::AppError::shared_tool_not_found`] shape, when it names
+    /// one of the `(names, sent)` pair's names (the name the caller typed, qualified or local; `sent` is the call's own arguments), is
+    /// rebuilt through [`Self::tool_not_found_near`]. The shared shape keeps its
+    /// one hint; its facts come from caller-visible sets only, so the unknown
+    /// owner, unknown tool and unshared tool still read byte-identically. Any
+    /// other error is returned as it came.
+    async fn refine_tool_not_found(
+        &self,
+        tenant: &Tenant,
+        err: AppError,
+        (names, sent): (&[String], &Value),
+        record: bool,
+    ) -> AppError {
+        let Some((name, shared)) = err.plain_tool_miss(names) else {
+            return err;
+        };
+        let refined = self.build_tool_not_found(Some(tenant), &name, Some(sent), record).await;
+        if shared { refined.with_shared_hint() } else { refined }
+    }
+
     /// PRD-mcphost-kind-ask-routing requirement 5 (AC6): best-effort ledger
     /// write for a `did_you_mean` hit; a failed write only logs.
     async fn record_did_you_mean(&self, tenant: &Tenant, called: &str, outcome: &str) {
@@ -8909,7 +9032,7 @@ impl McpHostHandler {
             "admin.funnel" => admin::funnel(&self.state, &args).await,
             // PRD-mcphost-upgrade-moment requirement 6 (AC7).
             "admin.upgrades" => admin::upgrades(&self.state, &args).await,
-            other => Err(AppError::ToolNotFound(other.to_string())),
+            other => Err(self.tool_not_found_near(None, other, Some(&args)).await),
         };
 
         // PRD-mcphost-provenance-audit requirement 4: every admin-bearer
@@ -9655,7 +9778,7 @@ impl McpHostHandler {
                         Err(AppError::host_verb_not_forwarded(&canonical, &call_args))
                     }
                     Some(canonical) => self.test_forward_host_verb(tenant, &canonical, call_args).await,
-                    None => Err(AppError::ToolNotFound(local_name)),
+                    None => Err(self.tool_not_found_near(Some(tenant), &local_name, Some(&call_args)).await),
                 };
             }
         };
@@ -10500,12 +10623,9 @@ impl McpHostHandler {
     /// `host.tool_test` (which stamps on pass). A `will_fail`/`unverifiable`
     /// verdict or an error leaves the stored visibility untouched.
     async fn require_tested(&self, tenant: &Tenant, name: &str) -> Result<(), AppError> {
-        let row = self
-            .state
-            .db
-            .get_tool(tenant.id, name.to_string())
-            .await?
-            .ok_or_else(|| AppError::ToolNotFound(name.to_string()))?;
+        let Some(row) = self.state.db.get_tool(tenant.id, name.to_string()).await? else {
+            return Err(self.tool_not_found_near(Some(tenant), name, None).await);
+        };
         if row.tested_version == Some(row.current_version) {
             return Ok(());
         }
@@ -11086,12 +11206,9 @@ impl McpHostHandler {
             .cloned()
             .unwrap_or_else(|| Value::Object(Default::default()));
 
-        let row: ToolRow = self
-            .state
-            .db
-            .get_tool(tenant.id, local_name.clone())
-            .await?
-            .ok_or_else(|| AppError::ToolNotFound(local_name.clone()))?;
+        let Some(row) = self.state.db.get_tool(tenant.id, local_name.clone()).await? else {
+            return Err(self.tool_not_found_near(Some(tenant), &local_name, Some(&call_args)).await);
+        };
         let kind: Arc<dyn Kind> = self.state.kinds.get(&row.kind).ok_or_else(|| {
             AppError::Internal(format!(
                 "published tool names unregistered kind '{}'",
@@ -11706,6 +11823,13 @@ impl McpHostHandler {
                 // PRD-mcphost-onboarding-dead-ends-zero R1: the same
                 // `data.tool` (so the same `next_call`) the real call's
                 // `ran_tool` gives this refusal.
+                let mut typed = vec![name.to_string()];
+                if let Some((_, local)) = name.split_once('.') {
+                    typed.push(local.to_string());
+                }
+                // PRD-mcphost-refusals-name-the-nearest-move: the dry run's
+                // not-found carries the same candidates the real call's does.
+                let err = self.refine_tool_not_found(tenant, err, (&typed, &call_args), false).await;
                 let err = err.with_tool(crate::next_call::caller_tool_name(&tenant.namespace, name));
                 let data = err.into_error_data_at(Some(&self.state.public_url));
                 json!({
@@ -13780,7 +13904,17 @@ impl McpHostHandler {
                 Err(err)
             }
             (Auth::Invalid, _) if via_tenant_key_arg => {
-                let err = AppError::TenantKeyInvalid;
+                // PRD-mcphost-refusals-name-the-nearest-move R4: only the
+                // presented value's prefix is read; none of it is kept.
+                let err = if raw_args
+                    .get("tenant_key")
+                    .and_then(Value::as_str)
+                    .is_some_and(|k| k.starts_with(crate::auth::HANDOFF_TOKEN_PREFIX))
+                {
+                    AppError::TenantKeyIsHandoffToken
+                } else {
+                    AppError::TenantKeyInvalid
+                };
                 tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key invalid");
                 Err(err)
             }
@@ -13924,7 +14058,7 @@ impl McpHostHandler {
                     )
                     .await
                 }
-                None => Err(AppError::ToolNotFound(name.to_string())),
+                None => Err(self.tool_not_found_near(Some(tenant), name, Some(&args)).await),
             },
             }
         };
@@ -13939,6 +14073,35 @@ impl McpHostHandler {
         // PRD-mcphost-refusals-name-their-cause R4: a published-tool call that
         // finds nothing, on a connection whose own tenant implicit sign-up made
         // moments ago, says so. Reads the bound tenant row only.
+        // PRD-mcphost-refusals-name-the-nearest-move R1/R2: a tool the call
+        // resolved by name and did not find carries the nearest names and the
+        // `next_call` chosen from them. Only a miss on the name the caller
+        // typed is rebuilt (`host.tool_call {name}` or a raw `tools/call`).
+        let outcome = match (outcome, &auth) {
+            (Err(e), Auth::Tenant(tenant, _)) if e.code() == "tool_not_found" => {
+                let via_host_call = matches!(body_name.as_str(), "host.tool.call" | "host.tool_call");
+                let typed = if via_host_call {
+                    raw_args.get("name").and_then(Value::as_str)
+                } else if body_name.starts_with("host.") || body_name.starts_with("billing.") || body_name.starts_with("admin.") {
+                    None
+                } else {
+                    Some(body_name.as_str())
+                };
+                match typed {
+                    Some(typed) => {
+                        let mut names = vec![typed.to_string()];
+                        if let Some((_, local)) = typed.split_once('.') {
+                            names.push(local.to_string());
+                        }
+                        let sent = if via_host_call { raw_args.get("args") } else { Some(&raw_args) };
+                        let sent = crate::secrets::redact_keys(sent.unwrap_or(&Value::Null), &["tenant_key"]);
+                        Err(self.refine_tool_not_found(tenant, e, (&names, &sent), true).await)
+                    }
+                    None => Err(e),
+                }
+            }
+            (outcome, _) => outcome,
+        };
         let outcome = outcome.map_err(|e| match &auth {
             Auth::Tenant(tenant, _)
                 if !body_name.starts_with("host.")
