@@ -163,3 +163,95 @@ async fn forged_and_foreign_tenant_sessions_never_deliver_and_the_real_answer_st
         out.response
     );
 }
+
+/// Starts an in-band ask on `path` (a route of the owner's) and returns the
+/// live request id plus the pending call; the caller then tries to answer it.
+async fn start_ask(server: &TestServer, ns: &str, key: &str, path: &str) -> (Arc<RawClient>, Value, tokio::task::JoinHandle<inband_client::Outcome>) {
+    let name = format!("{ns}.rotate");
+    let caller = Arc::new(RawClient::open_at(&server.base_url, path, key, json!({"elicitation": {"form": {}}}), true).await);
+    for _ in 0..200 {
+        let out = caller.call(&name, json!({"warm": true}), &inband_client::silent).await;
+        if out.response["result"]["structuredContent"]["warm"] == json!(true) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let seen: Arc<Mutex<Option<Value>>> = Arc::default();
+    let seen_in = seen.clone();
+    let call = {
+        let caller = caller.clone();
+        tokio::spawn(async move {
+            caller
+                .call(&name, json!({"timeout_s": 20}), &move |frame: &Value| {
+                    *seen_in.lock().unwrap() = Some(frame["id"].clone());
+                    Some((Duration::from_secs(2), json!({"action": "accept", "content": {"confirm": true}})))
+                })
+                .await
+        })
+    };
+    let id = loop {
+        if let Some(id) = seen.lock().unwrap().clone() {
+            break id;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+    (caller, id, call)
+}
+
+async fn url_path(server: &TestServer, key: &str) -> String {
+    let rotated = extract_structured(&McpClient::with_bearer(&server.base_url, key).tools_call("host.key_rotate", json!({})).await.expect("key_rotate"));
+    let url = rotated["url"].as_str().expect("url").to_string();
+    assert!(url.contains("/u/") && url.ends_with("/mcp"), "{url}");
+    url.trim_start_matches(&server.base_url).to_string()
+}
+
+/// The url-secret route can start an in-band ask (this test does it), and the
+/// fingerprint carries the path secret: the right caller delivers, a different
+/// secret holding the same real session id does not.
+#[tokio::test]
+async fn on_the_url_secret_route_only_the_same_secret_delivers() {
+    if sandbox::require_user_namespaces_or_ci_skip() {
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
+        return;
+    }
+    let envs_dir = common::TempDataDir::new();
+    let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
+    let (ns, key) = signup(&server.base_url, "Inbandshim url owner").await;
+    let (_other_ns, other_key) = signup(&server.base_url, "Inbandshim url foreign").await;
+    McpClient::with_bearer(&server.base_url, &key)
+        .tools_call("host.tool_publish", json!({"name": "rotate", "kind": "python", "spec": {"source": TOOL}}))
+        .await
+        .expect("publish");
+    let own_path = url_path(&server, &key).await;
+    let other_path = url_path(&server, &other_key).await;
+    assert_ne!(own_path, other_path);
+    let (caller, id, call) = start_ask(&server, &ns, &key, &own_path).await;
+    let body = serde_json::to_vec(&json!({"jsonrpc": "2.0", "id": id, "result": {"action": "accept", "content": {"confirm": false}}})).unwrap();
+    // A different secret's URL holding the owner's real session id: shimmed 202, delivers nothing.
+    let crossed = raw_post(&server.base_url, &other_path, None, Some(&caller.session), body).await;
+    assert_eq!(crossed.status(), 202);
+    // The scripted answer (the right caller, same path) is the one that lands.
+    let out = call.await.expect("join");
+    assert_eq!(
+        extract_structured(&out.response["result"]),
+        json!({"action": "accept", "content": {"confirm": true}}),
+        "only the same secret may answer: {}",
+        out.response
+    );
+}
+
+/// Route gates answer a response-shaped POST with a bad credential exactly as
+/// they did before the shim existed (the gates sit outside it).
+#[tokio::test]
+async fn route_gates_still_answer_a_response_shaped_post_with_a_bad_credential() {
+    let server = TestServer::start().await;
+    let base = &server.base_url;
+    let body = || response_body(json!({}));
+    for path in ["/i/no-such-code/mcp", "/o/no-such-code/mcp", "/j/no-such-code/mcp", "/t/no-such-namespace/mcp"] {
+        let resp = raw_post(base, path, None, None, body()).await;
+        assert_eq!(resp.status(), 404, "{path}: the route's own gate answers before the shim");
+    }
+    // `require_known_url_secret` also sits outside the shim and refuses an unknown secret.
+    let unknown = raw_post(base, "/u/no-such-secret/mcp", None, None, body()).await;
+    assert_eq!(unknown.status(), 404, "an unknown url secret is refused by its gate");
+}

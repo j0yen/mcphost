@@ -2274,7 +2274,7 @@ async fn deliver_client_response(State(state): State<Arc<AppState>>, req: Reques
         .get::<crate::session_bind::RequestSessionId>()
         .map(|s| s.0.clone());
     let stores = state.session_bindings.inband();
-    let caller = crate::inband::caller_fingerprint(req.headers(), req.uri().path());
+    let caller = crate::inband::caller_fingerprint(req.headers(), req.extensions(), req.uri());
     // Only the credential that made the in-flight call may answer it; any
     // other POST holding the session id is forwarded and delivers nothing.
     let Some(session) = session.filter(|s| req.method() == Method::POST && stores.owned_by(s, &caller)) else {
@@ -2285,7 +2285,7 @@ async fn deliver_client_response(State(state): State<Arc<AppState>>, req: Reques
         return request_body_too_large(&state.public_url, declared_content_length(&parts.headers));
     };
     if let Some((id, answer)) = crate::inband::client_response(&bytes) {
-        stores.deliver(&session, &id, answer);
+        stores.deliver(&session, &id, &caller, answer);
         return StatusCode::ACCEPTED.into_response();
     }
     next.run(Request::from_parts(parts, Body::from(bytes))).await

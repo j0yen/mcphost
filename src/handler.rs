@@ -12854,7 +12854,7 @@ impl McpHostHandler {
             ctx.meta.client_capabilities().is_some(),
             now_unix(),
         );
-        gate.owner = parts.map(|p| crate::inband::caller_fingerprint(&p.headers, p.uri.path()));
+        gate.owner = parts.map(|p| crate::inband::caller_fingerprint(&p.headers, &p.extensions, &p.uri));
         gate
     }
 

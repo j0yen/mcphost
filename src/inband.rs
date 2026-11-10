@@ -148,15 +148,36 @@ type Answer = Result<Value, Value>;
 /// or invite code on the `/u`, `/i`, `/o`, `/j` routes). A client answers on
 /// the same URL with the same credential it called with, so a different
 /// credential holding a real session id is a different caller.
-pub type Owner = [u8; 32];
+///
+/// Callers with no `Authorization` header (keyless, `tenant_key` argument) all
+/// share the hash of the empty credential plus the path; for them isolation
+/// rests on the server-issued session id being the bound credential. The
+/// bound tenant is not folded in because implicit signup binds the session
+/// after the ask-time fingerprint is taken, so the two sites would disagree.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Owner([u8; 32]);
 
-pub fn caller_fingerprint(headers: &http::HeaderMap, path: &str) -> Owner {
+/// The hash is an unsalted SHA-256 of a bearer: never printed.
+impl std::fmt::Debug for Owner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Owner(<redacted>)")
+    }
+}
+
+/// The request path as the client sent it: axum's `OriginalUri` when present
+/// (a nested router strips the prefix from `Uri`), else the request's own URI.
+/// Both fingerprint sites read the path through this one helper.
+pub fn original_path<'a>(extensions: &'a http::Extensions, uri: &'a http::Uri) -> &'a str {
+    extensions.get::<axum::extract::OriginalUri>().map_or_else(|| uri.path(), |o| o.0.path())
+}
+
+pub fn caller_fingerprint(headers: &http::HeaderMap, extensions: &http::Extensions, uri: &http::Uri) -> Owner {
     use sha2::{Digest, Sha256};
     let mut hash = Sha256::new();
     hash.update(headers.get(http::header::AUTHORIZATION).map_or(&[][..], |v| v.as_bytes()));
     hash.update([0]);
-    hash.update(path.as_bytes());
-    hash.finalize().into()
+    hash.update(original_path(extensions, uri).as_bytes());
+    Owner(hash.finalize().into())
 }
 
 struct Slot {
@@ -277,10 +298,15 @@ impl InBandStores {
     /// Delivers a client's JSON-RPC response to the waiter registered under
     /// (`session_id`, `id`). `false` -- and nothing delivered -- for an
     /// unknown or already-completed id or a session with nothing in flight.
-    pub fn deliver(&self, session_id: &str, id: &RequestId, answer: Answer) -> bool {
+    ///
+    /// The slot's owner is compared with `caller` under the same lock
+    /// acquisition that resolves the waiter, so a slot released and re-reserved
+    /// by another caller between a pre-check and this call is never answered
+    /// by the earlier caller's body.
+    pub fn deliver(&self, session_id: &str, id: &RequestId, caller: &Owner, answer: Answer) -> bool {
         let Ok(mut routes) = self.routes.lock() else { return false };
         let Some(slot) = routes.get_mut(session_id) else { return false };
-        if slot.id.as_ref() != Some(id) {
+        if slot.owner.as_ref() != Some(caller) || slot.id.as_ref() != Some(id) {
             return false;
         }
         slot.tx.take().is_some_and(|tx| tx.send(answer).is_ok())
@@ -456,9 +482,13 @@ mod inbandsec_tests {
     use crate::session_bind::SessionBindings;
 
     fn waiter(stores: &Arc<InBandStores>, session: &str, id: i64) -> Reservation {
-        let reservation = stores.reserve(session, None).expect("slot free");
+        let reservation = stores.reserve(session, Some(me())).expect("slot free");
         reservation.bind(RequestId::Number(id as _));
         reservation
+    }
+
+    fn me() -> Owner {
+        Owner([1; 32])
     }
 
     fn answer() -> Answer {
@@ -474,15 +504,15 @@ mod inbandsec_tests {
         let mut w1 = waiter(&stores, &s1, 7);
 
         // Another server-issued session, same request id: refused, waiter untouched.
-        assert!(!stores.deliver(&s2, &RequestId::Number(7 as _), answer()));
+        assert!(!stores.deliver(&s2, &RequestId::Number(7 as _), &me(), answer()));
         assert!(w1.rx.try_recv().is_err(), "a foreign session must not resolve the waiter");
         // Right session, wrong request id: refused, waiter untouched.
-        assert!(!stores.deliver(&s1, &RequestId::Number(8 as _), answer()));
+        assert!(!stores.deliver(&s1, &RequestId::Number(8 as _), &me(), answer()));
         assert!(w1.rx.try_recv().is_err(), "a different request id must not resolve the waiter");
         // Right session and id: delivered exactly once.
-        assert!(stores.deliver(&s1, &RequestId::Number(7 as _), answer()));
+        assert!(stores.deliver(&s1, &RequestId::Number(7 as _), &me(), answer()));
         assert_eq!(w1.rx.try_recv().expect("resolved"), answer());
-        assert!(!stores.deliver(&s1, &RequestId::Number(7 as _), answer()), "a second answer is refused");
+        assert!(!stores.deliver(&s1, &RequestId::Number(7 as _), &me(), answer()), "a second answer is refused");
     }
 
     #[test]
@@ -492,9 +522,24 @@ mod inbandsec_tests {
         let (s1, s2) = (bindings.issue(), bindings.issue());
         let mut w1 = waiter(&stores, &s1, 7);
         let mut w2 = waiter(&stores, &s2, 7);
-        assert!(stores.deliver(&s2, &RequestId::Number(7 as _), answer()));
+        assert!(stores.deliver(&s2, &RequestId::Number(7 as _), &me(), answer()));
         assert!(w2.rx.try_recv().is_ok());
         assert!(w1.rx.try_recv().is_err(), "S2's answer never reaches S1's waiter");
+    }
+
+    #[test]
+    fn inbandsec_deliver_checks_the_owner_under_the_same_lock() {
+        let bindings = SessionBindings::new();
+        let stores = Arc::new(InBandStores::default());
+        let s = bindings.issue();
+        let (a, b) = (Owner([1; 32]), Owner([2; 32]));
+        let mut w = stores.reserve(&s, Some(a)).expect("slot free");
+        w.bind(RequestId::Number(0 as _));
+        assert!(!stores.deliver(&s, &RequestId::Number(0 as _), &b, answer()), "another owner delivers nothing");
+        assert!(w.rx.try_recv().is_err(), "the waiter is still pending");
+        assert!(stores.deliver(&s, &RequestId::Number(0 as _), &a, answer()));
+        assert_eq!(w.rx.try_recv().expect("resolved"), answer());
+        assert_eq!(format!("{a:?}"), "Owner(<redacted>)");
     }
 
     #[test]
@@ -503,7 +548,7 @@ mod inbandsec_tests {
         let stores = Arc::new(InBandStores::default());
         let s1 = bindings.issue();
         assert!(!stores.has_inflight(&s1));
-        assert!(!stores.deliver(&s1, &RequestId::Number(7 as _), answer()));
+        assert!(!stores.deliver(&s1, &RequestId::Number(7 as _), &me(), answer()));
         let w = waiter(&stores, &s1, 7);
         assert!(stores.has_inflight(&s1));
         drop(w);
