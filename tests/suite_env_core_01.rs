@@ -14,6 +14,8 @@ mod exprf;
 #[path = "support/serve.rs"]
 mod serve;
 
+#[path = "aspt_ac06_resume_idempotent_and_io_failure_is_storage.rs"]
+mod aspt_ac06_resume_idempotent_and_io_failure_is_storage;
 #[path = "cproc_ac04_stalled_child_fails_within_deadline_and_is_reaped.rs"]
 mod cproc_ac04_stalled_child_fails_within_deadline_and_is_reaped;
 #[path = "cproc_ac05_ready_deadline_is_the_host_aware_timeout.rs"]
@@ -38,6 +40,8 @@ mod flakelint_ac05_env_guard_race;
 mod flakelint_ac07_full_lint_pass_and_env_suites;
 #[path = "heal_ac02_dry_run_writes_would_run.rs"]
 mod heal_ac02_dry_run_writes_would_run;
+#[path = "kih_ac06_journal_contract_and_instructions_state_the_rule.rs"]
+mod kih_ac06_journal_contract_and_instructions_state_the_rule;
 #[path = "ntfyb_ac03_webhook_retries_to_delivered_or_failed.rs"]
 mod ntfyb_ac03_webhook_retries_to_delivered_or_failed;
 #[path = "support_ac05_support_url_rendered_or_not_configured.rs"]

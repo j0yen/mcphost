@@ -3302,11 +3302,18 @@ impl Db {
     /// pays nothing in production.
     pub fn enable_select_counter(&self) {
         if let Ok(mut conn) = self.conn.lock() {
-            conn.trace(Some(|sql: &str| {
-                if sql.trim_start().get(..6).is_some_and(|p| p.eq_ignore_ascii_case("select")) {
-                    SELECT_STATEMENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                }
-            }));
+            // rusqlite 0.41 dropped the legacy `trace`; the `trace_v2`
+            // statement event carries the same SQL text.
+            let _ = conn.trace_v2(
+                rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT,
+                Some(|event: rusqlite::trace::TraceEvent<'_>| {
+                    if let rusqlite::trace::TraceEvent::Stmt(_, sql) = event
+                        && sql.trim_start().get(..6).is_some_and(|p| p.eq_ignore_ascii_case("select"))
+                    {
+                        SELECT_STATEMENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }),
+            );
         }
     }
 

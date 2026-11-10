@@ -1,72 +1,70 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-lineage-runtime-edge-writers.md",
-  "intent_slug": "mcphost-lineage-runtime-edge-writers",
-  "root_motivation": "WHO: a tenant operator about to drop or rename a table, the drop gate acting for them, and the agent reading a tool's blast radius. WHAT: lineage edges are written only at publish time, so a tool that builds its SQL from its arguments, a tool that calls a sibling, a forked tool and a rolled-back tool are invisible to host.lineage_trace, host.lineage_blast_radius and the host.table.drop gate. WHY: no runtime path writes an edge and edge evidence is first-writer-wins.",
-  "user_persona": "A tenant operator (or the agent acting for them) who asks what breaks before dropping a table and must get every dependent, including the ones that only show up at run time.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-admin-signup-pause-tool.md",
+  "intent_slug": "mcphost-admin-signup-pause-tool",
+  "root_motivation": "WHO: Joe as operator of mcphost-1 when he is not at a shell, and synthorg's mtproof probe, which only reaches the host over MCP. WHAT: the signup kill switch is a file the host already reads, but nothing over MCP can create or remove it, so the mtproof kill_switch link refuses on every chain run. WHY: PRD-mcphost-signup-kill-switch-and-source requirement 8 named the tool and never had an AC, so it was never built.",
+  "user_persona": "An operator (or the probe acting for them) holding the admin key who must pause and resume signups with one MCP call each, audited, and restore the host with one call if a sequence dies halfway.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 8
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given python tool `dyn_reader` whose source runs `mcphost.table.query(\"SELECT count(*) FROM \" + args[\"table\"])` 1,000 times per call, When `host.tool_call` then `host.tool_run` each run it once with `table: \"orders\"`, Then `host.lineage_trace` of `table:orders` lists `tool:dyn_reader` once with evidence `runtime_query`, the graph cache was dropped once, and wall time is under 2x the same run with `tool_name` unset.",
-      "test": "tests/linrt_ac01_dynamic_reader_one_edge_one_drop.rs"
+      "description": "Given a test server with the admin key, When the admin lists tools, Then `admin.signup_pause` is listed with `message` (string), `resume` (boolean), `until` (integer), its description says exactly one of `message` or `resume: true` is required, the arms-equal-descriptors drift test passes, and README.md § signup names the tool.",
+      "test": "tests/aspt_ac01_tool_listed_with_schema_and_readme.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given tool `a` v1 declares `reads: [\"orders\"]` and runs `mcphost.table.query('SELECT 1 FROM \"orders\"')` at run time, When `a` runs once and v2 (no declared reads, no `orders` in its source) is then published and never runs, Then `host.lineage_trace` of `table:orders` lists `tool:a` exactly once with evidence `runtime_query` after both steps, and after `host.tool_remove` of `a` no edge in the tenant names `tool:a`.",
-      "test": "tests/linrt_ac02_runtime_evidence_survives_republish_and_remove.rs"
+      "description": "Given no pause file, When the admin calls `admin.signup_pause` with a message, Then the pause file holds it as line 1, the result is `{paused: true, changed: true, message, retry_after_secs: 3600}`, healthz reports `signups_enabled: false` plus the message, and `signup` returns `signup_paused` with it; a hand-written file is replaced the same way.",
+      "test": "tests/aspt_ac02_pause_writes_file_and_refuses_signup.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given B's `caller` (runs `mcphost.call(args[\"target\"])`) and `callee` (dynamic read of `orders`), When `caller` runs with `target: \"callee\"`, then with A's shared tool, Then B's trace of `tool:callee` lists `tool:caller` (evidence `runtime_call`), B's blast radius of `orders` lists `callee` (depth 1) and `caller` (depth 2), A's tool is in B's graph under the name passed, and A's graph names neither B nor `caller`.",
-      "test": "tests/linrt_ac03_sibling_call_edge_in_the_callers_graph.rs"
+      "description": "Given a pause file written by the tool or by hand, When the admin calls `admin.signup_pause` with `resume: true`, Then the file is gone, the result is `{paused: false, changed: true}`, healthz reports `signups_enabled: true` with no `signup_pause_message`, and a `signup` succeeds.",
+      "test": "tests/aspt_ac03_resume_removes_file_and_reopens_signup.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given tenant A shares tool `src` (source reads `orders` literally) with fork scope, When tenant B forks it as `src_fork`, Then B's `host.lineage_trace` of `table:orders` lists `tool:src_fork` with evidence `source_scan`, A's graph is unchanged, and a fork B is not permitted to make writes no node and no edge for B.",
-      "test": "tests/linrt_ac04_fork_registers_like_a_publish.rs"
+      "description": "Given calls with no arguments, both `message` and `resume: true`, `resume: false` alone, an empty message, a newline in the message, a message over 512 bytes, and `until` not in the future, When the admin makes each, Then each returns `invalid_params` naming the field and the pause file is unchanged.",
+      "test": "tests/aspt_ac04_invalid_calls_refused_and_file_untouched.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given tool `t` published at v1 with `reads: [\"a\"]` then at v2 with `reads: [\"b\"]`, and a chain `c` with a step on `t`, When lineage is read after the v2 publish and again after `host.tool_rollback` to v1, Then the upstream of `tool:t` is `table:b` only after the publish and `table:a` only after the rollback, and the edge `tool:t -> chain:c` (evidence `chain_publish`) is present at both reads.",
-      "test": "tests/linrt_ac05_publish_and_rollback_follow_the_version.rs"
+      "description": "Given a tenant key and an anonymous client, When each calls `admin.signup_pause`, Then each is refused with the same error code every other `admin.*` tool returns to that caller (`forbidden` for a tenant key), no pause file is created, and healthz still reports `signups_enabled: true`.",
+      "test": "tests/aspt_ac05_non_admin_callers_refused.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given python tool `alt_reader` (200 `mcphost.table.query` calls alternating over `args[\"tables\"]`), tables `orders` and `customers`, and a trigger on it, When a `host.tool_call` run and a `host.trigger_fire` run execute concurrently with `tables: [\"orders\", \"customers\"]`, Then exactly two edges exist into `tool:alt_reader`, one per table, both runs return what a solo run returns, and the log holds no lineage-writer warning.",
-      "test": "tests/linrt_ac06_concurrent_runs_write_one_edge_per_table.rs"
+      "description": "Given no pause file, When the admin calls `resume: true` twice, Then both return `{paused: false, changed: false}`; and Given `MCPHOST_SIGNUP_PAUSE_FILE` points into a missing directory, When the admin pauses, Then the error code is `storage`, nothing panics, and healthz answers `signups_enabled: true`.",
+      "test": "tests/aspt_ac06_resume_idempotent_and_io_failure_is_storage.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a python tool run through `host.tool_test` that queries `orders` and calls a sibling, a spec run through `host.spec_test`, a tool whose statement is `SELECT 1`, and a tool whose statement the table layer rejects, When each runs, Then no edge is written for any of them, each response or error equals the same call's with `tool_name` unset, and `host.lineage_trace` of `table:orders` is unchanged.",
-      "test": "tests/linrt_ac07_dry_runs_and_refusals_write_nothing.rs"
+      "description": "Given 20 concurrent admin calls (10 distinct messages, 10 resumes), When all complete, Then every call succeeded, no `status()` read saw a truncated file, the final state agrees with healthz, and `admin.audit_log` holds 10 `signup_pause` and 10 `signup_resume` rows with `actor_key_id`.",
+      "test": "tests/aspt_ac07_concurrent_toggles_atomic_and_audited.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When a fresh tenant signs up, creates `orders`, publishes `dyn_reader` (AC 1), runs it once, reads the trace of `table:orders` and offboards, Then the trace lists `tool:dyn_reader` with evidence `runtime_query` and healthz shows this PRD's version (Live; evidence: `mcphost-1: healthz version after deploy plus the trace and self_offboard responses in the receipt under docs/receipts/`)",
-      "test": "deferred: Live (prod; evidence: mcphost-1 healthz version after deploy plus the trace and self_offboard responses in the receipt under docs/receipts/)"
+      "description": "Given `message: \"window\"` and `until` 600 s ahead, When paused, Then the file's line 2 is `until=<ts>`, the result and `signup`'s error carry `retry_after_secs` within 2 s of 600, and alerts `signup.paused` and `signup.resumed` are raised within `PAUSE_POLL_INTERVAL_SECS` + 2 s.",
+      "test": "tests/aspt_ac08_until_bounds_retry_and_alerts_fire.rs"
     }
   ],
   "scope": [
-    "src/lineage/mod.rs + src/db.rs: register_edge_runtime and the monotone lineage_insert_edge_runtime upsert (a runtime observation replaces publish-derived evidence and is never overwritten), one table_node_id normalizer shared with scan.rs, a per-run memo and an always-on cache invalidation counter.",
-    "src/handler.rs TenantTableBridge + src/runs.rs + src/tables.rs + src/kinds/mod.rs: runtime_query edges from query/chart on a real tool run, runtime_call edges beside compose_call_ref, composed children recorded under their own node; tool_test and spec_test stay silent.",
-    "src/sharing.rs tool_fork + src/control.rs tool_publish/tool_rollback/tool_remove: a fork registers like a publish, publish and rollback retire only source_scan/declared_reads edges before re-deriving them, tool_remove drops the tool's node and edges."
+    "src/handler.rs: the `admin.signup_pause` descriptor in `admin_tools_raw` and its `dispatch_admin_tool` arm; src/admin.rs: `signup_pause`, argument validation and the `admin_audit_entry` arm; src/state.rs: `SignupPause::pause` (atomic temp-file rename) and `resume` writers; README.md § signup via docs/agent-quickstart.md and the regenerated www/llms.txt."
   ],
   "non_goals": [
-    "Gating host.tool_remove on dependents; edges for ad-hoc host.table.query calls outside a tool run; copying a shared tool's runtime edges into a fork; runtime reads of wasm or http tools; any migration, table or column; literal mcphost.call targets at publish time; edges from append/count/describe."
+    "Any change to how `signup` decides it is paused, to healthz fields, to alert keys or to the `signup_paused` error code; a default expiry on a tool-set pause; scheduled or per-source pauses; any synthorg change; hand-editing www/llms.txt."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -75,35 +73,40 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_schema_change": "No migration: the lineage_edges UNIQUE constraint is the dedupe and the writer is a single INSERT ... ON CONFLICT upsert."
+      "no_schema_change": "No migration, schema change or new env var: the tool only writes the file `SignupPause::status` already reads."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the drop gate answer safe for a table a python tool reads?",
-      "a": "No runtime path writes a lineage edge and scan.rs only reads string literals."
+      "q": "Why does the mtproof kill_switch link refuse on every chain run?",
+      "a": "Its preflight requires admin.signup_pause in the admin tools/list, and the tool does not exist."
     },
     {
       "why": 2,
-      "q": "Why was nothing written at run time?",
-      "a": "register_edge had four publish-time callers and the table bridge, compose_call_ref, tool_fork and tool_rollback never called it."
+      "q": "Why does the tool not exist?",
+      "a": "PRD-mcphost-signup-kill-switch-and-source listed it as requirement 8 (P2) with no acceptance criterion."
     },
     {
       "why": 3,
-      "q": "Why could it not simply be added?",
-      "a": "Edge evidence sat outside the UNIQUE key and was written INSERT OR IGNORE, so a later retire step would delete a pair that was also observed; evidence has to be monotone first."
-    }
-  ],
-  "created_at": "2026-11-01T00:00:00Z",
-  "ambiguities_resolved": [
-    {
-      "question": "Which graph does a shared tool run for a caller write into?",
-      "resolution": "The bridge's tenant graph: the owner's, under the tool's local name, since the run reads the owner's tables. The caller's graph gets a runtime_call edge naming the shared tool as the caller named it."
+      "q": "Why did a missing AC let the requirement go unbuilt?",
+      "a": "The builder derives its tests from ACs, so a requirement without one is never proven nor demanded."
     },
     {
-      "question": "Can a composed call reach a shared tool?",
-      "resolution": "compose_dispatch resolves only the tenant's own tools, so a qualified target is not dispatched; the runtime_call edge is still written when the name resolves for the caller under resolve_shared_tool, because the caller depends on it by name."
+      "why": 4,
+      "q": "Why can an operator not just touch the file?",
+      "a": "The probe cannot ssh and Joe off a shell has no path to the data dir; SignupPause had no writer."
+    }
+  ],
+  "created_at": "2026-11-02T00:00:00Z",
+  "ambiguities_resolved": [
+    {
+      "question": "Which error code do argument-validation failures carry?",
+      "resolution": "`invalid_params` via AppError::InvalidParams, not the descriptor precheck's `args_invalid`, so the descriptor declares types only and the handler enforces the 1..=512 byte, one-line and future-`until` rules."
+    },
+    {
+      "question": "Is a resume that removed no file still audited?",
+      "resolution": "Yes: AC7 counts one `signup_resume` row per resume call, so the audit arm is unconditional on `changed`."
     }
   ]
 }

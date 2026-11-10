@@ -249,7 +249,8 @@ pub enum Reason {
     Anonymous,
     /// This connection already named the tenant in the payload.
     ConnectionBound(String),
-    /// This peer (IP + User-Agent) redeemed a key in the last 10 minutes.
+    /// This peer (IP + User-Agent) redeemed a key or minted a tenant without
+    /// a session in the last 10 minutes.
     /// Carries no namespace: a different agent at the same address must
     /// not learn another tenant's name.
     PeerRecent,
@@ -293,17 +294,34 @@ impl Reason {
 
 /// The `Anonymous` message, byte-identical to v0.118.8.
 pub const ANONYMOUS_MESSAGE: &str = "tenant_key is required: pass the key that signup returned as the tenant_key argument";
-/// The `PeerRecent` message (R4): a session or a tenant URL, no key.
-pub const PEER_RECENT_MESSAGE: &str = "no tenant for this call: a key was redeemed from your address in the last 10 minutes and this request presented no session of its own; send initialize first, or call your tenant URL";
+/// The `PeerRecent` message (PRD-mcphost-implicit-signup-key-in-hand R3): the
+/// field, the argument and `initialize`; no key, namespace or URL.
+pub const PEER_RECENT_MESSAGE: &str = "no tenant for this call: a tenant was created from your address in the last 10 minutes and this request presented no session of its own; pass onboarding.tenant_key from that response as the tenant_key argument, or send initialize first for a session of your own";
 /// The `ConnectionBound` message (R4): this session's own tenant, no key.
 pub const CONNECTION_BOUND_MESSAGE: &str = "no tenant for this call: this session already belongs to a tenant; keep calling on the same session or call its tenant URL";
 
 /// `data` key on a named refusal that points at the ways to get a key.
 pub const GET_A_KEY: &str = "get_a_key";
 pub const GET_A_KEY_TEXT: &str = "call signup for your own key (host.quickstart explains the flow)";
-/// PRD-mcphost-implicit-signup-per-session-not-per-peer R3: the PeerRecent hint
-/// names two remedies, a session or a tenant URL, and no key or namespace.
-pub const PEER_RECENT_HINT: &str = "a key was redeemed from your address in the last 10 minutes and this request presented no session of its own; send initialize first (a session of your own gets its own tenant on its first host.* call) or, if that tenant is yours, call its tenant URL: https://mcphost.dev/t/<namespace>/mcp";
+/// PRD-mcphost-implicit-signup-key-in-hand R3: the PeerRecent hint names the
+/// field the first response carried, the argument to pass it as, and
+/// `initialize` for a session of one's own; `data` carries the counts and
+/// `next_call.retry_after_s` the seconds until the next mint is allowed.
+pub const PEER_RECENT_HINT: &str = "this request presented no session of its own and a tenant was created from your address in the last 10 minutes; pass onboarding.tenant_key from that response as the tenant_key argument on every call, or send initialize first (a session of your own gets its own tenant on its first host.* call); data.mints_in_window of data.cap mints are used and next_call.retry_after_s says when the next one is allowed";
+
+/// PRD-mcphost-implicit-signup-key-in-hand R3: add the mint counts and the
+/// wait to a `peer_recent` refusal built by [`AppError::into_error_data_at`].
+pub fn with_peer_recent_counts(mut err: ErrorData, capped: crate::peer_recent::CapReached, cap: usize) -> ErrorData {
+    if let Some(Value::Object(data)) = err.data.as_mut() {
+        data.insert("mints_in_window".to_string(), json!(capped.mints_in_window));
+        data.insert("window_secs".to_string(), json!(crate::peer_recent::PEER_TTL_SECS));
+        data.insert("cap".to_string(), json!(cap));
+        if let Some(Value::Object(next)) = data.get_mut("next_call") {
+            next.insert("retry_after_s".to_string(), json!(capped.retry_after_s));
+        }
+    }
+    err
+}
 
 /// The ConnectionBound hint (R3).
 pub fn connection_hint(namespace: &str) -> String {
@@ -892,7 +910,7 @@ crate::err_code! {
 crate::err_code! {
     pub INVALID_SPEC => "invalid_spec",
     Spec, AgentFault, false,
-    "Fix the spec field named in data.field to match data.expected.",
+    "Fix the spec field named in data.field; paste a spec from data.minimal_specs (also in the message); see data.docs_url.",
     data_keys: crate::kinds::kinddoc::INVALID_SPEC_DATA_KEYS,
 }
 

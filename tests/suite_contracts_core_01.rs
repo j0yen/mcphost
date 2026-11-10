@@ -67,6 +67,8 @@ mod cishard_ac05_core_timeouts_and_cache_key;
 mod cishard_ac06_core_predicted_shard_under_limit;
 #[path = "cishard_ac07_stale_weight_fails_check.rs"]
 mod cishard_ac07_stale_weight_fails_check;
+#[path = "cishard_pending_age_rungs.rs"]
+mod cishard_pending_age_rungs;
 #[path = "cnfm_ac05_tools_list_marks_destructive_verbs.rs"]
 mod cnfm_ac05_tools_list_marks_destructive_verbs;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
@@ -267,6 +269,10 @@ mod shp_ac05_blast_radius_change_kind_is_an_enum;
 mod shp_ac06_ask_options_are_unique_and_untrimmed;
 #[path = "shp_ac07_contract_carries_new_shape_keywords.rs"]
 mod shp_ac07_contract_carries_new_shape_keywords;
+#[path = "spmsg_ac06_driver_compiles_plans_and_fails_closed.rs"]
+mod spmsg_ac06_driver_compiles_plans_and_fails_closed;
+#[path = "spmsg_ac07_driver_passes_on_test_server.rs"]
+mod spmsg_ac07_driver_passes_on_test_server;
 #[path = "sreg_ac01_registry_single_source.rs"]
 mod sreg_ac01_registry_single_source;
 #[path = "statusfeed_ac11_deferral_is_justified.rs"]
