@@ -12952,7 +12952,15 @@ impl McpHostHandler {
         // tenant_key argument at all (AC1). `None` for every other path, in
         // which case resolution falls through to the pre-existing header
         // path exactly as before this PRD.
-        let path_secret_auth = resolve_path_secret_auth(&self.state, parts, &body_name)
+        // The four credential resolvers below are `Box::pin`'d: awaited inline
+        // each one's future sits in this frame's debug stack, and a forwarded
+        // dotted verb re-enters `call_tool_inner`, so the frame is paid twice.
+        // rmcp 3.9's service-loop frames (`serve_inner`, `handle_request`,
+        // `serve_server_with_ct_inner`) grew ~+30 KiB over 3.3.0 on the same
+        // path; boxing these takes `call:host.whoami` from 1,060,864 B back to
+        // 1,011,712 B (`scripts/fwd-stack-measure.sh`), inside the documented
+        // FORWARD_STACK_BUDGET maximum.
+        let path_secret_auth = Box::pin(resolve_path_secret_auth(&self.state, parts, &body_name))
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
         let via_url_secret = path_secret_auth.is_some();
@@ -12960,7 +12968,7 @@ impl McpHostHandler {
         let mut auth = match path_secret_auth {
             Some(a) => a,
             None => {
-                resolve_auth(&self.state, parts, &mut sub_key, &body_name)
+                Box::pin(resolve_auth(&self.state, parts, &mut sub_key, &body_name))
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
@@ -12982,7 +12990,7 @@ impl McpHostHandler {
         // play for whatever `auth` becomes next.
         let via_tenant_key_arg = matches!(auth, Auth::Anonymous);
         if via_tenant_key_arg {
-            auth = resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key, &body_name)
+            auth = Box::pin(resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key, &body_name))
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
             // PRD-mcphost-session-bound-tenant-key requirement 1: this is
@@ -13015,7 +13023,7 @@ impl McpHostHandler {
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && let Some(session_id) = session_id.as_deref()
-            && let Some(bound) = resolve_session_binding(&self.state, session_id, &body_name)
+            && let Some(bound) = Box::pin(resolve_session_binding(&self.state, session_id, &body_name))
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
