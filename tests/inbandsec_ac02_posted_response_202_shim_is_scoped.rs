@@ -227,8 +227,9 @@ async fn on_the_url_secret_route_only_the_same_secret_delivers() {
     assert_ne!(own_path, other_path);
     let (caller, id, call) = start_ask(&server, &ns, &key, &own_path).await;
     let body = serde_json::to_vec(&json!({"jsonrpc": "2.0", "id": id, "result": {"action": "accept", "content": {"confirm": false}}})).unwrap();
-    // A different secret's URL holding the owner's real session id: shimmed 202, delivers nothing.
-    let crossed = raw_post(&server.base_url, &other_path, None, Some(&caller.session), body).await;
+    // A different secret's URL carrying the owner's own bearer and real session id: the path is the
+    // only difference from the owner's call. Shimmed 202, delivers nothing.
+    let crossed = raw_post(&server.base_url, &other_path, Some(&key), Some(&caller.session), body).await;
     assert_eq!(crossed.status(), 202);
     // The scripted answer (the right caller, same path) is the one that lands.
     let out = call.await.expect("join");
