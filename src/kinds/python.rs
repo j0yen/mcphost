@@ -866,7 +866,15 @@ except SyntaxError as e:
 
 has_main = any(isinstance(n, ast.FunctionDef) and n.name == "main" for n in tree.body)
 if not has_main:
-    print(json.dumps({"ok": False, "error": "NoMain", "message": "source does not define main(args)"}))
+    # Module-level definitions only: a name nested in a class or a function is
+    # not top level and is not listed. `async main` marks an async definition.
+    defs = []
+    for n in tree.body:
+        if isinstance(n, ast.AsyncFunctionDef):
+            defs.append("async " + n.name)
+        elif isinstance(n, ast.FunctionDef):
+            defs.append(n.name)
+    print(json.dumps({"ok": False, "error": "NoMain", "message": "source does not define main(args)", "defs_found": defs[:10]}))
 else:
     print(json.dumps({"ok": True}))
 "#;
@@ -1058,6 +1066,26 @@ async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), Ki
         .get("error")
         .and_then(Value::as_str)
         .unwrap_or("InvalidSpec");
+    // PRD-mcphost-refusals-name-the-nearest-move R3: a `NoMain` refusal names
+    // the top-level definitions the source did have and the one-line fix;
+    // `message` and `error_code` are unchanged.
+    if exception_class == "NoMain" {
+        let defs: Vec<String> = envelope
+            .get("defs_found")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(|d| d.as_str().map(str::to_string)).take(10).collect())
+            .unwrap_or_default();
+        return Err(KindError::structured_with(
+            crate::errors::INVALID_SPEC,
+            format!("source: {message}"),
+            json!({
+                "field": "source",
+                "exception_class": exception_class,
+                "defs_found": defs,
+                "fix": no_main_fix(&defs),
+            }),
+        ));
+    }
     match envelope.get("line").and_then(Value::as_i64) {
         Some(line) => Err(KindError::structured_with(
             crate::errors::INVALID_SPEC,
@@ -1069,6 +1097,20 @@ async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), Ki
             format!("source: {message}"),
             json!({"field": "source", "exception_class": exception_class}),
         )),
+    }
+}
+
+/// The `data.fix` of a `NoMain` refusal: always names `def main(args)` at
+/// module top level, and what to do with the one definition the source has.
+fn no_main_fix(defs: &[String]) -> String {
+    const BASE: &str = "define `def main(args)` at module top level; the host calls it with the call's arguments and returns its value";
+    match defs {
+        [] => BASE.to_string(),
+        [only] if only == "async main" => {
+            "change `async def main` to a plain `def main(args)` at module top level; the host calls main(args) without awaiting it".to_string()
+        }
+        [only] => format!("rename `def {only}(args)` to `def main(args)` at module top level; the host calls main(args) only"),
+        _ => format!("{BASE}; the source defines {}", defs.join(", ")),
     }
 }
 

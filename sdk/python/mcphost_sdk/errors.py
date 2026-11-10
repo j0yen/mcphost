@@ -745,7 +745,7 @@ class InvalidParams(MCPHostError):
 
 
 class InvalidSpec(MCPHostError):
-    DATA_KEYS: tuple[str, ...] = ("kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names", "received_type",)
+    DATA_KEYS: tuple[str, ...] = ("kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names", "received_type", "defs_found",)
 
     def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
         super().__init__("invalid_spec", message, data)
@@ -1400,6 +1400,8 @@ class TenantDisabled(MCPHostError):
 
 
 class TenantKeyInvalid(MCPHostError):
+    DATA_KEYS: tuple[str, ...] = ("hint",)
+
     def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
         super().__init__("tenant_key_invalid", message, data)
 
@@ -1480,6 +1482,8 @@ class ToolMissing(MCPHostError):
 
 
 class ToolNotFound(MCPHostError):
+    DATA_KEYS: tuple[str, ...] = ("nearest", "did_you_mean", "tools_published", "catalog_matches",)
+
     def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
         super().__init__("tool_not_found", message, data)
 

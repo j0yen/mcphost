@@ -175,6 +175,10 @@ mod msmp_ac06_tool_logs_hold_counts_never_the_prompt;
 mod ndead_ac04_python_args_invalid_coerces_example;
 #[path = "ndeadc_ac02_anonymous_quickstart_valid_kinds.rs"]
 mod ndeadc_ac02_anonymous_quickstart_valid_kinds;
+#[path = "nmove_ac05_nomain_names_the_definitions.rs"]
+mod nmove_ac05_nomain_names_the_definitions;
+#[path = "nmove_ac07_registry_and_driver.rs"]
+mod nmove_ac07_registry_and_driver;
 #[path = "pgm_ac05_skip_when_semaphore_nearly_full.rs"]
 mod pgm_ac05_skip_when_semaphore_nearly_full;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
@@ -237,5 +241,3 @@ mod python_ac12_republish_atomic;
 mod python_ac13_capacity_admission;
 #[path = "python_ac14_cpu_budget_rate_limit.rs"]
 mod python_ac14_cpu_budget_rate_limit;
-#[path = "qdiag_ac09_python_bridge_query_stats.rs"]
-mod qdiag_ac09_python_bridge_query_stats;

@@ -2657,6 +2657,17 @@
       "AC6": "tests/kih_ac06_journal_contract_and_instructions_state_the_rule.rs",
       "AC7": "tests/kih_ac07_two_sessionless_clients_driver_runs_in_the_suite.rs",
       "AC8": "deferred: Live (prod; evidence: python3 -I tests/live/kih_ac08_two_sessionless_clients.py https://mcphost.dev/mcp prints kih_ac08 A=offboarded B=offboarded rc=0)"
+    },
+    "nmove": {
+      "_prd": "PRD-mcphost-refusals-name-the-nearest-move.md (test_prefix: nmove)",
+      "AC1": "tests/nmove_ac01_candidates_and_next_call.rs",
+      "AC2": "tests/nmove_ac02_fresh_tenant_names_publish.rs",
+      "AC3": "tests/nmove_ac03_verbs_and_shares_are_named.rs",
+      "AC4": "tests/nmove_ac04_one_builder_five_sites.rs",
+      "AC5": "tests/nmove_ac05_nomain_names_the_definitions.rs",
+      "AC6": "tests/nmove_ac06_tenant_key_invalid_names_handoff.rs",
+      "AC7": "tests/nmove_ac07_registry_and_driver.rs",
+      "AC8": "deferred: Live (prod /mcp from the build host; evidence: python3 -I tests/live/nmove_ac08_nearest_move.py https://mcphost.dev/mcp prints nmove_ac08 tenant=offboarded rc=0)"
     }
   }
 }
