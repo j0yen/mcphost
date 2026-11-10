@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.129.0 — 2026-11-10
+
+Released by wm-build land: loop: mcphost-refusals-name-the-nearest-move.
+
 ## v0.128.0 — 2026-11-09
 
 Released by wm-build land: loop: mcphost-implicit-signup-key-in-hand.
