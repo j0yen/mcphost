@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.130.0 — 2026-11-11
+
+Released by wm-build land: loop: mcphost-synthetic-tenant-purge.
+
 ## v0.129.0 — 2026-11-10
 
 Released by wm-build land: loop: mcphost-refusals-name-the-nearest-move.
