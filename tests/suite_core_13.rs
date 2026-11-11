@@ -20,6 +20,20 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
+mod upgrade_ac01_calls_per_day_next_checkout;
+#[path = "upgrade_ac02_billing_off_refusal_text.rs"]
+mod upgrade_ac02_billing_off_refusal_text;
+#[path = "upgrade_ac03_checkout_source_metadata.rs"]
+mod upgrade_ac03_checkout_source_metadata;
+#[path = "upgrade_ac04_webhook_stamps_paid_unix.rs"]
+mod upgrade_ac04_webhook_stamps_paid_unix;
+#[path = "upgrade_ac05_billing_status_receipt.rs"]
+mod upgrade_ac05_billing_status_receipt;
+#[path = "upgrade_ac06_admin_funnel_upgrades_by_trigger.rs"]
+mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
+#[path = "upgrade_ac07_admin_upgrades_listing.rs"]
+mod upgrade_ac07_admin_upgrades_listing;
 #[path = "uprg_ac01_one_call_creates_probe_status_schedule.rs"]
 mod uprg_ac01_one_call_creates_probe_status_schedule;
 #[path = "uprg_ac02_status_tool_returns_readable_table.rs"]

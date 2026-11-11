@@ -463,6 +463,13 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_tool_reach<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            self.tool_reach(tenant, args).await
+        })
+    }
+
     pub(crate) fn arm_host_tool_list_shared<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;

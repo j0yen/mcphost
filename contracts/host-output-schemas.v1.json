@@ -13101,6 +13101,92 @@
     },
     "type": "object"
   },
+  "host.tool.reach": {
+    "properties": {
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "reach": {
+        "properties": {
+          "calls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "dynamic_hosts": {
+            "type": "boolean"
+          },
+          "hosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "modules": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "network": {
+            "type": "string"
+          },
+          "secrets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "secrets_count": {
+            "type": "integer"
+          },
+          "state": {
+            "properties": {
+              "reads": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "tables": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "writes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "dynamic_hosts",
+          "hosts",
+          "network"
+        ],
+        "type": "object"
+      },
+      "tool_version": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "kind",
+      "name",
+      "reach",
+      "tool_version"
+    ],
+    "type": "object"
+  },
   "host.tool.remove": {
     "properties": {
       "removed": {

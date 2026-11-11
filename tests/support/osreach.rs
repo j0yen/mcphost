@@ -182,25 +182,108 @@ fn is_create_kind(canonical: &str) -> bool {
         .any(|v| v.name == canonical && matches!(v.kind, Kind::Write | Kind::Publish) && matches!(v.dry_run, DryRun::Supported))
 }
 
-fn fill(args: &mut Value, harvested: &BTreeMap<String, Value>) {
+/// Every `id`-like scalar the create-kind verbs returned, per field name, in
+/// the order they were seen (the first is the one `fill` uses).
+type Harvest = BTreeMap<String, Vec<Value>>;
+
+/// Whether `candidate` satisfies the `key` property of `input`; a property the
+/// schema does not constrain accepts anything.
+fn fits(input: &Value, key: &str, candidate: &Value) -> bool {
+    match input.pointer(&format!("/properties/{key}")) {
+        Some(sub) => jsonschema::validator_for(sub).is_ok_and(|v| v.is_valid(candidate)),
+        None => true,
+    }
+}
+
+/// Replaces each argument by the first value a create verb returned under its
+/// name; an argument nothing was harvested for keeps its placeholder.
+fn fill(args: &mut Value, harvested: &Harvest) {
     if let Some(obj) = args.as_object_mut() {
         for (k, v) in obj.iter_mut() {
-            if let Some(h) = harvested.get(k) {
+            if let Some(h) = harvested.get(k).and_then(|c| c.first()) {
                 *v = h.clone();
             }
         }
     }
 }
 
+/// A publish-kind create verb needs a spec its kind accepts: the placeholder
+/// call gets the first registered kind's own example spec (the one the verb's
+/// description and the quickstart are built from) and a name its own schema
+/// accepts (a harvested `name` from another verb need not be a tool name).
+fn seed_publish(canonical: &str, args: &mut Value, input: &Value) {
+    if !publishes(canonical) {
+        return;
+    }
+    let registry = mcphost::kinds::KindRegistry::with_builtin();
+    for name in registry.names() {
+        let Some(kind) = registry.get(name) else { continue };
+        let example = kind.example();
+        if !example.spec.is_null() && args.get("spec").is_some() {
+            args["kind"] = json!(name);
+            args["spec"] = example.spec;
+            if let Some(schema) = input.pointer("/properties/name") {
+                args["name"] = crate::vbd_calls::placeholder(schema);
+            }
+            return;
+        }
+    }
+}
+
+/// Whether a served name is a publish-kind write verb.
+fn publishes(served_name: &str) -> bool {
+    mcphost::write_verbs::lookup(&canonical_of(served_name)).is_some_and(|v| matches!(v.kind, Kind::Publish))
+}
+
 /// `id`-like scalars of a create result, keyed by their field name.
-fn harvest(structured: &Value, into: &mut BTreeMap<String, Value>) {
+fn harvest(structured: &Value, into: &mut Harvest) {
     if let Some(obj) = structured.as_object() {
         for (k, v) in obj {
             if matches!(v, Value::String(_) | Value::Number(_)) && !k.starts_with('_') {
-                into.entry(k.clone()).or_insert_with(|| v.clone());
+                // A qualified `<namespace>.<name>` also offers its local `<name>`.
+                let local = v.as_str().and_then(|q| q.rsplit_once('.')).map(|(_, l)| json!(l));
+                let seen = into.entry(k.clone()).or_default();
+                for candidate in std::iter::once(v.clone()).chain(local) {
+                    if !seen.contains(&candidate) {
+                        seen.push(candidate);
+                    }
+                }
             }
         }
     }
+}
+
+/// How many alternate harvested values one argument may try after the first.
+const MAX_ALTERNATES: usize = 12;
+
+/// `call` with the first harvested value of every argument; when that fails,
+/// each argument that has other harvested values tries them one at a time (a
+/// read-only lookup keyed by a name the first create result did not carry).
+/// The first success wins; otherwise the first failure stands.
+async fn call_with_candidates(client: &McpClient, served: &Served, args: Value, harvested: &Harvest) -> Outcome {
+    let name = served.name.as_str();
+    let mut base = args;
+    fill(&mut base, harvested);
+    seed_publish(&canonical_of(name), &mut base, &served.input);
+    let first = call(client, name, base.clone()).await;
+    if matches!(first, Outcome::Success(_)) {
+        return first;
+    }
+    let Some(obj) = base.as_object() else { return first };
+    for (key, current) in obj {
+        let Some(candidates) = harvested.get(key) else { continue };
+        for alt in candidates.iter().filter(|c| *c != current).take(MAX_ALTERNATES) {
+            let mut a = base.clone();
+            a[key] = alt.clone();
+            if !fits(&served.input, key, alt) {
+                continue;
+            }
+            if let success @ Outcome::Success(_) = call(client, name, a).await {
+                return success;
+            }
+        }
+    }
+    first
 }
 
 enum Outcome {
@@ -312,29 +395,40 @@ pub async fn run_sweep() -> Sweep {
             record(&mut row, s, STATE_DRY_RUN, call(&client, &s.name, a).await);
         }
         // state 3: after the create-kind verbs ran
-        let mut a = args.clone();
+        let a = args.clone();
         let destructive = mcphost::write_verbs::lookup(&canonical).is_some() || canonical.starts_with("host.tenant");
         if destructive {
             let (client, ids) = populate(&server, &creators).await;
-            fill(&mut a, &ids);
-            record(&mut row, s, STATE_AFTER_CREATE, call(&client, &s.name, a).await);
+            let outcome = call_with_candidates(&client, s, a, &ids).await;
+            record(&mut row, s, STATE_AFTER_CREATE, outcome);
         } else {
-            fill(&mut a, &shared_ids);
-            record(&mut row, s, STATE_AFTER_CREATE, call(&shared, &s.name, a).await);
+            let outcome = call_with_candidates(&shared, s, a, &shared_ids).await;
+            record(&mut row, s, STATE_AFTER_CREATE, outcome);
         }
         sweep.rows.insert(s.name.clone(), row);
     }
     sweep
 }
 
-async fn populate(server: &TestServer, creators: &[&Served]) -> (McpClient, BTreeMap<String, Value>) {
+async fn populate(server: &TestServer, creators: &[&Served]) -> (McpClient, Harvest) {
     let client = fresh_client(server).await;
-    let mut ids = BTreeMap::new();
-    for s in creators {
+    let mut ids = Harvest::new();
+    // Publish-kind verbs go last: the name of a tool they made is one more
+    // candidate for a lookup, never the value the other create verbs' own
+    // arguments are filled with.
+    let (publish, others): (Vec<&&Served>, Vec<&&Served>) = creators.iter().partition(|s| publishes(&s.name));
+    for s in others.into_iter().chain(publish).copied() {
         let mut a = crate::vbd_calls::call_for(s.input.as_object().unwrap_or(&Map::new()));
         fill(&mut a, &ids);
+        seed_publish(&canonical_of(&s.name), &mut a, &s.input);
         if let Outcome::Success(structured) = call(&client, &s.name, a).await {
-            harvest(&structured, &mut ids);
+            if publishes(&s.name) {
+                // Only the tool's name: its `kind`, `version` and the like
+                // must not become arguments of verbs that do not take a tool.
+                harvest(&json!({"name": structured.get("name").cloned().unwrap_or(Value::Null)}), &mut ids);
+            } else {
+                harvest(&structured, &mut ids);
+            }
         }
     }
     (client, ids)

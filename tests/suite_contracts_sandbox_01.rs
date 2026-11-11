@@ -38,3 +38,5 @@ mod retshape_ac06_quickstart_carries_bridge_returns;
 mod retshape_ac07_handle_query_shape_in_table;
 #[path = "tfd_ac02_prompt_is_generated_contract_only.rs"]
 mod tfd_ac02_prompt_is_generated_contract_only;
+#[path = "trm_ac06_reach_rules_cover_every_bridge_name.rs"]
+mod trm_ac06_reach_rules_cover_every_bridge_name;

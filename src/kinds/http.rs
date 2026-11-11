@@ -467,6 +467,31 @@ fn referenced_secrets_in_spec(spec: &HttpSpec) -> BTreeSet<String> {
     out
 }
 
+/// What `host.tool.reach` reads off a stored http spec (PRD-mcphost-tool-
+/// reach-manifest-v2 R2): the url's literal host (`None` when the host part is
+/// templated or the url has no scheme), the `{{ secret.* }}` names in url,
+/// headers, query and body, and the vault provider when one is declared. The
+/// `upstream` form is compiled to its url first. `None` for a spec that does
+/// not parse -- the caller reports `dynamic_hosts` then, never an empty reach.
+pub(crate) struct HttpReachFacts {
+    pub host: Option<String>,
+    pub secrets: BTreeSet<String>,
+    pub vault_provider: Option<String>,
+}
+
+pub(crate) fn reach_facts(spec: &Value) -> Option<HttpReachFacts> {
+    let parsed = parse_spec(spec).ok()?;
+    let host = split_scheme_host(&parsed.url)
+        .map(|(_, host)| host)
+        .filter(|host| !host.is_empty() && !host.contains("{{") && !host.contains("{%"))
+        .map(str::to_ascii_lowercase);
+    Some(HttpReachFacts {
+        host,
+        secrets: referenced_secrets_in_spec(&parsed),
+        vault_provider: parsed.upstream_provider.clone(),
+    })
+}
+
 // ---- template variable scanning -------------------------------------------
 //
 // Deliberately not a full Jinja parser: this project's templates are single
