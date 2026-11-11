@@ -28,6 +28,8 @@ mod syreg_ac02_source_kinds_render_once_everywhere;
 mod tblurlp_ac03_driver_on_loopback;
 #[path = "tcse_ac07_registry_is_the_only_spelling.rs"]
 mod tcse_ac07_registry_is_the_only_spelling;
+#[path = "tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned.rs"]
+mod tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned;
 #[path = "thand_ac02_status_enum_source_of_truth.rs"]
 mod thand_ac02_status_enum_source_of_truth;
 #[path = "toolname_ac03_tools_list_alias_entries.rs"]

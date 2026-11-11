@@ -167,6 +167,7 @@ pub const RETRY_POLICY: &[RetryRow] = &[
     no(crate::subkeys::NOT_FOUND, FIX),
     no("plan_required", NO),
     no(crate::errors::QUOTA_EXCEEDED, NO),
+    no(crate::errors::NAMESPACE_RESERVED, FIX),
     no("requirement_not_allowed", NO),
     no("requirement_not_inferable", NO),
     no("response_too_large", NO),
