@@ -105,7 +105,8 @@ async fn tenp_ac05_none_is_deleted_before_the_latest_of_last_seen_event_and_floo
     let c = tenp::insert(&conn, &disabled("tenp-c", "idle_expired", floor - 2 * DAY, Some(floor - DAY)));
     event(&conn, c, floor + 20 * DAY);
 
-    let steps: [(i64, &[i64], &[i64]); 8] = [
+    type Step<'a> = (i64, &'a [i64], &'a [i64]);
+    let steps: [Step<'_>; 8] = [
         // (clock offset from the floor in seconds, rows that must exist, rows that must be gone)
         (14 * DAY - 1, &[a, b, c, d, e], &[]),
         (14 * DAY, &[b, c, d, e], &[a]),
