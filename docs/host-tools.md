@@ -22,6 +22,12 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.state.table_drop` | drop | supported | |
 | `host.docs.put` | write | supported | |
 | `host.docs.put_many` | write | supported | |
+| `host.queue.create` | write | supported | |
+| `host.queue.push` | write | supported | |
+| `host.queue.pause` | write | supported | |
+| `host.queue.resume` | write | supported | |
+| `host.queue.drain` | write | supported | |
+| `host.queue.delete` | delete | supported | |
 | `host.docs.delete` | delete | supported | |
 | `host.docs.purge` | delete | supported | |
 | `host.index.create` | write | supported | |
@@ -102,6 +108,7 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 - `host.state.delete`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.state.delete_rows`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.state.table_drop`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
+- `host.queue.delete`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.docs.delete`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.docs.purge`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.index.delete`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).

@@ -81,6 +81,13 @@ pub const POLICY_TABLES: &[PolicyTable] = &[
         env_var: "MCPHOST_RETENTION_MESSAGES_DAYS",
         default_days: 90,
     },
+    // PRD-mcphost-queue-primitive-v2 R10: finished queue items, keyed on
+    // `ended_at_ms`; `pending` and `running` items are never pruned.
+    PolicyTable {
+        name: "queue_items",
+        env_var: "MCPHOST_RETENTION_QUEUE_ITEMS_DAYS",
+        default_days: 30,
+    },
     // PRD-mcphost-docs-telemetry-failed-after-search R5.
     PolicyTable {
         name: "help_search_events",
@@ -384,6 +391,12 @@ const EXECUTABLE_TABLES: &[ExecutableTable] = &[
         physical_table: "threads",
         age_column: AgeColumn::UnixMillis("created_unix_ms"),
         extra_where: None,
+    },
+    ExecutableTable {
+        policy_name: "queue_items",
+        physical_table: "queue_items",
+        age_column: AgeColumn::UnixMillis("ended_at_ms"),
+        extra_where: Some("status IN ('done', 'failed') AND ended_at_ms IS NOT NULL"),
     },
     ExecutableTable {
         policy_name: "help_search_events",

@@ -137,6 +137,7 @@ pub mod plans;
 pub mod demo_page;
 pub mod public_tool;
 pub mod query_diag;
+pub mod queues;
 pub mod reach;
 pub mod recipes;
 pub mod delegation_recipe;

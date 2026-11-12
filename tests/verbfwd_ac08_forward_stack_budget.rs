@@ -178,6 +178,10 @@ fn args_for(tool: &rmcp::model::Tool) -> Value {
     if tool.name == "host.docs.put_many" {
         return json!({"documents": [{"name": PLACEHOLDER, "content": PLACEHOLDER}]});
     }
+    // `host.queue.push`'s `items` is an array of at least one, like `documents` above.
+    if tool.name == "host.queue.push" {
+        return json!({"name": PLACEHOLDER, "items": [{}]});
+    }
     required_args(&Value::Object((*tool.input_schema).clone()))
 }
 
