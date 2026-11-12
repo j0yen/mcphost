@@ -5377,6 +5377,96 @@ fn host_tools_part_15() -> Vec<Tool> {
 }
 
 #[inline(never)]
+fn host_tools_part_16() -> Vec<Tool> {
+    let name = || json!({"type": "string", "description": "The queue's name (lowercase letters, digits, - and _, at most 40)."});
+    vec![
+        // PRD-mcphost-queue-primitive-v2 R2.
+        Tool::new(
+            "host.queue.create",
+            "Create a named queue for a batch: the host works through the items you push, as \
+             ordinary runs of consumer_tool (trigger queue), after your session ends. At most \
+             concurrency of the queue's runs are queued or running at once, and never more than \
+             the plan's jobs_concurrent. consumer_tool must be one of your own published tools; \
+             a queue counts against the plan's queues_max and concurrency against \
+             queue_concurrency_max (host.quickstart limits.plan). Returns {name, state, \
+             consumer_tool, concurrency, created_at_ms}.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "pattern": crate::queues::NAME_PATTERN, "description": "The queue's name: lowercase letters, digits, - and _, 1 to 40 characters."},
+                    "consumer_tool": {"type": "string", "description": "One of your own published tools; each pushed item is its arguments."},
+                    "concurrency": {"type": "integer", "minimum": 1, "description": "How many items may run at once, 1 to the plan's queue_concurrency_max; default 1."},
+                }),
+                &["name", "consumer_tool"],
+            ),
+        ),
+        // R3.
+        Tool::new(
+            "host.queue.push",
+            "Push up to 1000 items onto a queue in one call. Each item is the arguments of the \
+             queue's consumer_tool, checked against its input_schema now and held to the plan's \
+             queue_item_bytes_max; a bad item is reported, never fatal. Returns {accepted, \
+             rejected: [{index, reason}], first_idx, last_idx}. Items run in push order. A push \
+             to a paused queue is accepted and held; a draining or drained queue answers \
+             queue_not_accepting; a push that would pass the plan's queue_items_max (pending plus \
+             running) inserts nothing and answers quota_exceeded.",
+            host_schema(
+                json!({
+                    "name": name(),
+                    "items": {"type": "array", "minItems": 1, "maxItems": 1000, "description": "1-1000 items, each the arguments of the consumer tool."},
+                }),
+                &["name", "items"],
+            ),
+        ),
+        // R5.
+        Tool::new(
+            "host.queue.stats",
+            "Read one queue: {state, consumer_tool, concurrency, pending, running, done, failed, \
+             attempts_total, oldest_pending_age_ms, created_at_ms, drained_at_ms}. The four \
+             counts come from one read and sum to the items the queue holds. State is active, \
+             paused, draining or drained.",
+            host_schema(json!({"name": name()}), &["name"]),
+        ),
+        // R6.
+        Tool::new(
+            "host.queue.pause",
+            "Pause an active queue: no further item starts, the items already running finish. \
+             Pushes are still accepted and held. host.queue.resume starts delivery again. \
+             Returns the queue's stats.",
+            host_schema(json!({"name": name()}), &["name"]),
+        ),
+        Tool::new(
+            "host.queue.resume",
+            "Resume a paused queue: delivery continues with the next pending item. Returns the \
+             queue's stats.",
+            host_schema(json!({"name": name()}), &["name"]),
+        ),
+        Tool::new(
+            "host.queue.drain",
+            "Stop accepting items and finish what remains: an active or paused queue becomes \
+             draining, then drained (drained_at_ms set) once nothing is pending or running; an \
+             empty queue goes straight to drained. A push to it then answers queue_not_accepting. \
+             Returns the queue's stats.",
+            host_schema(json!({"name": name()}), &["name"]),
+        ),
+        // R5.
+        Tool::new(
+            "host.queue.list",
+            "List this tenant's queues: {queues: [{name, state, pending, running, done, failed}]}, \
+             name order. Bounded by the plan's queues_max, so it returns whole.",
+            host_schema(json!({}), &[]),
+        ),
+        // R8.
+        Tool::new(
+            "host.queue.delete",
+            "Delete a drained or paused queue and all its items. An active or draining queue \
+             answers queue_active with the hint 'pause or drain first'. Runs already started \
+             stay in host.runs.list.",
+            host_schema(json!({"name": name()}), &["name"]),
+        ),
+    ]
+}
+
+#[inline(never)]
 fn host_tools_part_13() -> Vec<Tool> {
     vec![
         Tool::new(
@@ -5750,6 +5840,7 @@ fn host_tools_part_13() -> Vec<Tool> {
     tools.extend(host_tools_part_13());
     tools.extend(host_tools_part_14());
     tools.extend(host_tools_part_15());
+    tools.extend(host_tools_part_16());
     tools.extend(crate::verify::tools());
     if authenticated {
         tools.push(Tool::new(

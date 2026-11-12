@@ -81,6 +81,9 @@ run_enum!(
         Webhook => "webhook",
         Composition => "composition",
         Url => "url",
+        // PRD-mcphost-queue-primitive-v2 R6: a run the queue dispatcher started
+        // from a `queue_items` row; `trigger_ref` is the queue id.
+        Queue => "queue",
     ]
 );
 

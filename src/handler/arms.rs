@@ -1371,6 +1371,62 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_queue_create<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::queues::create(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_queue_delete<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::queues::delete(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_queue_drain<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::queues::drain(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_queue_pause<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::queues::pause(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_queue_push<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::queues::push(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_queue_resume<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::queues::resume(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_queue_stats<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::queues::stats(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_queue_list<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, .. } = c;
+            crate::queues::list(&self.state, tenant).await
+        })
+    }
+
     pub(crate) fn arm_host_trigger_set<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;

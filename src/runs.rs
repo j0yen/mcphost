@@ -1132,6 +1132,42 @@ pub async fn enqueue_with_trigger(
     Ok(run_id)
 }
 
+/// PRD-mcphost-queue-primitive-v2 R3/R4: the validator a queue item's arguments
+/// are checked against -- the consumer tool's own `input_schema`, the block
+/// [`enqueue`] runs (`None` for a kind that validates its own arguments, which
+/// carries over [`enqueue`]'s `!kind.validates_own_args()` guard), plus the
+/// plan's `job_max_s` the run's deadline comes from. Built once per push and
+/// once per dispatched item.
+pub(crate) async fn consumer_validator(
+    state: &AppState,
+    tenant: &Tenant,
+    local_name: &str,
+) -> Result<(Option<jsonschema::Validator>, i64), AppError> {
+    let row = state
+        .db
+        .get_tool(tenant.id, local_name.to_string())
+        .await?
+        .ok_or_else(|| AppError::ToolNotFound(local_name.to_string()))?;
+    let kind = state.kinds.get(&row.kind).ok_or_else(|| {
+        AppError::Internal(format!(
+            "published tool names unregistered kind '{}'",
+            row.kind
+        ))
+    })?;
+    let validator = if kind.validates_own_args() {
+        None
+    } else {
+        jsonschema::validator_for(&kind.describe(&row.spec).input_schema).ok()
+    };
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+    Ok((validator, plan.job_max_s))
+}
+
 /// PRD-mcphost-shared-tool-call-path requirement 3 (AC4): the qualified-name
 /// sibling of [`enqueue`] above -- `host.tool_call {name: "<owner_ns>.
 /// <local_name>", async: true}` delegates here instead. The row is inserted
