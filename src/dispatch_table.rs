@@ -240,6 +240,7 @@ pub const DISPATCH_TABLE: &[(&str, Arm)] = &[
     ("host.tool.list_shared", McpHostHandler::arm_host_tool_list_shared),
     ("host.tool.logs", McpHostHandler::arm_host_tool_logs),
     ("host.tool.publish", McpHostHandler::arm_host_tool_publish),
+    ("host.tool.reach", McpHostHandler::arm_host_tool_reach),
     ("host.tool.remove", McpHostHandler::arm_host_tool_remove),
     ("host.tool.rollback", McpHostHandler::arm_host_tool_rollback),
     ("host.tool.run", McpHostHandler::arm_host_tool_run),

@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-synthetic-tenant-purge.md",
-  "intent_slug": "mcphost-synthetic-tenant-purge",
-  "root_motivation": "WHO: Joe as operator of mcphost-1 (one 1.9 GB SQLite file in WAL mode serving every tenant), rb who reads its prune_log, and the live judge that reads /contract.json. WHAT: the synthetic-tenant idle policy disables nothing on prod because its floor is a selector term, and nothing ever deletes a synthetic tenant, so about 2.3 M child rows of idle and self-offboarded synthetic tenants sit in the file. WHY: a delete on that scale must be batched under load, exactly once, complete across every table that names a tenant, held while a real tenant's row names the subject, and report-only on its first sweep.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-reach-manifest-v2.md",
+  "intent_slug": "mcphost-tool-reach-manifest-v2",
+  "root_motivation": "**Who:** the coding agent asked \"what can this tool touch?\" by its user; the agent deciding whether to call a shared tool; the operator reviewing a tenant. **What:** a statement of a tool's reach that is derived from the artifact, so it cannot lie. **Why not today** (read at `origin/main` b9277c04, 0.130.0): - The host already walks http templates to find undefined refs (`iter_expressions`, `extract_secret_refs`) and scans python source for `mcphost.<name>` to produce `unknown_import_hint` (`scan_unknown_imports`). It throws that walk away after validation. - `host.tool.list` returns name, kind and description. `host.tool.spec_shared` returns a redacted spec as text, which a model must read and can misread. Nothing names the hosts, secrets or state keys. - `subkeys::ALWAYS_LISTED` already lists `host.tool.reach` as a verb every sub-key sees, and `tests/kst_ac02_*` says it is \"built by a different PRD (PRD-mcphost-tool-reach-manifest)\". The name is reserved and no handler exists.",
   "user_persona": "An operator holding the admin key who needs the numbers (would_expire, pre_floor, would_purge, cross_refs, held_entangled) before any delete and a purge that never touches a claimed, verified, paid or billed tenant, plus the live judge reading the lifecycle rule from /contract.json.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the § Fixture (6,000 due subjects, 20 heavy) and a host.tool_call loop on a live tenant, When the scheduled sweep and admin.prune_now start together with a budget one sweep cannot finish, Then one reports busy, every subject is deleted exactly once over two or more batches, held_over equals the remainder, loop p95 stays under 250 ms and under max(2× the idle baseline, 50 ms), and per-batch wall time in the PR body.",
-      "test": "tests/tenp_ac01_batched_purge_under_load_exactly_once.rs"
+      "description": "Given one fixture tool per registered kind (http with 2 `{{ secret.* }}` refs and a literal host, chain of 2 http steps, python writing `orders/` and reading `cfg/` through `mcphost.state`, js with `network: \"public\"`, wasm, jq, echo), When `host.tool.reach` is called on each, Then the manifest holds the expected hosts, secrets, state keys and modules, derived from the stored spec alone, and no fixture runs.",
+      "test": "tests/trm_ac01_reach_per_registered_kind.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a subject with a row in every table naming tenants by key or name (enumerated at test time; two-sided set = § Cascade) and, per two-sided column, a synthetic and a claimed two-marker tenant's row naming it, When sweeps run, Then it is held, held_entangled names each claimed-owned column, no row of either tenant changes; claimed rows gone, it is purged, synthetic rows get their § Cascade outcome and no row names it.",
-      "test": "tests/tenp_ac02_cascade_complete_and_entangled_subject_held.rs"
+      "description": "Given an http tool whose url host is `{{ args.host }}`, When it is published and read, Then `dynamic_hosts` is `true`, `hosts` holds only literal hosts, and this PRD does not refuse the publish.",
+      "test": "tests/trm_ac02_templated_host_is_dynamic_not_refused.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the migrated schema, When a test lists every foreign-key column referencing tenants through pragma_foreign_key_list, Then each has an index whose first column it is, the migration adding the missing ones takes the next free number at land time and also creates namespace_tombstones holding each tenant-delete admin_events namespace, and dropping any one of those indexes inside the test fails it naming the table and column.",
-      "test": "tests/tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned.rs"
+      "description": "Given a python tool calling `mcphost.state.set(key, v)` with a non-literal key and another that reaches `mcphost.state` through an alias, When read, Then the first has `\"*dynamic*\"` in `state.writes` and nothing else from that call, and the second carries `\"*dynamic*\"` in `reads`, `writes` and `tables`.",
+      "test": "tests/trm_ac03_dynamic_state_keys_and_aliases.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given implicit synthetic unclaimed rows minted before the floor, When the sweep runs with the window elapsed since the floor, Then each is disabled idle_expired with a lifecycle event, the expire stage stops at the wall budget reporting held_over, a row idle under the window is untouched, and the sweep with no prior prune_log row carrying purge_due_unix logs pre_floor with a ≤ 200-row pre_floor_sample, no key or address.",
-      "test": "tests/tenp_ac04_idle_clock_runs_from_the_floor.rs"
+      "description": "Given any published tool, When `host.tool.reach` is called, Then the answer equals `reach::derive` over the row's stored `kind` and `spec` and the read writes nothing to the database; Given it is republished with a new url host, Then `hosts` follows and `tool_version` increments, and after `host.tool.rollback` the earlier manifest returns.",
+      "test": "tests/trm_ac04_answer_equals_derive_and_follows_versions.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given two-marker rows disabled idle_expired or self_offboard, When sweeps run on a mock clock, Then none is deleted before MAX(last_seen or created, last lifecycle event, floor) + grace, a sweep with no prior prune_log row carrying purge_due_unix only reports would_purge and cross_refs, later sweeps delete via delete_tenant_as logging tenant_purge_synthetic; each batch ends in incremental_vacuum(PURGE_VACUUM_PAGES), no VACUUM.",
-      "test": "tests/tenp_ac05_grace_clock_report_first_and_bounded_vacuum.rs"
+      "description": "Given tenant B and A's tool shared with `expose_spec: true`, When B calls `host.tool.reach`, Then only `hosts`, `dynamic_hosts`, `network` and `secrets_count` return, with no secret name, state key or source; without `expose_spec` the error is `spec_not_exposed`, a share without `read_source` is `scope_missing`, and an unshared name is `tool_not_found`.",
+      "test": "tests/trm_ac05_sharee_sees_the_caller_view_only.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given purge-due and pre-floor rows, When admin.prune_now is called with dry_run true, Then it returns would_expire, pre_floor, would_purge, purge_due_unix, cross_refs by column and class and held_entangled, writes no prune_log row and deletes nothing; admin.funnel carries tenants_synthetic_purged; contract dump shows the § Contract keys and contract --check fails when a constant moves.",
-      "test": "tests/tenp_ac06_dry_run_report_funnel_count_and_contract_keys.rs"
+      "description": "Given `BRIDGE_MODULES` or `BRIDGE_ATTRS` gains an entry with no `REACH_CATEGORIES` rule, When the drift test runs, Then it fails naming the entry; Given both sets are covered, Then it passes.",
+      "test": "tests/trm_ac06_reach_rules_cover_every_bridge_name.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the § Classes rows, When sweeps pass the window and grace, Then only the both-markers unclaimed row gains event, flag and deletion, the other eight none, even if a class flips between mark and delete; grace env off purges nothing, idle-days env off disables or purges nothing; a disabled subject's old tenant_key gets tenant_key_invalid and moves no due date, and a keyless new peer still mints, never a purged namespace.",
-      "test": "tests/tenp_ac07_class_matrix_off_switches_and_namespace_reservation.rs"
+      "description": "Given a sub-key whose allowlist holds only tool `a`, When it calls `host.tool.reach` for `a` and for `b`, Then `a` returns the caller view with no secret names and `b` is `permission_denied`.",
+      "test": "tests/trm_ac07_subkey_reach_follows_its_allowlist.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 8 command in § Live evidence commands runs from the build host with no credential, Then jq prints true on purge.grace_days 14, floor_rule idle_from_floor, zero_disables false and self_offboard among the purge reasons, and the last line is jq_rc=0 (Live; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)",
-      "test": "deferred: Live (prod; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)"
+      "description": "Given prod after deploy, When the live test `trm_ac08_live_prod_reach` publishes an http tool with a literal host and one secret reference and calls `host.tool.reach` on it, Then `hosts` holds that host, `secrets` names the secret and `tool_version` is 1 (Live; evidence: `MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test trm_ac08_live_prod_reach`)",
+      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test trm_ac08_live_prod_reach)"
     }
   ],
   "scope": [

@@ -35294,6 +35294,174 @@
       "since": "0.81.1"
     },
     {
+      "description": "What can this tool touch? Returns {name, tool_version, kind, reach}: the hosts it calls, the secrets it references (names only), the mcphost.state keys it reads and writes, the bridge modules it uses, the tools it calls and its network mode, derived from the stored spec without running it. A value built at run time reads \"*dynamic*\". For a tool shared with you (expose_spec: true) you get hosts, dynamic_hosts, network and secrets_count only.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "A tool of yours (its local name), or a shared tool as \"<owner_namespace>.<name>\".",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.tool.reach",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reach": {
+            "properties": {
+              "calls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "dynamic_hosts": {
+                "type": "boolean"
+              },
+              "hosts": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "modules": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "network": {
+                "type": "string"
+              },
+              "secrets": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "secrets_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "state": {
+                "properties": {
+                  "reads": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "tables": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "writes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  }
+                },
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "dynamic_hosts",
+              "hosts",
+              "network"
+            ],
+            "type": "object"
+          },
+          "tool_version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "reach",
+          "tool_version"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.0"
+    },
+    {
       "description": "Remove a published tool by its local name. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
@@ -48494,6 +48662,30 @@
       },
       "name": "host_tool_publish",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.tool.reach",
+      "description": "What can this tool touch? Returns {name, tool_version, kind, reach}: the hosts it calls, the secrets it references (names only), the mcphost.state keys it reads and writes, the bridge modules it uses, the tools it calls and its network mode, derived from the stored spec without running it. A value built at run time reads \"*dynamic*\". For a tool shared with you (expose_spec: true) you get hosts, dynamic_hosts, network and secrets_count only.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "A tool of yours (its local name), or a shared tool as \"<owner_namespace>.<name>\".",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_tool_reach",
+      "since": "0.130.0"
     },
     {
       "alias_of": "host.tool.remove",

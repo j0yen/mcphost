@@ -2128,6 +2128,27 @@ fn host_tools_part_02() -> Vec<Tool> {
                 &["tool"],
             ),
         ),
+        // PRD-mcphost-tool-reach-manifest-v2 R4: what a tool can touch, derived
+        // from its stored spec on every read.
+        Tool::new(
+            "host.tool.reach",
+            "What can this tool touch? Returns {name, tool_version, kind, reach}: the hosts it \
+             calls, the secrets it references (names only), the mcphost.state keys it reads and \
+             writes, the bridge modules it uses, the tools it calls and its network mode, derived \
+             from the stored spec without running it. A value built at run time reads \
+             \"*dynamic*\". For a tool shared with you (expose_spec: true) you get hosts, \
+             dynamic_hosts, network and secrets_count only.",
+            host_schema(
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "A tool of yours (its local name), or a shared tool as \
+                            \"<owner_namespace>.<name>\".",
+                    },
+                }),
+                &["name"],
+            ),
+        ),
         // PRD-mcphost-scoped-tool-share R6: copy a fork-scoped shared tool.
         Tool::new(
             "host.tool.fork",
@@ -12150,19 +12171,129 @@ impl McpHostHandler {
         // metadata only) are looked up here rather than kept from a
         // critical-path `Tenant` fetch, since this whole block already
         // isn't on that path.
+        self.record_shared_read((owner_ns.clone(), owner_id), local_name.clone(), caller.id, duration_ms);
+        Ok(json!({
+            "tool": format!("{owner_ns}.{local_name}"),
+            "kind": row.kind,
+            "spec": spec,
+            "exposed_at": row.spec_exposed_unix.map(crate::state::rfc3339_from_unix),
+        }))
+    }
+}
+
+impl McpHostHandler {
+    /// PRD-mcphost-tool-reach-manifest-v2 R4: `host.tool.reach {name}`. A name
+    /// with no dot is the caller's own tool (as is its own `<ns>.<name>`); a
+    /// `<owner_ns>.<name>` takes the sharee path, which runs the three gates
+    /// `tool_spec_shared` runs, in its order. The answer is derived from the
+    /// stored row each time and nothing is written for an own read.
+    async fn tool_reach(&self, caller: &Tenant, args: Value) -> Result<Value, AppError> {
+        let name = args
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'name'".into()))?
+            .to_string();
+        let own_local = match name.split_once('.') {
+            None => Some(name.clone()),
+            Some((ns, local)) if ns == caller.namespace => Some(local.to_string()),
+            Some(_) => None,
+        };
+        if let Some(local) = own_local {
+            let row = self
+                .state
+                .db
+                .get_tool(caller.id, local)
+                .await?
+                .ok_or_else(|| AppError::ToolNotFound(name.clone()))?;
+            let reach = self.derive_reach(caller.id, &row).await?;
+            // A sub-key sees the caller view, never secret names or state keys.
+            let view = if crate::subkeys::current_key_id().is_some() { reach.caller_view() } else { reach.to_json() };
+            return Ok(json!({"name": name, "tool_version": row.current_version, "kind": row.kind, "reach": view}));
+        }
+
+        let (owner_ns, local_name) = name.split_once('.').expect("a dotted name here");
+        let (owner_ns, local_name) = (owner_ns.to_string(), local_name.to_string());
+        crate::preflight::check_calls_per_day(&self.state, caller, crate::preflight::Mode::Real).await?;
+        let not_found = || AppError::shared_tool_not_found(&owner_ns, &local_name);
+        let (owner_id, row) = self
+            .state
+            .db
+            .get_tool_owner_id_by_namespace(owner_ns.clone(), local_name.clone())
+            .await?
+            .ok_or_else(not_found)?;
+        if !self.tool_visible_to(owner_id, &row, caller.id).await? {
+            return Err(not_found());
+        }
+        if !row.expose_spec {
+            return Err(AppError::spec_not_exposed(&owner_ns, &local_name));
+        }
+        let granted = self
+            .state
+            .db
+            .get_share_meta(owner_id, local_name.clone())
+            .await?
+            .and_then(|m| m.scopes)
+            .unwrap_or_else(crate::sharing::ShareScope::legacy_default);
+        if !crate::sharing::ShareScope::ReadSource.granted_in(&granted) {
+            return Err(crate::sharing::scope_missing(crate::sharing::ShareScope::ReadSource, &granted));
+        }
+        let started = Instant::now();
+        let reach = self.derive_reach(owner_id, &row).await?;
+        self.record_shared_read((owner_ns, owner_id), local_name, caller.id, started.elapsed().as_millis() as i64);
+        Ok(json!({
+            "name": name,
+            "tool_version": row.current_version,
+            "kind": row.kind,
+            "reach": reach.caller_view(),
+        }))
+    }
+
+    /// [`crate::reach::derive_with_steps`] over `row`, with the chain steps the
+    /// owner's own tenant holds loaded first (reads only).
+    async fn derive_reach(&self, owner_id: i64, row: &crate::db::ToolRow) -> Result<crate::reach::Reach, AppError> {
+        let mut loaded: HashMap<String, (String, Value)> = HashMap::new();
+        let mut frontier = vec![(row.kind.clone(), row.spec.clone())];
+        for _ in 0..crate::reach::MAX_CHAIN_DEPTH {
+            let mut next = Vec::new();
+            for (kind, spec) in &frontier {
+                if kind != "chain" {
+                    continue;
+                }
+                for step in crate::reach::chain_local_steps(spec) {
+                    if loaded.contains_key(&step) {
+                        continue;
+                    }
+                    if let Some(found) = self.state.db.get_tool(owner_id, step.clone()).await? {
+                        next.push((found.kind.clone(), found.spec.clone()));
+                        loaded.insert(step, (found.kind, found.spec));
+                    }
+                }
+            }
+            if next.is_empty() {
+                break;
+            }
+            frontier = next;
+        }
+        Ok(crate::reach::derive_with_steps(&row.kind, &row.spec, &|step| loaded.get(step).cloned()))
+    }
+
+    /// The calls-log row a sharee's read of another tenant's tool leaves: it
+    /// counts against the caller's daily quota on its next check, and shows in
+    /// the owner's `calls_by_others`. Detached, as `tool_spec_shared`'s is, so
+    /// concurrent readers do not queue a second write each behind the one
+    /// connection.
+    fn record_shared_read(&self, owner: (String, i64), tool: String, caller_id: i64, duration_ms: i64) {
+        let (owner_ns, owner_id) = owner;
         let state = self.state.clone();
-        let owner_ns_bg = owner_ns.clone();
-        let owner_tool_name = local_name.clone();
-        let caller_id = caller.id;
         tokio::spawn(async move {
-            let Ok(Some(owner)) = state.db.find_tenant_by_namespace(owner_ns_bg).await else {
+            let Ok(Some(owner)) = state.db.find_tenant_by_namespace(owner_ns).await else {
                 return;
             };
             let _ = state
                 .db
                 .record_call_attributed(
                     owner_id,
-                    owner_tool_name,
+                    tool,
                     duration_ms,
                     true,
                     None,
@@ -12175,13 +12306,6 @@ impl McpHostHandler {
                 )
                 .await;
         });
-
-        Ok(json!({
-            "tool": format!("{owner_ns}.{local_name}"),
-            "kind": row.kind,
-            "spec": spec,
-            "exposed_at": row.spec_exposed_unix.map(crate::state::rfc3339_from_unix),
-        }))
     }
 }
 
@@ -13443,6 +13567,17 @@ impl McpHostHandler {
             if !sk.scope_ok(canonical) {
                 return Err(sk.scope_denied(canonical).into_error_data_at(Some(&self.state.public_url)));
             }
+            // PRD-mcphost-tool-reach-manifest-v2 R4: the verb is always listed,
+            // so the tool it names is what the allowlist is checked against.
+            if canonical == "host.tool.reach"
+                && let Some(asked) = raw_args.get("name").and_then(Value::as_str)
+            {
+                let wire = if asked.contains('.') { asked.to_string() } else { format!("{}.{asked}", tenant.namespace) };
+                if !sk.permits(&tenant.namespace, &wire) {
+                    return Err(sk.denied(&wire).into_error_data_at(Some(&self.state.public_url)));
+                }
+            }
+
             // PRD-mcphost-delegation-bound-to-run-or-session R3: a bound key
             // is refused anywhere but its run / session, before any call row.
             // `host.whoami` stays open so a helper can read its own binding.

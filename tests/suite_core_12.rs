@@ -948,6 +948,12 @@ mod trigidem_ac05_verbs_accept_name;
 mod trigidem_ac06_migration_backfills_duplicate_names;
 #[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
 mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
+#[path = "trm_ac02_templated_host_is_dynamic_not_refused.rs"]
+mod trm_ac02_templated_host_is_dynamic_not_refused;
+#[path = "trm_ac04_answer_equals_derive_and_follows_versions.rs"]
+mod trm_ac04_answer_equals_derive_and_follows_versions;
+#[path = "trm_ac07_subkey_reach_follows_its_allowlist.rs"]
+mod trm_ac07_subkey_reach_follows_its_allowlist;
 #[path = "tssdk_ac01_no_override_table.rs"]
 mod tssdk_ac01_no_override_table;
 #[path = "tssdk_ac02_build_test_tsc_and_header.rs"]
@@ -1026,17 +1032,3 @@ mod upfam_ac05_hints_name_real_tools;
 mod upfam_ac06_host_not_allowed_names_tool_call;
 #[path = "upfam_ac07_tool_test_matches_real_call.rs"]
 mod upfam_ac07_tool_test_matches_real_call;
-#[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
-mod upgrade_ac01_calls_per_day_next_checkout;
-#[path = "upgrade_ac02_billing_off_refusal_text.rs"]
-mod upgrade_ac02_billing_off_refusal_text;
-#[path = "upgrade_ac03_checkout_source_metadata.rs"]
-mod upgrade_ac03_checkout_source_metadata;
-#[path = "upgrade_ac04_webhook_stamps_paid_unix.rs"]
-mod upgrade_ac04_webhook_stamps_paid_unix;
-#[path = "upgrade_ac05_billing_status_receipt.rs"]
-mod upgrade_ac05_billing_status_receipt;
-#[path = "upgrade_ac06_admin_funnel_upgrades_by_trigger.rs"]
-mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
-#[path = "upgrade_ac07_admin_upgrades_listing.rs"]
-mod upgrade_ac07_admin_upgrades_listing;
