@@ -149,9 +149,9 @@ pub static ROUTES: &[RouteSpec] = &[
     route!("GET" "/reach" "status" "Content-free reachability probe for any public hostname" Anonymous
         responses [200 => Json("Reach")]
         => || get(crate::reach::reach)),
-    route!("GET" "/status.json" "status" "Status feed; component and days select one component's daily rollup" Anonymous
-        query ["component", "days"] request None; cors false;
-        responses [200 => Json("StatusFeed"), 500 => Json("LegacyError")]
+    route!("GET" "/status.json" "status" "Status feed; component and days select one component's daily rollup, slo and days one slo key's" Anonymous
+        query ["component", "days", "slo"] request None; cors false;
+        responses [200 => Json("StatusFeed"), 400 => Json("LegacyError"), 500 => Json("LegacyError")]
         => || get(status_json_route)),
     route!("GET" "/incidents.json" "status" "Last 24 h of heal actions, anonymised" Anonymous
         responses [200 => Json("Incidents"), 500 => Json("LegacyError")]

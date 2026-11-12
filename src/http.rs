@@ -1101,10 +1101,30 @@ async fn status_json_route(
         .get("component")
         .cloned()
         .zip(params.get("days").and_then(|d| d.parse::<i64>().ok()));
+    // PRD-mcphost-slo-targets-on-status R6: `?slo=<key>&days=<n>`.
+    let by_slo = params
+        .get("slo")
+        .cloned()
+        .zip(params.get("days").and_then(|d| d.parse::<i64>().ok()));
 
-    let body = match by_component {
-        Some((component, days)) => crate::statusfeed::daily_rows(&state, &component, days).await,
-        None => crate::statusfeed::status_json(&state).await,
+    let body = match (by_component, by_slo) {
+        (Some((component, days)), _) => crate::statusfeed::daily_rows(&state, &component, days).await,
+        (None, Some((key, days))) => match crate::statusfeed::slo_daily_rows(&state, &key, days).await {
+            Ok(Some(rows)) => Ok(rows),
+            Ok(None) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error_code": crate::errors::ARGS_INVALID,
+                        "error": format!("unknown slo key '{key}'"),
+                        "keys": crate::statusfeed::SLO_TARGETS.iter().map(|t| t.key).collect::<Vec<_>>(),
+                    })),
+                )
+                    .into_response();
+            }
+            Err(e) => Err(e),
+        },
+        (None, None) => crate::statusfeed::status_json(&state).await,
     };
 
     let mut response = match body {
