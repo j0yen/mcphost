@@ -322,6 +322,13 @@
       }
     }
   },
+  "log_sinks": [
+    "ToolLog",
+    "CallTrace",
+    "CallErrorSummary",
+    "RunError",
+    "Message"
+  ],
   "onboarding": {
     "implicit_signup": {
       "scope": "session",
@@ -34114,7 +34121,8 @@
         "tags",
         "tested_version",
         "stale_test",
-        "forked_from"
+        "forked_from",
+        "pii_args"
       ],
       "input_schema": {
         "additionalProperties": false,
@@ -34139,7 +34147,8 @@
                 "tags",
                 "tested_version",
                 "stale_test",
-                "forked_from"
+                "forked_from",
+                "pii_args"
               ],
               "type": "string"
             },
@@ -34700,6 +34709,13 @@
             "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
             "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
+          },
+          "pii": {
+            "description": "Argument names that carry personal data (each must be a property of the tool's input schema; a property marked \"x-pii\": true joins the set). The host replaces their values with [redacted:pii] in every persisted log, call trace and error summary; the caller's result is unchanged. Omit to keep the stored list, [] to clear it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "scopes": {
             "description": "OAuth scopes a token must carry (directly, or via mcp) to reach this tool: catalogued names from host.oauth.scopes, or the built-ins read/write. At most 8. Omit (or [] ) to require only mcp -- unaffected by any catalog.",
@@ -36404,7 +36420,8 @@
         "tags",
         "tested_version",
         "stale_test",
-        "forked_from"
+        "forked_from",
+        "pii_args"
       ],
       "input_schema": {
         "additionalProperties": false,
@@ -36429,7 +36446,8 @@
                 "tags",
                 "tested_version",
                 "stale_test",
-                "forked_from"
+                "forked_from",
+                "pii_args"
               ],
               "type": "string"
             },
@@ -36632,6 +36650,13 @@
             "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
             "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
+          },
+          "pii": {
+            "description": "Argument names that carry personal data (each must be a property of the tool's input schema; a property marked \"x-pii\": true joins the set). The host replaces their values with [redacted:pii] in every persisted log, call trace and error summary; the caller's result is unchanged. Omit to keep the stored list, [] to clear it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "scopes": {
             "description": "OAuth scopes a token must carry (directly, or via mcp) to reach this tool: catalogued names from host.oauth.scopes, or the built-ins read/write. At most 8. Omit (or [] ) to require only mcp -- unaffected by any catalog.",
@@ -48273,7 +48298,8 @@
                 "tags",
                 "tested_version",
                 "stale_test",
-                "forked_from"
+                "forked_from",
+                "pii_args"
               ],
               "type": "string"
             },
@@ -48462,6 +48488,13 @@
             "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
             "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
+          },
+          "pii": {
+            "description": "Argument names that carry personal data (each must be a property of the tool's input schema; a property marked \"x-pii\": true joins the set). The host replaces their values with [redacted:pii] in every persisted log, call trace and error summary; the caller's result is unchanged. Omit to keep the stored list, [] to clear it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "scopes": {
             "description": "OAuth scopes a token must carry (directly, or via mcp) to reach this tool: catalogued names from host.oauth.scopes, or the built-ins read/write. At most 8. Omit (or [] ) to require only mcp -- unaffected by any catalog.",

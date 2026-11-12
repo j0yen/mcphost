@@ -736,11 +736,11 @@ pub fn splice_input_schema(verb: &str, properties: &mut Map<String, Value>) {
 
 /// Row keys of `host.tool.list` (`control::tool_list`). `stub` is present
 /// only on an echo-kind tool, the rest always (`forked_from` is `null` on a
-/// tool that is not a fork).
+/// tool that is not a fork; `pii_args` is `[]` on an untagged tool).
 pub const TOOL_LIST_FIELDS: &[&str] = &[
     "name", "kind", "created_at", "visibility", "share_description", "unshared_by", "env",
     "advisories", "expose_spec", "exposed_at", "spec_reads", "scopes", "stub", "tags", "tested_version",
-    "stale_test", "forked_from",
+    "stale_test", "forked_from", "pii_args",
 ];
 
 /// List verbs that are not [`Paged`] (no keyset cursor yet) but still accept

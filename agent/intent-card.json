@@ -1,58 +1,70 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-response-size-budget-explicit-v2.md",
-  "intent_slug": "mcphost-response-size-budget-explicit-v2",
-  "root_motivation": "WHO: an agent reading host.table.query, host.runs.list or host.docs.list on a plan or client that cannot use a very large answer, and Joe, who sets the byte budget by editing one plan row. WHAT: nothing sizes a page of a paged verb and nothing tells an agent where a shorter page stopped, so a client that cuts the text on its side reasons over a partial result as if it were whole. WHY: a page over the plan's byte budget must be cut at a row boundary and name its size, the full size and the exact next call, and a cut must never happen without that marker.",
-  "user_persona": "An agent (or its operator) paging a host list verb or a SQL result who needs every page to fit a stated budget, end on a whole row, and carry a continue_with call it can make verbatim; and an operator who raises the pro budget by editing one plan row.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-pii-tagging-and-log-redaction-v2.md",
+  "intent_slug": "mcphost-pii-tagging-and-log-redaction-v2",
+  "root_motivation": "WHO: the coding agent whose user asks whether the host's logs hold their customers' emails, the EU customer, and Joe answering a deletion request. WHAT: secrets are redacted wherever the host stores tool output, but an `email` argument reaches call_traces, calls.error_summary, runs.error_data_json and (http) the logs table as sent, and nothing enumerates the sinks. WHY NOW: the posture cannot claim log minimisation, and a deletion request cannot be honoured for these sinks.",
+  "user_persona": "A tool publisher who tags the argument names that carry personal data on host.tool.publish and needs every persisted sink of tool output to show [redacted:pii] instead, with a test that fails when a new sink is written without the registry.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 5
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a page cut for budget on a paged verb, When rszb_ac01_one_truncation_struct serializes _meta.mcphost.truncated, Then it has exactly the keys bytes, of and continue_with, and a response that was also clamped by limit holds both limit_clamped and truncated under _meta.mcphost.",
-      "test": "tests/rszb_ac01_one_truncation_struct.rs"
+      "description": "Given a python tool published without `pii` that prints its `email` argument and raises on it, When called with `email: \"a@b.io\"`, Then `call_traces` (request, output tails, error) and `calls.error_summary` hold `a@b.io` and the test prints which; if no persisted sink holds it the build stops with `premise_false`.",
+      "test": "tests/piir_ac01_untagged_value_persists_in_sinks.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given each verb in PAGED_VERBS with enough rows to pass an 8 KiB plan budget, When it is read at its maximum limit and every continue_with is followed verbatim, Then each page is within 8 KiB or is one row, ends on a whole row, continue_with.args.limit equals the request's limit, and the walk visits every row once; Given host.channel.read {ack: true} cut, Then the stored position is the last row kept.",
-      "test": "tests/rszb_ac02_every_paged_verb_walks_within_budget.rs"
+      "description": "Given the same tool published with `pii: [\"email\"]`, When called, and called again as an async run, Then every sink of `LogSink` shows `[redacted:pii]` where the untagged call held `a@b.io`, none holds `a@b.io`, the caller's `result` still contains it, and a `host.call_trace` replay refuses naming `email`.",
+      "test": "tests/piir_ac02_tagged_value_redacted_in_every_sink.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the free and pro plans, When host.quickstart runs, Then limits.plan.response_budget_bytes equals the plan struct's field, limits.output_bytes_max still reads the 1 MiB wall, and render_ceilings_table lists the field in docs/plans.md with the docs drift test green.",
-      "test": "tests/rszb_ac03_plan_field_in_quickstart_and_docs.rs"
+      "description": "Given a tool schema with `phone` and without `nope`, When `host.tool.publish` runs with `pii: [\"nope\"]`, Then `args_invalid` names it; with `\"x-pii\": true` on `phone`, Then `host.tool.list` shows `pii_args: [\"phone\"]`; Given a republish without `pii`, Then the list is kept, and with `pii: []` it is cleared.",
+      "test": "tests/piir_ac03_publish_pii_validated_and_listed.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a python tool that returns a 2 MiB line, When called synchronously, Then the existing tool_output_too_large answers with limit_bytes equal to limits.output_bytes_max and no truncated key; Given a non-paged verb under the wall, Then its response is whole.",
-      "test": "tests/rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs"
+      "description": "Given an http tool whose upstream echoes the request in a 500 body, When called with a tagged value, plain and percent-encoded in the body, Then the call's `logs` line, `call_traces.error_json`, `calls.error_summary` and (async) `runs.error_data_json` show `[redacted:pii]` and hold neither form.",
+      "test": "tests/piir_ac04_http_upstream_echo_redacted.rs"
     },
     {
       "id": "AC5",
-      "level": "SHOULD",
-      "description": "Given a 5 MiB table and a 32 KiB plan budget, When host.table.query {sql: \"SELECT * FROM t\", limit: 1000} runs and each continue_with is followed, Then every page is within the budget and ends on a whole row and the walk visits every row once; Given an empty table, Then rows: [] with no marker.",
-      "test": "tests/rszb_ac05_table_query_offset_walk.rs"
+      "level": "MUST",
+      "description": "Given the source tree, When `piir_sinks_cover_every_write` runs, Then every write into a sink table or column is in a function named in the `LogSink` table or in an allowlist entry with a reason; Given a planted `INSERT INTO logs` outside both, Then the test fails naming the file and line.",
+      "test": "tests/piir_ac05_sinks_cover_every_write.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given prod after landing, When tests/rszb_ac06_live_prod_quickstart_budget.rs calls anonymous host.quickstart {}, Then limits.plan.response_budget_bytes is a positive integer (Live; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)",
-      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)"
+      "description": "Given two tagged values where one contains the other, When redacted, Then the longer is replaced first and no partial value survives; Given a value of 2 characters, Then it stays intact.",
+      "test": "tests/piir_ac06_longest_first_and_short_values.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given the `LogSink` enum, When the no-drift test runs, Then the sink list in the generated contract equals the `Display` names of every enum variant, no sink is listed twice, and a variant added without regenerating the contract fails the test.",
+      "test": "tests/piir_ac07_sink_list_no_drift.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after deploy, When `tests/piir_ac08_live_prod_pii_redacted_in_call_trace.rs` calls a python tool tagged `pii: [\"email\"]` that prints and raises on `email`, Then `host.call_trace` shows `request.email` as `***`, `[redacted:pii]` in the tails and error, and no value.",
+      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test piir_ac08_live_prod_pii_redacted_in_call_trace)"
     }
   ],
   "scope": [
-    "src/response_budget.rs (Truncated, Call, cut_page, cut_values, budget_of); src/plans.rs (response_budget_bytes); src/paged.rs (project_rows); the byte-budget cut in src/runs.rs, src/docs.rs, src/calllog.rs, src/messaging.rs and src/channels.rs; src/tables.rs and src/handler/arms.rs (host.table.query offset and cut); src/handler.rs (_meta.mcphost.truncated, host.table.query descriptor); docs/plans.md, docs/tools.md, docs/openapi.json, contracts/host-tools.v1.json and the SDKs rendered from it."
+    "src/logsink.rs (LogSink, write_through, PiiSet, task-local, ALLOWLIST); src/calltrace.rs (Redactor::with_pii, scrub, replay refusal on the marker); src/db.rs (tools.pii_args_json, the sink writers pass write_through); src/control.rs (tool_publish pii/x-pii merge, tool_list pii_args); src/handler.rs, src/runs.rs (per-call scope armed with the tagged values); src/paged.rs, src/api_contract.rs (log_sinks); migrations/0141_tool_pii_args.sql; contracts and generated docs; tests/piir_ac*.rs and tests/support/piir.rs."
   ],
   "non_goals": [
-    "A per-client budget axis; compression; streaming; cutting a non-paged response; paging host.tool.logs; the AC 6 prod read (operator-provisioned, deferred)."
+    "Redacting the tool's own result that goes back to the caller; detecting personal data without a tag; secrets; runs.args_json and queue_items.item_json; pruning logs; host.catalog.get and host.tool.spec_shared pii_args (R6); admin.pii_report (R7); the AC 8 prod read (operator-provisioned)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -61,50 +73,49 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "one_marker": "A cut is reported only as _meta.mcphost.truncated {bytes, of, continue_with}; the kinds' 1 MiB wall still refuses and never cuts."
+      "one_migration": "One nullable tools.pii_args_json column, compat: previous, at the next free number; no table rebuild.",
+      "redaction_at_the_sink": "Redaction attaches to LogSink writers, never to call sites; the source scan is the contract between the sink set and the code that writes it."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent reason over a partial result as if it were whole?",
-      "a": "A page of a paged verb has no byte bound and nothing says where a shorter page stopped."
+      "q": "Why can a deletion request not be honoured for tool output?",
+      "a": "An email argument is stored as sent in call_traces, calls.error_summary, runs.error_data_json and the logs table."
     },
     {
       "why": 2,
-      "q": "Why is there no byte bound?",
-      "a": "limits.output_bytes_max is one global 1 MiB constant read only by the kinds; the plan catalog has no byte ceiling."
+      "q": "Why is it stored as sent?",
+      "a": "Redaction exists only for secret values and secret-looking keys; personal data has no tag the host can read."
     },
     {
       "why": 3,
-      "q": "Why not cut at the wall?",
-      "a": "The wall refuses a synchronous kind call and chunks an async run; a cut is only well defined at a row boundary of a paged verb."
+      "q": "Why not add redaction at each writer as it is found?",
+      "a": "Nothing enumerates where tool output is written, so a redaction added today misses the next sink."
     },
     {
       "why": 4,
-      "q": "Why must the cut carry a continue_with?",
-      "a": "A cut without the next call is worse than an error; the keyset cursor each verb already mints makes the call exact."
-    },
-    {
-      "why": 5,
-      "q": "Why does host.table.query need an offset?",
-      "a": "It has limit but no continuation, so its cut page could not be resumed without the agent rewriting its own SQL."
+      "q": "Why is a registry plus a drift test the fix?",
+      "a": "The source scan makes a new unregistered write fail CI, so the sink set cannot grow silently."
     }
   ],
-  "created_at": "2026-11-12T00:00:00Z",
+  "created_at": "2026-11-11T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Where is the size measured, before or after fields projection?",
-      "resolution": "After: the page is projected first and the serialized rows array is what is compared with the budget, so bytes and of equal what the client receives."
+      "question": "Redact the caller-facing result?",
+      "resolution": "No: it is what the caller asked for; AC 2 asserts it still contains the value."
     },
     {
-      "question": "What does a row larger than the whole budget do?",
-      "resolution": "It is returned alone (a page always keeps at least one row), and the next continue_with resumes after it."
+      "question": "Minimum value length 3 or 4?",
+      "resolution": "3, one below the secret redactor's floor; numbers of fewer than 3 digits are never redacted."
     },
     {
-      "question": "Offset or keyset for host.table.query?",
-      "resolution": "Offset, applied as LIMIT n OFFSET m over the caller's own SELECT, because arbitrary SELECTs, row-policy rewrites and CTEs do not guarantee a rowid order."
+      "question": "Which messages sites run inside a tool call?",
+      "resolution": "insert_message is the one writer a tool call reaches and passes the sink; the five host-authored notice writers are allowlisted with reasons."
+    },
+    {
+      "question": "Does `pii: []` clear a property that carries x-pii?",
+      "resolution": "Yes: an explicit empty list clears the stored set outright; without `pii`, x-pii properties join the kept names."
     }
   ]
 }

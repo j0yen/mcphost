@@ -371,6 +371,8 @@ const MIGRATION_0138: &str = include_str!("../migrations/0138_tool_test_verdict.
 /// PRD-mcphost-trusted-discovery-catalog-receipts AC6: the index, receipts cache and triggers behind `calls_30d`.
 const MIGRATION_0139: &str = include_str!("../migrations/0139_catalog_receipts.sql");
 const MIGRATION_0140: &str = include_str!("../migrations/0140_synthetic_tenant_purge.sql");
+/// PRD-mcphost-pii-tagging-and-log-redaction-v2 R1: `tools.pii_args_json`.
+const MIGRATION_0141: &str = include_str!("../migrations/0141_tool_pii_args.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -561,7 +563,7 @@ pub struct ObservedOutputs {
 const TOOL_COLUMNS: &str = "id, tenant_id, name, kind, spec, created_at, visibility, \
     share_description, shared_unix, shared_group, unshared_by, current_version, scopes, \
     expose_spec, spec_exposed_unix, spec_reads, tags, tested_version, test_verdict, \
-    test_verdict_version";
+    test_verdict_version, pii_args_json";
 
 fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
     let spec_text: String = r.get(4)?;
@@ -587,7 +589,13 @@ fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
         tested_version: r.get(17)?,
         test_verdict: r.get(18)?,
         test_verdict_version: r.get(19)?,
+        pii_args: parse_pii_args(r.get::<_, Option<String>>(20)?),
     })
+}
+
+/// `tools.pii_args_json` text to the tagged argument names (NULL = none).
+fn parse_pii_args(text: Option<String>) -> Vec<String> {
+    text.and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 /// Shared by [`Db::list_tool_versions`]/[`Db::get_tool_version`]'s
@@ -1225,6 +1233,11 @@ pub struct ToolRow {
     pub test_verdict: Option<String>,
     /// The `current_version` that verdict judged.
     pub test_verdict_version: Option<i64>,
+    /// PRD-mcphost-pii-tagging-and-log-redaction-v2 R1 (migration 0141): the
+    /// argument names whose values the host redacts from every persisted sink
+    /// of tool output; empty = untagged.
+    #[serde(skip)]
+    pub pii_args: Vec<String>,
 }
 
 impl ToolRow {
@@ -1388,24 +1401,30 @@ pub struct CallTraceRow {
     pub error_json: Option<String>,
 }
 
+/// PRD-mcphost-pii-tagging-and-log-redaction-v2 R2: `pii` is the calling
+/// task's [`crate::logsink::current`], read before the blocking thread.
+#[allow(clippy::too_many_arguments)]
 fn insert_call_trace(
     conn: &Connection,
     call_id: i64,
     tenant_id: i64,
     trace: &NewCallTrace,
     created_unix: i64,
+    pii: &crate::logsink::PiiSet,
 ) -> Result<(), AppError> {
+    use crate::logsink::LogSink;
+    let sink = LogSink::CallTrace;
     conn.execute(
         "INSERT INTO call_traces (call_id, tenant_id, request_json, stdout_tail, stderr_tail, timings_json, error_json, created_unix) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             call_id,
             tenant_id,
-            trace.request_json,
-            trace.stdout_tail,
-            trace.stderr_tail,
+            sink.write_through_with(pii, &trace.request_json),
+            sink.write_through_with(pii, &trace.stdout_tail),
+            sink.write_through_with(pii, &trace.stderr_tail),
             trace.timings_json,
-            trace.error_json,
+            trace.error_json.as_deref().map(|e| sink.write_through_with(pii, e)),
             created_unix
         ],
     )?;
@@ -3661,6 +3680,19 @@ impl Db {
         conn.execute_batch(MIGRATION_0139)?;
         // `IF NOT EXISTS` / `INSERT OR IGNORE` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0140)?;
+        Self::migrate_0141_tool_pii_args(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-pii-tagging-and-log-redaction-v2 R1: gated on
+    /// `tools.pii_args_json` (the batch is an `ALTER`, so a rerun must skip it).
+    fn migrate_0141_tool_pii_args(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tools') WHERE name = 'pii_args_json'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0141)?;
+        }
         Ok(())
     }
 
@@ -9699,6 +9731,24 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-pii-tagging-and-log-redaction-v2 R1: replaces the tagged
+    /// argument names; an empty list stores NULL (untagged).
+    pub async fn set_tool_pii_args(&self, tenant_id: i64, name: String, pii: Vec<String>) -> Result<(), AppError> {
+        let text = if pii.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&pii).map_err(|e| AppError::Internal(format!("pii serialize: {e}")))?)
+        };
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tools SET pii_args_json = ?1 WHERE tenant_id = ?2 AND name = ?3",
+                params![text, tenant_id, name],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// PRD-mcphost-scoped-tool-share R2: store the scopes + per-caller hourly
     /// rate a `host.tool_share` grants, replacing both on a re-share.
     pub async fn set_share_scopes(
@@ -10166,9 +10216,10 @@ impl Db {
                             tested_version: r.get(18)?,
                             test_verdict: r.get(19)?,
                             test_verdict_version: r.get(20)?,
+                            pii_args: parse_pii_args(r.get::<_, Option<String>>(21)?),
                         },
-                        calls_n: r.get(21)?,
-                        calls_ok: r.get(22)?,
+                        calls_n: r.get(22)?,
+                        calls_ok: r.get(23)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -10456,6 +10507,7 @@ impl Db {
                         tested_version: r.get(18)?,
                         test_verdict: r.get(19)?,
                         test_verdict_version: r.get(20)?,
+                        pii_args: parse_pii_args(r.get::<_, Option<String>>(21)?),
                     };
                     Ok((namespace, tool))
                 })?
@@ -12267,6 +12319,10 @@ impl Db {
         // PRD-mcphost-key-scoped-to-tools R3: read here, on the request's
         // own task -- `with_conn` runs the closure on a blocking thread.
         let key_id = crate::subkeys::current_key_id();
+        // PRD-mcphost-pii-tagging-and-log-redaction-v2 R2: same reason; the
+        // summary and the trace pass the sinks' redaction.
+        let pii = crate::logsink::current();
+        let error_summary = error_summary.map(|s| crate::logsink::LogSink::CallErrorSummary.write_through_with(&pii, &s));
         // PRD-mcphost-call-audit-export R1: the credential kind, resolved on
         // the request's own task for the same reason.
         let credential = crate::calllog::resolve(Some(auth_method.as_str()), key_id, caller_tenant_id).as_str();
@@ -12330,7 +12386,7 @@ impl Db {
                     ],
                 )?;
                 if let Some(trace) = &trace {
-                    insert_call_trace(tx, call_id, trace_tenant_id, trace, started_unix)?;
+                    insert_call_trace(tx, call_id, trace_tenant_id, trace, started_unix, &pii)?;
                 }
                 Ok(call_id)
             })
@@ -12358,6 +12414,7 @@ impl Db {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let key_id = crate::subkeys::current_key_id();
+        let pii = crate::logsink::current();
         let credential = crate::calllog::resolve(None, key_id, None).as_str();
         self.with_conn(move |conn| {
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
@@ -12368,7 +12425,7 @@ impl Db {
                 )?;
                 let call_id = tx.last_insert_rowid();
                 if let Some(trace) = &trace {
-                    insert_call_trace(tx, call_id, tenant_id, trace, started_unix)?;
+                    insert_call_trace(tx, call_id, tenant_id, trace, started_unix, &pii)?;
                 }
                 Ok(call_id)
             })
@@ -12538,6 +12595,7 @@ impl Db {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let key_id = crate::subkeys::current_key_id();
+        let error_summary = error_summary.map(|s| crate::logsink::LogSink::CallErrorSummary.write_through(&s));
         let credential = crate::calllog::resolve(Some(auth_method.as_str()), key_id, caller_tenant_id).as_str();
         self.with_conn(move |conn| {
             conn.execute(
@@ -13506,6 +13564,9 @@ impl Db {
         finished_unix: i64,
         duration_ms: i64,
     ) -> Result<bool, AppError> {
+        // PRD-mcphost-pii-tagging-and-log-redaction-v2 R2: the run's error data
+        // is a sink of tool output.
+        let error_data_json = error_data_json.map(|d| crate::logsink::LogSink::RunError.write_through(&d));
         self.with_conn(move |conn| {
             // PRD-mcphost-delegation-bound-to-run-or-session R4: the run's
             // terminal write and its bound keys' revocation are one commit.
@@ -14606,8 +14667,10 @@ impl Db {
         line: String,
     ) -> Result<(), AppError> {
         let ts = now_rfc3339();
+        // PRD-mcphost-pii-tagging-and-log-redaction-v2 R2: tagged values never persist.
+        let line = crate::logsink::LogSink::ToolLog.write_through(&line);
         // R5: remember which delegated key's call wrote the line; the line
-        // itself is stored unchanged.
+        // itself is stored as redacted above.
         let key_id = crate::subkeys::current_key_id();
         self.with_conn(move |conn| {
             conn.execute(
@@ -15824,6 +15887,9 @@ impl Db {
     ) -> Result<SendOutcome, AppError> {
         let now_ms = crate::state::now_unix_ms();
         let now = now_rfc3339();
+        // PRD-mcphost-pii-tagging-and-log-redaction-v2 R2: a message written
+        // inside a tool call is a sink; `with_conn`'s thread cannot see the task-local.
+        let pii = crate::logsink::current();
         self.with_conn(move |conn| {
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 if let Some(key) = &dedupe_key
@@ -15909,7 +15975,7 @@ impl Db {
                 let (message_id, seq) = Self::insert_message(
                     conn, &tid, sender.id, &sender.namespace, &sender_synthetic,
                     sender.source_class.as_deref().unwrap_or("external"),
-                    &body, &data_json, None, &dedupe_key, now_ms, &now, &deliver_ids, &refused, urgent,
+                    &body, &data_json, None, &dedupe_key, now_ms, &now, &deliver_ids, &refused, urgent, &pii,
                 )?;
 
                 Ok(SendOutcome {
@@ -15948,6 +16014,7 @@ impl Db {
     ) -> Result<SendOutcome, AppError> {
         let now_ms = crate::state::now_unix_ms();
         let now = now_rfc3339();
+        let pii = crate::logsink::current();
         self.with_conn(move |conn| {
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 if let Some(key) = &dedupe_key
@@ -16006,7 +16073,7 @@ impl Db {
                     conn, &thread_id, sender.id, &sender.namespace, &sender_synthetic,
                     sender.source_class.as_deref().unwrap_or("external"),
                     &body, &data_json, in_reply_to.as_deref(), &dedupe_key, now_ms, &now, &deliver_ids,
-                    &refused, false,
+                    &refused, false, &pii,
                 )?;
 
                 Ok(SendOutcome {
@@ -16124,7 +16191,12 @@ impl Db {
         // PRD-mcphost-agent-consent requirement 6: `host.msg.reply` always
         // passes `false` -- only `host.msg.send` exposes `urgent`.
         urgent: bool,
+        // PRD-mcphost-pii-tagging-and-log-redaction-v2 R2: the sending task's tagged values.
+        pii: &crate::logsink::PiiSet,
     ) -> Result<(String, i64), AppError> {
+        let body = crate::logsink::LogSink::Message.write_through_with(pii, body);
+        let body = body.as_str();
+        let data_json = &data_json.as_deref().map(|d| crate::logsink::LogSink::Message.write_through_with(pii, d));
         let seq: i64 = conn.query_row(
             "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?1",
             params![thread_id],
