@@ -1,0 +1,3 @@
+{"sends":[]}
+{"sends":[{"from":"agent@t-37679db3.mcphost.dev","id":"em_01m78fcg7mcp1shkjqerscd3jy","sent_at":1794507161,"status":"quota_exceeded","subject":"mail 50","to":"owner@example.com","tool":"agent"}]}
+{"sends":[{"error":"503","from":"agent@t-d4cfb3ef.mcphost.dev","id":"em_01m78fcg2ft698sebct0njd6nm","sent_at":1794507161,"status":"provider_error","subject":"s","to":"owner@example.com","tool":"agent"}]}

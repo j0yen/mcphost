@@ -89,7 +89,7 @@ fn osroot_ac02_every_forwardable_verb_result_validates_at_the_call_root() {
             .clone()
     };
     let call = validator(&advertised("host.tool.call"));
-    let rows = common::outsch_rows();
+    let rows = common::outsch_committed_rows(&common::outsch_fixture_dir());
 
     let verbs = forwardable_verbs(&kinds);
     assert!(verbs.len() > 150, "only {} forwardable verbs", verbs.len());

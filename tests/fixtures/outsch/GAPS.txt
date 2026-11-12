@@ -1,0 +1,7 @@
+host.claim.start captured rows carry a claim URL with a live-format claim token; the corpus never commits a claim or tenant key
+host.key.delegate captured rows carry a raw tenant sub-key (`key`); the corpus never commits a tenant key
+host.key.mint captured rows carry a raw tenant sub-key (`key`); the corpus never commits a tenant key
+host.notify.channel_remove no test in the suite calls it, so the harness records no row
+host.oauth.trusted_issuer_remove its only caller, dryspt_ac05_sweep, runs it as a dry run; the suite run captured no row for it
+host.org.leave no test in the suite calls it, so the harness records no row
+host.share.caller_limit_remove its only caller, dryspt_ac05_sweep, runs it as a dry run; the suite run captured no row for it

@@ -1,0 +1,2 @@
+{"provider":"github","provider_revoked":false,"revoked":false,"revoked_at":null,"revoked_reason":null}
+{"provider":"testprov","provider_revoked":true,"revoked":true,"revoked_at":1794506455,"revoked_reason":"tenant_revoke"}

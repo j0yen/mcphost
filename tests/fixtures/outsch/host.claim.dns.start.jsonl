@@ -1,0 +1,1 @@
+{"method":"dns","next":{"arguments":{"domain":"acme.dev"},"call":"host.claim.dns.check"},"record":"_mcphost.acme.dev","type":"TXT","value":"mcphost-verify=2aceb091cc7cefea9a37849f565478f3c8784c90623ba2f48d3688c89e151a90"}

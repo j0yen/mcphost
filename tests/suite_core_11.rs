@@ -23,6 +23,8 @@ mod oauthclient;
 mod promptkind;
 #[path = "support/pysdk.rs"]
 mod pysdk;
+#[path = "support/qprim.rs"]
+mod qprim;
 #[path = "support/serve.rs"]
 mod serve;
 
@@ -772,6 +774,22 @@ mod oschv_ac03_state_values_generated_validate;
 mod oschv_ac04_corpus_still_validates_diff_widened;
 #[path = "oschv_ac05_declared_output_untyped_is_opaque.rs"]
 mod oschv_ac05_declared_output_untyped_is_opaque;
+#[path = "outcov_ac01a_coverage_report.rs"]
+mod outcov_ac01a_coverage_report;
+#[path = "outcov_ac01b_shard_report_panic.rs"]
+mod outcov_ac01b_shard_report_panic;
+#[path = "outcov_ac02_corpus_verdict_is_the_same_everywhere.rs"]
+mod outcov_ac02_corpus_verdict_is_the_same_everywhere;
+#[path = "outcov_ac03_concurrency_cap_holds.rs"]
+mod outcov_ac03_concurrency_cap_holds;
+#[path = "outcov_ac04_bad_items_named_and_ceilings_name_themselves.rs"]
+mod outcov_ac04_bad_items_named_and_ceilings_name_themselves;
+#[path = "outcov_ac05_claim_is_atomic_and_orphans_recover.rs"]
+mod outcov_ac05_claim_is_atomic_and_orphans_recover;
+#[path = "outcov_ac06_pause_drain_delete_and_prune.rs"]
+mod outcov_ac06_pause_drain_delete_and_prune;
+#[path = "outcov_ac07_isolation_and_error_codes.rs"]
+mod outcov_ac07_isolation_and_error_codes;
 #[path = "outsch_ac01_oneof_budget_falsifier.rs"]
 mod outsch_ac01_oneof_budget_falsifier;
 #[path = "outsch_ac03_contract_dump_marks_aliases_and_outputs.rs"]
@@ -1008,29 +1026,3 @@ mod qdiag_ac07_description_annotation_offers_candidate;
 mod qdiag_ac08_footprint_columns_est_tokens;
 #[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
 mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
-#[path = "qsbc_ac01_detection_keys_on_known_names.rs"]
-mod qsbc_ac01_detection_keys_on_known_names;
-#[path = "qsbc_ac02_quickstart_client_cursor.rs"]
-mod qsbc_ac02_quickstart_client_cursor;
-#[path = "qsbc_ac03_quickstart_client_user_agent.rs"]
-mod qsbc_ac03_quickstart_client_user_agent;
-#[path = "qsbc_ac04_quickstart_client_unknown.rs"]
-mod qsbc_ac04_quickstart_client_unknown;
-#[path = "qsbc_ac05_quickstart_client_chatgpt.rs"]
-mod qsbc_ac05_quickstart_client_chatgpt;
-#[path = "qsbc_ac06_connect_go_json_matches_quickstart.rs"]
-mod qsbc_ac06_connect_go_json_matches_quickstart;
-#[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
-mod qsbc_ac07_quickstart_writes_client_name;
-#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
-mod refrow_ac01_args_invalid_writes_refused_row;
-#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
-mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
-#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
-mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
-#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
-mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
-#[path = "refrow_ac05_host_usage_reports_refused.rs"]
-mod refrow_ac05_host_usage_reports_refused;
-#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
-mod refrow_ac06_unwritable_db_refusal_still_returned;

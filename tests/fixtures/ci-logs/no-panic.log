@@ -1,0 +1,16 @@
+     Running tests/suite_core_09.rs (target/debug/deps/suite_core_09-cccc)
+
+running 2 tests
+test zeta::passes ... ok
+test eta::killed_by_signal ... FAILED
+
+failures:
+
+---- eta::killed_by_signal stdout ----
+no panic text, the process ended another way
+
+
+failures:
+    eta::killed_by_signal
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.00s

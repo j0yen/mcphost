@@ -1,0 +1,19 @@
+     Running tests/suite_core_08.rs (target/debug/deps/suite_core_08-bbbb)
+
+running 2 tests
+test delta::passes ... ok
+test epsilon::breaks ... FAILED
+
+failures:
+
+---- epsilon::breaks stdout ----
+thread 'epsilon::breaks' panicked at tests/epsilon.rs:3:5:
+coverage 192/264 < 80 %: ["host.queue.create"]
+second line of the message
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    epsilon::breaks
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.10s
