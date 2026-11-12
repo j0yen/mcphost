@@ -216,7 +216,7 @@ pub fn parse_json(raw: &str) -> Vec<Scope> {
 /// The last name segments of a verb that only reads.
 const READ_VERB_SEGMENTS: &[&str] = &[
     "list", "get", "status", "describe", "search", "inspect", "show", "history", "stats", "whoami", "explain",
-    "quickstart", "scopes", "usage", "preview", "read", "export", "lookup", "doctor", "docs", "help",
+    "quickstart", "scopes", "usage", "preview", "read", "export", "lookup", "doctor", "docs", "help", "sessions",
 ];
 
 /// The one scope a listed verb declares in `tools/list` as `_meta.scope`.

@@ -371,6 +371,7 @@ const MIGRATION_0138: &str = include_str!("../migrations/0138_tool_test_verdict.
 /// PRD-mcphost-trusted-discovery-catalog-receipts AC6: the index, receipts cache and triggers behind `calls_30d`.
 const MIGRATION_0139: &str = include_str!("../migrations/0139_catalog_receipts.sql");
 const MIGRATION_0140: &str = include_str!("../migrations/0140_synthetic_tenant_purge.sql");
+const MIGRATION_0141: &str = include_str!("../migrations/0141_calls_args_session.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3661,6 +3662,19 @@ impl Db {
         conn.execute_batch(MIGRATION_0139)?;
         // `IF NOT EXISTS` / `INSERT OR IGNORE` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0140)?;
+        Self::migrate_0141_calls_args_session(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-session-journal-v2 R1: gated on `calls.args_sha256` (the
+    /// batch starts with an `ALTER`, so a rerun must skip it).
+    fn migrate_0141_calls_args_session(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'args_sha256'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0141)?;
+        }
         Ok(())
     }
 
@@ -12272,6 +12286,14 @@ impl Db {
         let credential = crate::calllog::resolve(Some(auth_method.as_str()), key_id, caller_tenant_id).as_str();
         // PRD-mcphost-tools-call-progress-notifications P0: same reason.
         let (progress_token, progress_frames) = crate::progress::call_columns().await;
+        // PRD-mcphost-session-journal-v2 R3/R4: the session id and the masked
+        // arguments fingerprint, task-locals read here for the same reason. A
+        // cross-tenant row belongs to the owner's list, so it carries neither:
+        // the owner never sees the caller's session or arguments.
+        let (args_sha256, session_id) = match caller_tenant_id {
+            Some(_) => (None, None),
+            None => (crate::calllog::current_args_sha256(), crate::calllog::current_session_id()),
+        };
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
@@ -12304,9 +12326,9 @@ impl Db {
         self.with_conn(move |conn| {
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
                 tx.execute(
-                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
-                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames],
+                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames, args_sha256, session_id) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames, args_sha256, session_id],
                 )?;
                 let call_id = tx.last_insert_rowid();
                 tx.execute(
@@ -12457,6 +12479,29 @@ impl Db {
                 "SELECT request_json || stdout_tail || stderr_tail || timings_json || COALESCE(error_json, '') FROM call_traces",
             )?;
             let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows.join("\n"))
+        })
+        .await
+    }
+
+    /// Test-only (PRD-mcphost-session-journal-v2 AC2): every column of every
+    /// `calls` row, rendered as text and concatenated -- what "no `calls`
+    /// column holds the value" means.
+    pub async fn calls_dump_for_test(&self) -> Result<String, AppError> {
+        self.with_conn(move |conn| {
+            let cols = conn
+                .prepare("SELECT name FROM pragma_table_info('calls')")?
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            let expr = cols
+                .iter()
+                .map(|c| format!("COALESCE(CAST(\"{c}\" AS TEXT), '')"))
+                .collect::<Vec<_>>()
+                .join(" || ' ' || ");
+            let rows = conn
+                .prepare(&format!("SELECT {expr} FROM calls"))?
                 .query_map([], |r| r.get::<_, String>(0))?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows.join("\n"))

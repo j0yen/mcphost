@@ -2087,6 +2087,12 @@
       "calls": {
         "items": {
           "properties": {
+            "args_sha256": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "bytes_in": {
               "type": "integer"
             },
@@ -2126,6 +2132,12 @@
                 "null"
               ]
             },
+            "session_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "tool": {
               "type": "string"
             },
@@ -2146,6 +2158,49 @@
     },
     "required": [
       "calls"
+    ],
+    "type": "object"
+  },
+  "host.calls.sessions": {
+    "properties": {
+      "sessions": {
+        "items": {
+          "properties": {
+            "calls": {
+              "type": "integer"
+            },
+            "failed": {
+              "type": "integer"
+            },
+            "first_ts": {
+              "type": "string"
+            },
+            "last_ts": {
+              "type": "string"
+            },
+            "ok": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "truncated_before": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sessions"
     ],
     "type": "object"
   },

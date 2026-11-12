@@ -10,6 +10,8 @@ mod common;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
+mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
 #[path = "sylp_ac01_awaits_tick_validator.rs"]
 mod sylp_ac01_awaits_tick_validator;
 #[path = "sylp_ac02_first_get_pins_the_receipt.rs"]

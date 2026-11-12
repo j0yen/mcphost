@@ -149,6 +149,9 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
     // declares every emitted entry field (receipts included) and `view`, each
     // object closed with `additionalProperties: false`.
     edited.insert("host.catalog.search");
+    // PRD-mcphost-session-journal-v2 AC1/AC3: `host.calls.list` rows gained the
+    // optional `args_sha256` and `session_id` keys after the cited tree.
+    edited.insert("host.calls.list");
     // PRD-mcphost-tool-call-output-root-opaque R1: the two forwarding roots
     // type only the keys the host writes (this covers `host.tool.call`'s
     // merged tenant payload, its `id` and `rows`).

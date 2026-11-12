@@ -1,58 +1,70 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-response-size-budget-explicit-v2.md",
-  "intent_slug": "mcphost-response-size-budget-explicit-v2",
-  "root_motivation": "WHO: an agent reading host.table.query, host.runs.list or host.docs.list on a plan or client that cannot use a very large answer, and Joe, who sets the byte budget by editing one plan row. WHAT: nothing sizes a page of a paged verb and nothing tells an agent where a shorter page stopped, so a client that cuts the text on its side reasons over a partial result as if it were whole. WHY: a page over the plan's byte budget must be cut at a row boundary and name its size, the full size and the exact next call, and a cut must never happen without that marker.",
-  "user_persona": "An agent (or its operator) paging a host list verb or a SQL result who needs every page to fit a stated budget, end on a whole row, and carry a continue_with call it can make verbatim; and an operator who raises the pro budget by editing one plan row.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-session-journal-v2.md",
+  "intent_slug": "mcphost-session-journal-v2",
+  "root_motivation": "WHO: the agent in its second session that wants to know which of yesterday's six cleaner calls worked, and host.resume, whose session count is a guess. WHAT: host.calls.list rows cannot tell two calls of one tool apart and name no session. WHY: two nullable calls columns, args_sha256 (a masked-arguments fingerprint) and session_id, written by the one writer record_call_traced, let an agent rebuild what a session did without a second reader of the table.",
+  "user_persona": "An agent (or its operator) who lists its own calls and needs same-tool calls told apart by a fingerprint that never holds a secret value, one session's calls on demand, and a per-session rollup; a tool owner who sees a caller's row with both fields null.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 5
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a page cut for budget on a paged verb, When rszb_ac01_one_truncation_struct serializes _meta.mcphost.truncated, Then it has exactly the keys bytes, of and continue_with, and a response that was also clamped by limit holds both limit_clamped and truncated under _meta.mcphost.",
-      "test": "tests/rszb_ac01_one_truncation_struct.rs"
+      "description": "Given a published tool called with {a:1,b:2}, {b:2,a:1}, {a:1,b:3} and no arguments, When host.calls.list {tool} runs, Then rows 1 and 2 hold one args_sha256, row 3 another and row 4 null, and each non-null value is idempotency::args_sha256 of that call's masked arguments.",
+      "test": "tests/jrnl_ac01_args_fingerprint_on_call_rows.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given each verb in PAGED_VERBS with enough rows to pass an 8 KiB plan budget, When it is read at its maximum limit and every continue_with is followed verbatim, Then each page is within 8 KiB or is one row, ends on a whole row, continue_with.args.limit equals the request's limit, and the walk visits every row once; Given host.channel.read {ack: true} cut, Then the stored position is the last row kept.",
-      "test": "tests/rszb_ac02_every_paged_verb_walks_within_budget.rs"
+      "description": "Given calls with api_key k-1111 and k-2222 (same q) and a string argument holding an 8-character tenant secret value, When listed, Then the first two share one args_sha256 computed over api_key as ***, the third hashes with the value as {{ secret.NAME }}, and no calls column holds k-1111, k-2222 or the secret value.",
+      "test": "tests/jrnl_ac02_masked_values_never_stored_or_hashed.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the free and pro plans, When host.quickstart runs, Then limits.plan.response_budget_bytes equals the plan struct's field, limits.output_bytes_max still reads the 1 MiB wall, and render_ceilings_table lists the field in docs/plans.md with the docs drift test green.",
-      "test": "tests/rszb_ac03_plan_field_in_quickstart_and_docs.rs"
+      "description": "Given two MCP sessions on one tenant with 3 and 2 calls of one published tool and one stateless call, When host.calls.list {session, tool} runs for the first id, Then 3 rows return each with that session_id; another tenant's session id returns calls: []; the stateless row reads session_id: null.",
+      "test": "tests/jrnl_ac03_session_id_on_rows_and_filter.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a python tool that returns a 2 MiB line, When called synchronously, Then the existing tool_output_too_large answers with limit_bytes equal to limits.output_bytes_max and no truncated key; Given a non-paged verb under the wall, Then its response is whole.",
-      "test": "tests/rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs"
+      "description": "Given tenant B calls tenant A's shared tool with arguments over a session, When A runs host.calls.list {credential: shared_caller}, Then that row has null args_sha256 and null session_id; and a host.tool.publish row of A's own made over an MCP session reads null args_sha256 and a non-null session_id.",
+      "test": "tests/jrnl_ac04_shared_caller_rows_carry_neither_value.rs"
     },
     {
       "id": "AC5",
-      "level": "SHOULD",
-      "description": "Given a 5 MiB table and a 32 KiB plan budget, When host.table.query {sql: \"SELECT * FROM t\", limit: 1000} runs and each continue_with is followed, Then every page is within the budget and ends on a whole row and the walk visits every row once; Given an empty table, Then rows: [] with no marker.",
-      "test": "tests/rszb_ac05_table_query_offset_walk.rs"
+      "level": "MUST",
+      "description": "Given 1000 warm calls with and without the two values written, When record_call_traced's p95 is compared on the gate box, Then the delta is at most 1 ms and both numbers are printed.",
+      "test": "tests/jrnl_ac05_two_values_cost_at_most_one_ms_p95.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given prod after landing, When tests/rszb_ac06_live_prod_quickstart_budget.rs calls anonymous host.quickstart {}, Then limits.plan.response_budget_bytes is a positive integer (Live; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)",
-      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)"
+      "description": "Given the two new fields, When the drift tests run, Then CallRow::FIELDS, the fields projection, the host.calls.export CSV header and the contract files from mcphost contract dump list the same fields in the same order, and a source scan finds one INSERT INTO calls that names args_sha256.",
+      "test": "tests/jrnl_ac06_fields_one_list_everywhere.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given 3 sessions in one window with 4, 6 and 2 calls (2 failed in the second), When host.calls.sessions runs, Then 3 rows return newest first with those calls counts and failed: 2 on the second, and the verb is in the paged-verb tables and the generated contract (host-tools.v1.json, gendocs).",
+      "test": "tests/jrnl_ac07_calls_sessions_rollup.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after deploy, When tests/jrnl_ac08_live_prod_calls_list_hashes.rs calls one published tool three times with two argument sets over one held Mcp-Session-Id and lists its calls, Then the three rows hold two args_sha256 values and one non-null session_id (Live; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test jrnl_ac08_live_prod_calls_list_hashes)",
+      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test jrnl_ac08_live_prod_calls_list_hashes)"
     }
   ],
   "scope": [
-    "src/response_budget.rs (Truncated, Call, cut_page, cut_values, budget_of); src/plans.rs (response_budget_bytes); src/paged.rs (project_rows); the byte-budget cut in src/runs.rs, src/docs.rs, src/calllog.rs, src/messaging.rs and src/channels.rs; src/tables.rs and src/handler/arms.rs (host.table.query offset and cut); src/handler.rs (_meta.mcphost.truncated, host.table.query descriptor); docs/plans.md, docs/tools.md, docs/openapi.json, contracts/host-tools.v1.json and the SDKs rendered from it."
+    "migrations/0141_calls_args_session.sql; src/db.rs (record_call_traced writes args_sha256 and session_id, migration wiring, calls_dump_for_test); src/calllog.rs (task-locals, CallRow fields, session filter, host.calls.sessions); src/handler.rs (call_tool session scope, call_published_tool fingerprint cell, descriptors); src/handler/arms.rs, src/dispatch_table.rs, src/paged.rs, src/scopes.rs; docs/tools.md, docs/openapi.json, www/llms.txt, contracts/*.json and the SDKs rendered from them."
   ],
   "non_goals": [
-    "A per-client budget axis; compression; streaming; cutting a non-paged response; paging host.tool.logs; the AC 6 prod read (operator-provisioned, deferred)."
+    "Per-call request and output detail (host.call_trace); error grouping (host.doctor); switching host.resume to session_id; a second cursor, window or list verb; a per-tenant keyed hash; the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -62,49 +74,49 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "one_marker": "A cut is reported only as _meta.mcphost.truncated {bytes, of, continue_with}; the kinds' 1 MiB wall still refuses and never cuts."
+      "one_writer": "record_call_traced's INSERT INTO calls is the only one that writes args_sha256 and session_id; every other insert leaves them NULL."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent reason over a partial result as if it were whole?",
-      "a": "A page of a paged verb has no byte bound and nothing says where a shorter page stopped."
+      "q": "Why can an agent not tell its six cleaner calls apart?",
+      "a": "host.calls.list rows differ only in time, outcome and duration; they carry no argument identity."
     },
     {
       "why": 2,
-      "q": "Why is there no byte bound?",
-      "a": "limits.output_bytes_max is one global 1 MiB constant read only by the kinds; the plan catalog has no byte ceiling."
+      "q": "Why no argument identity on a row?",
+      "a": "The calls table stores no argument value, deliberately, and no fingerprint of one."
     },
     {
       "why": 3,
-      "q": "Why not cut at the wall?",
-      "a": "The wall refuses a synchronous kind call and chunks an async run; a cut is only well defined at a row boundary of a paged verb."
+      "q": "Why not read the arguments from call_traces?",
+      "a": "A trace is per-call detail with a short retention; a fingerprint on the row lives as long as the row and costs one sha256."
     },
     {
       "why": 4,
-      "q": "Why must the cut carry a continue_with?",
-      "a": "A cut without the next call is worse than an error; the keyset cursor each verb already mints makes the call exact."
+      "q": "Why is the session unknown?",
+      "a": "calls has no session column; host.resume guesses sessions from a 30-minute gap."
     },
     {
       "why": 5,
-      "q": "Why does host.table.query need an offset?",
-      "a": "It has limit but no continuation, so its cut page could not be resumed without the agent rewriting its own SQL."
+      "q": "Why add columns to the one reader instead of a second journal verb?",
+      "a": "host.calls.list already pages by id with a signed cursor and a retention window; a second reader of calls would duplicate it."
     }
   ],
   "created_at": "2026-11-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Where is the size measured, before or after fields projection?",
-      "resolution": "After: the page is projected first and the serialized rows array is what is compared with the budget, so bytes and of equal what the client receives."
+      "question": "Does the first request of a session carry the session id?",
+      "resolution": "No: the host mints the id on that request and the client echoes it from the second on, so a row carries a session_id only when the request presented one; a stateless call reads null."
     },
     {
-      "question": "What does a row larger than the whole budget do?",
-      "resolution": "It is returned alone (a page always keeps at least one row), and the next continue_with resumes after it."
+      "question": "Which rows leave a host control-plane verb's session visible?",
+      "resolution": "Host verbs write no calls row of their own; the rows that exist (idempotent replays, the progress probe) carry the session id of the request through the call_tool scope and a null args_sha256; a refusal row is written by a separate insert that leaves both columns null."
     },
     {
-      "question": "Offset or keyset for host.table.query?",
-      "resolution": "Offset, applied as LIMIT n OFFSET m over the caller's own SELECT, because arbitrary SELECTs, row-policy rewrites and CTEs do not guarantee a rowid order."
+      "question": "What do a cross-tenant call's two fields read?",
+      "resolution": "Null: the writer drops both when caller_tenant_id is set, so the owner never sees the caller's session or arguments."
     }
   ]
 }

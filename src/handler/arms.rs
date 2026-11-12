@@ -220,6 +220,13 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_calls_sessions<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::calllog::sessions(&self.state, tenant, &args).await
+        })
+    }
+
     pub(crate) fn arm_host_key_mint<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;

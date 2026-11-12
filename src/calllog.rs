@@ -80,6 +80,61 @@ pub fn current_override() -> Option<Credential> {
     CREDENTIAL_OVERRIDE.try_with(|c| *c).ok()
 }
 
+tokio::task_local! {
+    /// PRD-mcphost-session-journal-v2 R3: the MCP session id the host minted
+    /// for the `tools/call` being dispatched, scoped by `McpHostHandler::call_tool`
+    /// and read by `Db::record_call_traced` on the request's own task.
+    static CALL_SESSION: Option<String>;
+    /// PRD-mcphost-session-journal-v2 R4: the fingerprint of the published-tool
+    /// call being dispatched, filled by [`note_call_args`] once its arguments
+    /// and secrets are in scope. One cell per `call_published_tool` so a
+    /// nested call never overwrites an outer row's value.
+    static CALL_ARGS_SHA: std::cell::RefCell<Option<String>>;
+}
+
+/// Run `fut` with every `calls` row it writes stamped with `session_id`.
+pub async fn with_session<F: Future>(session_id: Option<String>, fut: F) -> F::Output {
+    CALL_SESSION.scope(session_id, fut).await
+}
+
+/// The MCP session id of the call running on this task, if any.
+pub fn current_session_id() -> Option<String> {
+    CALL_SESSION.try_with(Clone::clone).ok().flatten()
+}
+
+/// Run `fut` (one published-tool dispatch) with an empty fingerprint cell.
+pub async fn with_args_cell<F: Future>(fut: F) -> F::Output {
+    CALL_ARGS_SHA.scope(std::cell::RefCell::new(None), fut).await
+}
+
+/// R4: the fingerprint of `args` -- `idempotency::args_sha256` over the
+/// arguments after `Redactor` has masked secret-looking keys and the
+/// tenant's own secret values. `None` for a call with no arguments.
+pub fn args_fingerprint(args: &Value, secrets: &std::collections::HashMap<String, String>) -> Option<String> {
+    let none = match args {
+        Value::Null => true,
+        Value::Object(m) => m.is_empty(),
+        _ => false,
+    };
+    if none {
+        return None;
+    }
+    let masked = crate::calltrace::Redactor::new(secrets).value(args);
+    Some(crate::idempotency::args_sha256(&masked))
+}
+
+/// Record the fingerprint of the call this task is dispatching, for the
+/// `calls` row(s) it writes. A no-op outside [`with_args_cell`].
+pub fn note_call_args(args: &Value, secrets: &std::collections::HashMap<String, String>) {
+    let sha = args_fingerprint(args, secrets);
+    let _ = CALL_ARGS_SHA.try_with(|c| *c.borrow_mut() = sha);
+}
+
+/// The fingerprint [`note_call_args`] recorded on this task, if any.
+pub fn current_args_sha256() -> Option<String> {
+    CALL_ARGS_SHA.try_with(|c| c.borrow().clone()).ok().flatten()
+}
+
 /// The credential a `calls` row is stamped with: an explicit [`scoped`] one,
 /// else a sub-key id, else a cross-tenant caller, else the `auth_method` the
 /// request authenticated with.
@@ -115,6 +170,11 @@ pub struct CallRow {
     pub bytes_out: i64,
     pub end_user_subject: Option<String>,
     pub run_id: Option<String>,
+    /// PRD-mcphost-session-journal-v2: the masked-arguments fingerprint of a
+    /// published-tool call; null for any other row.
+    pub args_sha256: Option<String>,
+    /// The MCP session id the host minted for the request; null when none.
+    pub session_id: Option<String>,
 }
 
 impl CallRow {
@@ -133,6 +193,8 @@ impl CallRow {
         "bytes_out",
         "end_user_subject",
         "run_id",
+        "args_sha256",
+        "session_id",
     ];
 
     pub fn to_json(&self) -> Value {
@@ -148,6 +210,8 @@ impl CallRow {
             "bytes_out": self.bytes_out,
             "end_user_subject": self.end_user_subject,
             "run_id": self.run_id,
+            "args_sha256": self.args_sha256,
+            "session_id": self.session_id,
         })
     }
 }
@@ -161,6 +225,8 @@ pub struct CallFilter {
     pub tool: Option<String>,
     pub outcome: Option<String>,
     pub credential: Option<String>,
+    /// PRD-mcphost-session-journal-v2 R5: only calls made over this MCP session.
+    pub session: Option<String>,
     /// R6: a sub-key sees only its own rows.
     pub only_key_id: Option<i64>,
 }
@@ -230,13 +296,15 @@ pub fn filter_from_args(args: &Value, now: i64) -> Result<CallFilter, AppError> 
         tool: text("tool"),
         outcome: text("outcome"),
         credential,
+        session: text("session"),
         only_key_id: None,
     })
 }
 
 const ROW_COLUMNS: &str = "c.id, c.started_at, c.credential, k.label, c.tool_name, \
      COALESCE(c.outcome, CASE c.ok WHEN 1 THEN 'ok' ELSE 'error' END), c.error_class, \
-     c.duration_ms, c.bytes_in, c.bytes_out, c.end_user_subject, c.run_id";
+     c.duration_ms, c.bytes_in, c.bytes_out, c.end_user_subject, c.run_id, \
+     c.args_sha256, c.session_id";
 
 fn row_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<CallRow> {
     Ok(CallRow {
@@ -252,6 +320,8 @@ fn row_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<CallRow> {
         bytes_out: r.get(9)?,
         end_user_subject: r.get(10)?,
         run_id: r.get(11)?,
+        args_sha256: r.get(12)?,
+        session_id: r.get(13)?,
     })
 }
 
@@ -277,6 +347,10 @@ fn where_clause(tenant_id: i64, f: &CallFilter) -> (String, Vec<Box<dyn ToSql + 
     }
     if let Some(v) = &f.credential {
         sql.push_str(" AND c.credential = ?");
+        params.push(Box::new(v.clone()));
+    }
+    if let Some(v) = &f.session {
+        sql.push_str(" AND c.session_id = ?");
         params.push(Box::new(v.clone()));
     }
     if let Some(v) = f.only_key_id {
@@ -372,6 +446,100 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let mut value = Value::Object(out);
     crate::response_budget::note_truncated(&mut value, cut, CallsList::VERB, args);
     paged::note_clamp(&mut value, &rl);
+    Ok(value)
+}
+
+/// The schema `pattern` of a string window bound ([`parse_bound`]'s forms): a
+/// relative `-24h` / `-30d`, unix seconds, a `YYYY-MM-DD` day or an RFC 3339
+/// instant. `host.calls.sessions` declares it so a malformed bound is refused
+/// by its schema, not by a residual check inside the verb.
+pub const BOUND_PATTERN: &str =
+    r"^(-[0-9]+[smhd]|[0-9]+|[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|\+00:00)?)?)$";
+
+/// The most sessions one `host.calls.sessions` call returns (R7).
+pub const SESSIONS_MAX: i64 = 20;
+
+/// One session's rollup, the shape `host.calls.sessions` returns per row.
+#[derive(Clone, Debug)]
+pub struct SessionRow {
+    pub session_id: String,
+    pub first_unix: i64,
+    pub last_unix: i64,
+    pub calls: i64,
+    pub ok: i64,
+    pub failed: i64,
+    pub tools: Vec<String>,
+}
+
+impl SessionRow {
+    pub fn to_json(&self) -> Value {
+        json!({
+            "session_id": self.session_id,
+            "first_ts": rfc3339_from_unix(self.first_unix),
+            "last_ts": rfc3339_from_unix(self.last_unix),
+            "calls": self.calls,
+            "ok": self.ok,
+            "failed": self.failed,
+            "tools": self.tools,
+        })
+    }
+}
+
+impl Db {
+    /// Up to `limit` sessions of the window, newest (by their last call) first.
+    /// `f`'s tool / outcome / credential / key filters narrow the rows rolled up.
+    pub async fn list_call_sessions(&self, tenant_id: i64, f: CallFilter, limit: i64) -> Result<Vec<SessionRow>, AppError> {
+        self.with_conn(move |conn| {
+            let (clause, params) = where_clause(tenant_id, &f);
+            let sql = format!(
+                "SELECT c.session_id, MIN(c.started_unix), MAX(c.started_unix), COUNT(*), \
+                        COALESCE(SUM(c.ok), 0), COUNT(*) - COALESCE(SUM(c.ok), 0), GROUP_CONCAT(DISTINCT c.tool_name) \
+                 FROM calls c LEFT JOIN tenant_keys k ON k.id = c.key_id \
+                 WHERE {clause} AND c.session_id IS NOT NULL \
+                 GROUP BY c.session_id ORDER BY MAX(c.id) DESC LIMIT {limit}"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params_from_iter(params.iter().map(|p| p.as_ref() as &dyn ToSql)), |r| {
+                    let tools: Option<String> = r.get(6)?;
+                    let mut tools: Vec<String> = tools.unwrap_or_default().split(',').map(str::to_string).collect();
+                    tools.sort();
+                    Ok(SessionRow {
+                        session_id: r.get(0)?,
+                        first_unix: r.get(1)?,
+                        last_unix: r.get(2)?,
+                        calls: r.get(3)?,
+                        ok: r.get(4)?,
+                        failed: r.get(5)?,
+                        tools,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+}
+
+/// `host.calls.sessions` (R7): one row per non-null `session_id` in the window.
+pub async fn sessions(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let rl = crate::paged::resolve_limit(args, SESSIONS_MAX, SESSIONS_MAX)?;
+    let now = now_unix();
+    let mut filter = filter_from_args(args, now)?;
+    // R6: a sub-key sees only its own rows.
+    filter.only_key_id = crate::subkeys::current_key_id();
+    let rows = state.db.list_call_sessions(tenant.id, filter.clone(), rl.limit).await?;
+    let mut out = serde_json::Map::new();
+    // R4: a window reaching past the plan's retention names the cutoff.
+    if let Some(plan) = state.plans.get(&tenant.plan) {
+        let cutoff = now - plan.calls_retention_days.saturating_mul(86_400);
+        if filter.since_unix < cutoff {
+            out.insert("truncated_before".to_string(), json!(rfc3339_from_unix(cutoff)));
+        }
+    }
+    out.insert("sessions".to_string(), json!(rows.iter().map(SessionRow::to_json).collect::<Vec<_>>()));
+    let mut value = Value::Object(out);
+    crate::paged::note_clamp(&mut value, &rl);
     Ok(value)
 }
 
