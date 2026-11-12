@@ -24,11 +24,11 @@ tests/cishard_ac07_stale_weight_fails_check.rs:136 | committed repo script run f
 tests/cishard_ac07_stale_weight_fails_check.rs:171 | committed repo script run from the checkout, not written by the test
 tests/cishard_ac07_stale_weight_fails_check.rs:200 | committed repo script run from the checkout, not written by the test
 tests/cishard_ac07_stale_weight_fails_check.rs:235 | committed repo script run from the checkout, not written by the test
-tests/common/mod.rs:3045 | cargo-built mcphost binary under test, not a file the test writes
+tests/common/mod.rs:3046 | cargo-built mcphost binary under test, not a file the test writes
 tests/ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails.rs:42 | committed repo script run from the checkout, not written by the test
 tests/ctrm_ac04_unmarked_tree_walk_fails_the_lint.rs:35 | committed repo script run from the checkout, not written by the test
 tests/ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing.rs:29 | committed repo script run from the checkout, not written by the test
-tests/ctrs_ac03_pin_tests_derives_list_from_cargo_toml.rs:29 | committed repo script run from the checkout, not written by the test
+tests/ctrs_ac03_pin_tests_derives_list_from_cargo_toml.rs:27 | committed repo script run from the checkout, not written by the test
 tests/ctrs_ac04_contract_lint_names_unmarked_contract_files.rs:40 | committed repo script run from the checkout, not written by the test
 tests/ctrx_ac02_unmarked_registry_walker_is_flagged.rs:44 | committed repo script run from the checkout, not written by the test
 tests/ctrx_ac04_concat_manifest_dir_literal_is_a_read.rs:38 | committed repo script run from the checkout, not written by the test
