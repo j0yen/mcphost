@@ -485,6 +485,14 @@ required_commands = [
 ]
 
 [[lane]]
+id = "ceiling-guard"
+description = "scripts/ceiling-guard.sh and its shell test tests/scripts/ceiling-guard.test.sh. Added project-locally: no existing lane routes a standalone script under scripts/ or a shell test under tests/scripts/; the proof is the test's own run."
+globs = ["scripts/ceiling-guard.sh", "tests/scripts/ceiling-guard.test.sh"]
+required_commands = [
+  "bash tests/scripts/ceiling-guard.test.sh",
+]
+
+[[lane]]
 id = "ci-test-partition-land"
 description = "ci-test-partition.sh check --land (post-merge pending-age refusal on the PR and merge-queue legs): its hermetic bash test over a temp git fixture. scripts/ci-test-partition.sh itself stays routed by the ci-scripts lane. Given its own lane since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline."
 globs = ["tests/scripts/ci-test-partition-land.test.sh"]
