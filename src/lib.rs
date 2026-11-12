@@ -109,6 +109,7 @@ pub mod messaging;
 pub mod email_send;
 pub mod notify;
 pub mod paged;
+pub mod response_budget;
 pub mod usage;
 pub mod preflight;
 pub mod prompts;

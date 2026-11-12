@@ -677,8 +677,8 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     };
     let count = state.db.count_runs_page(tenant.id, query.clone()).await?;
     let mut page = state.db.list_runs_page(tenant.id, query, after, order, limit + 1).await?;
-    let next = crate::paged::split_page(&mut page, limit, |r| RunsList::cursor_at(r, order));
-    let rows: Vec<RunRow> = page.into_iter().map(|r| r.run).collect();
+    let mut next = crate::paged::split_page(&mut page, limit, |r| RunsList::cursor_at(r, order));
+    let rows: Vec<&RunRow> = page.iter().map(|r| &r.run).collect();
     // One query for the whole page's children, not one per row.
     let parent_ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
     let children = if wants_children {
@@ -706,14 +706,22 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         };
         runs.push(value);
     }
+    if let Some(fields) = &fields {
+        crate::paged::project_rows(&mut runs, fields);
+    }
+    let cut = crate::response_budget::cut_page(
+        &mut page,
+        &mut runs,
+        &mut next,
+        crate::response_budget::budget_of(state, tenant),
+        |r| RunsList::cursor_at(r, order),
+    );
     let mut page_out = serde_json::Map::new();
     page_out.insert(RunsList::KEY.to_string(), Value::Array(runs));
     crate::paged::finish_page(&mut page_out, next.as_ref(), &state.session_bindings, tenant.id);
     count.insert_into(&mut page_out);
     let mut out = Value::Object(page_out);
-    if let Some(fields) = &fields {
-        crate::paged::project_page(&mut out, "runs", fields);
-    }
+    crate::response_budget::note_truncated(&mut out, cut, RunsList::VERB, args);
     if include_result_arg {
         crate::paged::note_deprecated_arg(
             &mut out,

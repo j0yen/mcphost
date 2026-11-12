@@ -455,14 +455,23 @@ pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 
     // One row past the page says whether it was the last (requirement 3).
     let mut rows = state.db.msg_inbox(tenant.id, after, rl.limit + 1, unread_only).await?;
-    let next = paged::split_page(&mut rows, rl.limit, |m| MsgInbox::cursor_at(m, paged::InboxOrder::DEFAULT));
+    let mut next = paged::split_page(&mut rows, rl.limit, |m| MsgInbox::cursor_at(m, paged::InboxOrder::DEFAULT));
+    let mut page_json: Vec<Value> = rows.iter().map(message_row_json).collect();
+    if let Some(fields) = &fields {
+        paged::project_rows(&mut page_json, fields);
+    }
+    let cut = crate::response_budget::cut_page(
+        &mut rows,
+        &mut page_json,
+        &mut next,
+        crate::response_budget::budget_of(state, tenant),
+        |m| MsgInbox::cursor_at(m, paged::InboxOrder::DEFAULT),
+    );
     let mut out = serde_json::Map::new();
-    out.insert(MsgInbox::KEY.to_string(), json!(rows.iter().map(message_row_json).collect::<Vec<_>>()));
+    out.insert(MsgInbox::KEY.to_string(), json!(page_json));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut value = Value::Object(out);
-    if let Some(fields) = &fields {
-        paged::project_page(&mut value, MsgInbox::KEY, fields);
-    }
+    crate::response_budget::note_truncated(&mut value, cut, MsgInbox::VERB, args);
     paged::note_clamp(&mut value, &rl);
     Ok(value)
 }
@@ -539,14 +548,23 @@ pub async fn thread(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         .msg_thread(tenant.id, thread_id, after_seq, rl.limit + 1)
         .await?
         .ok_or_else(AppError::thread_not_found)?;
-    let next = paged::split_page(&mut rows, rl.limit, |m| MsgThread::cursor_at(m, paged::ThreadOrder::DEFAULT));
+    let mut next = paged::split_page(&mut rows, rl.limit, |m| MsgThread::cursor_at(m, paged::ThreadOrder::DEFAULT));
+    let mut page_json: Vec<Value> = rows.iter().map(message_row_json).collect();
+    if let Some(fields) = &fields {
+        paged::project_rows(&mut page_json, fields);
+    }
+    let cut = crate::response_budget::cut_page(
+        &mut rows,
+        &mut page_json,
+        &mut next,
+        crate::response_budget::budget_of(state, tenant),
+        |m| MsgThread::cursor_at(m, paged::ThreadOrder::DEFAULT),
+    );
     let mut out = serde_json::Map::new();
-    out.insert(MsgThread::KEY.to_string(), json!(rows.iter().map(message_row_json).collect::<Vec<_>>()));
+    out.insert(MsgThread::KEY.to_string(), json!(page_json));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut value = Value::Object(out);
-    if let Some(fields) = &fields {
-        paged::project_page(&mut value, MsgThread::KEY, fields);
-    }
+    crate::response_budget::note_truncated(&mut value, cut, MsgThread::VERB, args);
     paged::note_clamp(&mut value, &rl);
     Ok(value)
 }
