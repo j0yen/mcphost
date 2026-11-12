@@ -32181,6 +32181,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "offset": {
+            "description": "Skip this many rows of the result first (LIMIT n OFFSET m over your SELECT, so ORDER BY and joins work). A result over your plan's response budget is cut at a row boundary and _meta.mcphost.truncated.continue_with is this call with offset moved past the rows sent; it assumes the table is not rewritten between pages.",
+            "minimum": 0,
+            "type": "integer"
+          },
           "sql": {
             "description": "A single read-only SELECT statement (CTEs allowed) over this tenant's own declared tables (or, once materialised, its own hdl_<id> handles).",
             "type": "string"
@@ -47820,6 +47825,11 @@
           "limit": {
             "description": "Return at most this many rows of the result. The response carries total (exact when the result has at most 10000 rows) or total_estimate with exact: false.",
             "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Skip this many rows of the result first (LIMIT n OFFSET m over your SELECT, so ORDER BY and joins work). A result over your plan's response budget is cut at a row boundary and _meta.mcphost.truncated.continue_with is this call with offset moved past the rows sent; it assumes the table is not rewritten between pages.",
+            "minimum": 0,
             "type": "integer"
           },
           "sql": {

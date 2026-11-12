@@ -857,10 +857,16 @@ pub fn parse_fields(verb: &str, args: &Value) -> Result<Option<Vec<String>>, App
 /// keyset cursor is minted from the full row).
 pub fn project_page(page: &mut Value, key: &str, fields: &[String]) {
     if let Some(rows) = page.get_mut(key).and_then(Value::as_array_mut) {
-        for row in rows {
-            if let Some(obj) = row.as_object_mut() {
-                obj.retain(|k, _| fields.iter().any(|f| f == k));
-            }
+        project_rows(rows, fields);
+    }
+}
+
+/// [`project_page`] for rows held outside a page value (the byte-budget cut
+/// measures the projected rows, so it projects before it cuts).
+pub fn project_rows(rows: &mut [Value], fields: &[String]) {
+    for row in rows {
+        if let Some(obj) = row.as_object_mut() {
+            obj.retain(|k, _| fields.iter().any(|f| f == k));
         }
     }
 }

@@ -146,6 +146,14 @@ mod rsm_ac05_anonymous_resume_creates_no_tenant;
 mod rsm_ac06_welcome_back_points_at_resume;
 #[path = "rsm_ac07_usage_reports_the_resume_first_call_rate.rs"]
 mod rsm_ac07_usage_reports_the_resume_first_call_rate;
+#[path = "rszb_ac01_one_truncation_struct.rs"]
+mod rszb_ac01_one_truncation_struct;
+#[path = "rszb_ac02_every_paged_verb_walks_within_budget.rs"]
+mod rszb_ac02_every_paged_verb_walks_within_budget;
+#[path = "rszb_ac03_plan_field_in_quickstart_and_docs.rs"]
+mod rszb_ac03_plan_field_in_quickstart_and_docs;
+#[path = "rszb_ac05_table_query_offset_walk.rs"]
+mod rszb_ac05_table_query_offset_walk;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
@@ -1026,17 +1034,3 @@ mod upfam_ac05_hints_name_real_tools;
 mod upfam_ac06_host_not_allowed_names_tool_call;
 #[path = "upfam_ac07_tool_test_matches_real_call.rs"]
 mod upfam_ac07_tool_test_matches_real_call;
-#[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
-mod upgrade_ac01_calls_per_day_next_checkout;
-#[path = "upgrade_ac02_billing_off_refusal_text.rs"]
-mod upgrade_ac02_billing_off_refusal_text;
-#[path = "upgrade_ac03_checkout_source_metadata.rs"]
-mod upgrade_ac03_checkout_source_metadata;
-#[path = "upgrade_ac04_webhook_stamps_paid_unix.rs"]
-mod upgrade_ac04_webhook_stamps_paid_unix;
-#[path = "upgrade_ac05_billing_status_receipt.rs"]
-mod upgrade_ac05_billing_status_receipt;
-#[path = "upgrade_ac06_admin_funnel_upgrades_by_trigger.rs"]
-mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
-#[path = "upgrade_ac07_admin_upgrades_listing.rs"]
-mod upgrade_ac07_admin_upgrades_listing;

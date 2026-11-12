@@ -966,7 +966,7 @@ impl McpHostHandler {
     pub(crate) fn arm_host_table_query<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, end_user, args, .. } = c;
-            tables::table_query(&self.state, tenant, &args, end_user).await
+            tables::table_query_page(&self.state, tenant, &args, end_user).await
         })
     }
 
