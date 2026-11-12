@@ -522,6 +522,9 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
         "admin_funnel": admin_funnel_contract(),
         "contract_version": CONTRACT_VERSION,
         "kinds": kind_contracts,
+        // PRD-mcphost-pii-tagging-and-log-redaction-v2 R5: the persisted sinks
+        // of tool output, derived from `LogSink`, never typed here.
+        "log_sinks": crate::logsink::LogSink::names(),
         "onboarding": onboarding_contract(),
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
         "resources": crate::resources::contract_section(crate::resources::RESOURCE_TEMPLATES),

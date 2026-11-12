@@ -4043,7 +4043,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `fields`: array
   - `fields` minItems: 1
-  - `fields[]` enum: `name`, `kind`, `created_at`, `visibility`, `share_description`, `unshared_by`, `env`, `advisories`, `expose_spec`, `exposed_at`, `spec_reads`, `scopes`, `stub`, `tags`, `tested_version`, `stale_test`, `forked_from`
+  - `fields[]` enum: `name`, `kind`, `created_at`, `visibility`, `share_description`, `unshared_by`, `env`, `advisories`, `expose_spec`, `exposed_at`, `spec_reads`, `scopes`, `stub`, `tags`, `tested_version`, `stale_test`, `forked_from`, `pii_args`
 - `limit`: integer
   - `limit` minimum: 1
   - `limit` maximum: 1000
@@ -4108,6 +4108,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
   - `kind` enum: `echo`, `event`, `events`, `webhook`, `webhooks`, `inbound`, `trigger`, `inbox`, `cron`, `schedule`, `scheduled`, `doc`, `docs`, `document`, `documents`, `message`, `messages`, `msg`, `database`, `db`, `table`, `tables`, `csv`, `sql`, `schedules`, `uptime`, `probe`, `probes`, `memory`, `memories`
 - `name`: string, required
   - `name` pattern: `^[a-z][a-z0-9_]{1,40}$`
+- `pii`: array
 - `scopes`: array
 - `spec`: object, required
 - `tags`: array
