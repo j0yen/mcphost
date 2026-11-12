@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-synthetic-tenant-purge.md",
-  "intent_slug": "mcphost-synthetic-tenant-purge",
-  "root_motivation": "WHO: Joe as operator of mcphost-1 (one 1.9 GB SQLite file in WAL mode serving every tenant), rb who reads its prune_log, and the live judge that reads /contract.json. WHAT: the synthetic-tenant idle policy disables nothing on prod because its floor is a selector term, and nothing ever deletes a synthetic tenant, so about 2.3 M child rows of idle and self-offboarded synthetic tenants sit in the file. WHY: a delete on that scale must be batched under load, exactly once, complete across every table that names a tenant, held while a real tenant's row names the subject, and report-only on its first sweep.",
-  "user_persona": "An operator holding the admin key who needs the numbers (would_expire, pre_floor, would_purge, cross_refs, held_entangled) before any delete and a purge that never touches a claimed, verified, paid or billed tenant, plus the live judge reading the lifecycle rule from /contract.json.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-pii-tagging-and-log-redaction-v2.md",
+  "intent_slug": "mcphost-pii-tagging-and-log-redaction-v2",
+  "root_motivation": "WHO: the coding agent whose user asks whether the host's logs hold their customers' emails, the EU customer, and Joe answering a deletion request. WHAT: secrets are redacted wherever the host stores tool output, but an `email` argument reaches call_traces, calls.error_summary, runs.error_data_json and (http) the logs table as sent, and nothing enumerates the sinks. WHY NOW: the posture cannot claim log minimisation, and a deletion request cannot be honoured for these sinks.",
+  "user_persona": "A tool publisher who tags the argument names that carry personal data on host.tool.publish and needs every persisted sink of tool output to show [redacted:pii] instead, with a test that fails when a new sink is written without the registry.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,57 +14,57 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the § Fixture (6,000 due subjects, 20 heavy) and a host.tool_call loop on a live tenant, When the scheduled sweep and admin.prune_now start together with a budget one sweep cannot finish, Then one reports busy, every subject is deleted exactly once over two or more batches, held_over equals the remainder, loop p95 stays under 250 ms and under max(2× the idle baseline, 50 ms), and per-batch wall time in the PR body.",
-      "test": "tests/tenp_ac01_batched_purge_under_load_exactly_once.rs"
+      "description": "Given a python tool published without `pii` that prints its `email` argument and raises on it, When called with `email: \"a@b.io\"`, Then `call_traces` (request, output tails, error) and `calls.error_summary` hold `a@b.io` and the test prints which; if no persisted sink holds it the build stops with `premise_false`.",
+      "test": "tests/piir_ac01_untagged_value_persists_in_sinks.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a subject with a row in every table naming tenants by key or name (enumerated at test time; two-sided set = § Cascade) and, per two-sided column, a synthetic and a claimed two-marker tenant's row naming it, When sweeps run, Then it is held, held_entangled names each claimed-owned column, no row of either tenant changes; claimed rows gone, it is purged, synthetic rows get their § Cascade outcome and no row names it.",
-      "test": "tests/tenp_ac02_cascade_complete_and_entangled_subject_held.rs"
+      "description": "Given the same tool published with `pii: [\"email\"]`, When called, and called again as an async run, Then every sink of `LogSink` shows `[redacted:pii]` where the untagged call held `a@b.io`, none holds `a@b.io`, the caller's `result` still contains it, and a `host.call_trace` replay refuses naming `email`.",
+      "test": "tests/piir_ac02_tagged_value_redacted_in_every_sink.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the migrated schema, When a test lists every foreign-key column referencing tenants through pragma_foreign_key_list, Then each has an index whose first column it is, the migration adding the missing ones takes the next free number at land time and also creates namespace_tombstones holding each tenant-delete admin_events namespace, and dropping any one of those indexes inside the test fails it naming the table and column.",
-      "test": "tests/tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned.rs"
+      "description": "Given a tool schema with `phone` and without `nope`, When `host.tool.publish` runs with `pii: [\"nope\"]`, Then `args_invalid` names it; with `\"x-pii\": true` on `phone`, Then `host.tool.list` shows `pii_args: [\"phone\"]`; Given a republish without `pii`, Then the list is kept, and with `pii: []` it is cleared.",
+      "test": "tests/piir_ac03_publish_pii_validated_and_listed.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given implicit synthetic unclaimed rows minted before the floor, When the sweep runs with the window elapsed since the floor, Then each is disabled idle_expired with a lifecycle event, the expire stage stops at the wall budget reporting held_over, a row idle under the window is untouched, and the sweep with no prior prune_log row carrying purge_due_unix logs pre_floor with a ≤ 200-row pre_floor_sample, no key or address.",
-      "test": "tests/tenp_ac04_idle_clock_runs_from_the_floor.rs"
+      "description": "Given an http tool whose upstream echoes the request in a 500 body, When called with a tagged value, plain and percent-encoded in the body, Then the call's `logs` line, `call_traces.error_json`, `calls.error_summary` and (async) `runs.error_data_json` show `[redacted:pii]` and hold neither form.",
+      "test": "tests/piir_ac04_http_upstream_echo_redacted.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given two-marker rows disabled idle_expired or self_offboard, When sweeps run on a mock clock, Then none is deleted before MAX(last_seen or created, last lifecycle event, floor) + grace, a sweep with no prior prune_log row carrying purge_due_unix only reports would_purge and cross_refs, later sweeps delete via delete_tenant_as logging tenant_purge_synthetic; each batch ends in incremental_vacuum(PURGE_VACUUM_PAGES), no VACUUM.",
-      "test": "tests/tenp_ac05_grace_clock_report_first_and_bounded_vacuum.rs"
+      "description": "Given the source tree, When `piir_sinks_cover_every_write` runs, Then every write into a sink table or column is in a function named in the `LogSink` table or in an allowlist entry with a reason; Given a planted `INSERT INTO logs` outside both, Then the test fails naming the file and line.",
+      "test": "tests/piir_ac05_sinks_cover_every_write.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given purge-due and pre-floor rows, When admin.prune_now is called with dry_run true, Then it returns would_expire, pre_floor, would_purge, purge_due_unix, cross_refs by column and class and held_entangled, writes no prune_log row and deletes nothing; admin.funnel carries tenants_synthetic_purged; contract dump shows the § Contract keys and contract --check fails when a constant moves.",
-      "test": "tests/tenp_ac06_dry_run_report_funnel_count_and_contract_keys.rs"
+      "description": "Given two tagged values where one contains the other, When redacted, Then the longer is replaced first and no partial value survives; Given a value of 2 characters, Then it stays intact.",
+      "test": "tests/piir_ac06_longest_first_and_short_values.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the § Classes rows, When sweeps pass the window and grace, Then only the both-markers unclaimed row gains event, flag and deletion, the other eight none, even if a class flips between mark and delete; grace env off purges nothing, idle-days env off disables or purges nothing; a disabled subject's old tenant_key gets tenant_key_invalid and moves no due date, and a keyless new peer still mints, never a purged namespace.",
-      "test": "tests/tenp_ac07_class_matrix_off_switches_and_namespace_reservation.rs"
+      "description": "Given the `LogSink` enum, When the no-drift test runs, Then the sink list in the generated contract equals the `Display` names of every enum variant, no sink is listed twice, and a variant added without regenerating the contract fails the test.",
+      "test": "tests/piir_ac07_sink_list_no_drift.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 8 command in § Live evidence commands runs from the build host with no credential, Then jq prints true on purge.grace_days 14, floor_rule idle_from_floor, zero_disables false and self_offboard among the purge reasons, and the last line is jq_rc=0 (Live; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)",
-      "test": "deferred: Live (prod; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)"
+      "description": "Given prod after deploy, When `tests/piir_ac08_live_prod_pii_redacted_in_call_trace.rs` calls a python tool tagged `pii: [\"email\"]` that prints and raises on `email`, Then `host.call_trace` shows `request.email` as `***`, `[redacted:pii]` in the tails and error, and no value.",
+      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test piir_ac08_live_prod_pii_redacted_in_call_trace)"
     }
   ],
   "scope": [
-    "src/db/synthetic_purge.rs (purge stage, report, dry run, relation registry); src/db.rs (prune_once_at, sweep lock, idle clock from the floor, delete_tenant_rows with NULLings, by-value deletes and namespace tombstones, reserved-namespace checks in the two tenants inserts, funnel count); src/retention.rs constants and bounded incremental_vacuum; src/auth.rs namespace draw loop; src/control.rs and src/invites.rs callers; src/errors.rs namespace_reserved; src/admin.rs and src/handler.rs admin.prune_now dry_run and admin.funnel tenants_synthetic_purged; src/api_contract.rs tenant_lifecycle; migrations/0140_synthetic_tenant_purge.sql; contracts/host-tools.v1.json and the SDKs rendered from it."
+    "src/logsink.rs (LogSink, write_through, PiiSet, task-local, ALLOWLIST); src/calltrace.rs (Redactor::with_pii, scrub, replay refusal on the marker); src/db.rs (tools.pii_args_json, the sink writers pass write_through); src/control.rs (tool_publish pii/x-pii merge, tool_list pii_args); src/handler.rs, src/runs.rs (per-call scope armed with the tagged values); src/paged.rs, src/api_contract.rs (log_sinks); migrations/0141_tool_pii_args.sql; contracts and generated docs; tests/piir_ac*.rs and tests/support/piir.rs."
   ],
   "non_goals": [
-    "A full VACUUM; purging explicit synthetic sign-ups or any tenant outside the two-marker class; deleting or rewriting a text column that carries a namespace; blocking the keyless inflow; a fleet-dash field for the purge; the AC 8 prod read (operator-provisioned, deferred)."
+    "Redacting the tool's own result that goes back to the caller; detecting personal data without a tag; secrets; runs.args_json and queue_items.item_json; pruning logs; host.catalog.get and host.tool.spec_shared pii_args (R6); admin.pii_report (R7); the AC 8 prod read (operator-provisioned)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -73,45 +73,49 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "one_migration": "One migration at the next free number, CREATE INDEX IF NOT EXISTS and namespace_tombstones only; no table rebuild; foreign_keys stays as it is.",
-      "no_full_vacuum": "No VACUUM anywhere in the sweep; incremental_vacuum(PURGE_VACUUM_PAGES) per batch."
+      "one_migration": "One nullable tools.pii_args_json column, compat: previous, at the next free number; no table rebuild.",
+      "redaction_at_the_sink": "Redaction attaches to LogSink writers, never to call sites; the source scan is the contract between the sink set and the code that writes it."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the synthetic expiry policy leave 17,159 idle rows on prod?",
-      "a": "The policy floor is a selector term and no implicit synthetic tenant was minted after it."
+      "q": "Why can a deletion request not be honoured for tool output?",
+      "a": "An email argument is stored as sent in call_traces, calls.error_summary, runs.error_data_json and the logs table."
     },
     {
       "why": 2,
-      "q": "Why does nothing delete a synthetic tenant?",
-      "a": "The policy only disables; the delete path existed for the external policy alone."
+      "q": "Why is it stored as sent?",
+      "a": "Redaction exists only for secret values and secret-looking keys; personal data has no tag the host can read."
     },
     {
       "why": 3,
-      "q": "Why not extend the external purge as is?",
-      "a": "Synthetic subjects have entangled rows in 23 tables, 26 foreign keys lack an index and one sweep cannot finish inside a request window."
+      "q": "Why not add redaction at each writer as it is found?",
+      "a": "Nothing enumerates where tool output is written, so a redaction added today misses the next sink."
     },
     {
       "why": 4,
-      "q": "Why must the first sweep only report?",
-      "a": "A delete on this scale cannot be undone without a restore, so the numbers and cross-references are read before anything is removed."
+      "q": "Why is a registry plus a drift test the fix?",
+      "a": "The source scan makes a new unregistered write fail CI, so the sink set cannot grow silently."
     }
   ],
-  "created_at": "2026-11-03T00:00:00Z",
+  "created_at": "2026-11-11T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Which test decides the R1 gate?",
-      "resolution": "json_type on $.synthetic_implicit_tenants.purge_due_unix, not LIKE, because the external block already carries pre_floor.purge_due_unix."
+      "question": "Redact the caller-facing result?",
+      "resolution": "No: it is what the caller asked for; AC 2 asserts it still contains the value."
     },
     {
-      "question": "How does a namespace re-draw reach the callers without changing their signatures?",
-      "resolution": "auth::with_fresh_namespace re-runs the insert with a new draw on namespace_reserved or the UNIQUE conflict on tenants.namespace, at most NAMESPACE_DRAW_LIMIT draws."
+      "question": "Minimum value length 3 or 4?",
+      "resolution": "3, one below the secret redactor's floor; numbers of fewer than 3 digits are never redacted."
     },
     {
-      "question": "Does dry_run return any key beyond the six numbers?",
-      "resolution": "No: admin.prune_now with dry_run returns only synthetic_implicit_tenants with would_expire, pre_floor, would_purge, purge_due_unix, cross_refs and held_entangled."
+      "question": "Which messages sites run inside a tool call?",
+      "resolution": "insert_message is the one writer a tool call reaches and passes the sink; the five host-authored notice writers are allowlisted with reasons."
+    },
+    {
+      "question": "Does `pii: []` clear a property that carries x-pii?",
+      "resolution": "Yes: an explicit empty list clears the stored set outright; without `pii`, x-pii properties join the kept names."
     }
   ]
 }

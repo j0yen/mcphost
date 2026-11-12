@@ -264,6 +264,9 @@ const MIN_NEEDLE: usize = 4;
 /// masked so the output tails can be scrubbed of the same strings.
 pub struct Redactor {
     needles: Vec<(String, String)>,
+    /// PRD-mcphost-pii-tagging-and-log-redaction-v2 R3: argument names the
+    /// tool's publisher tagged as personal data, masked like a secret key.
+    pii_keys: Vec<String>,
 }
 
 impl Redactor {
@@ -273,7 +276,15 @@ impl Redactor {
             .filter(|(_, v)| v.len() >= MIN_NEEDLE)
             .map(|(name, v)| (v.clone(), format!("{{{{ secret.{name} }}}}")))
             .collect();
-        Self { needles }
+        Self { needles, pii_keys: Vec::new() }
+    }
+
+    /// Adds the call's tagged personal-data values (the 3-character floor of
+    /// [`crate::logsink::MIN_PII_NEEDLE`] lives in the set, not here) and keys.
+    pub fn with_pii(mut self, pii: &crate::logsink::PiiSet) -> Self {
+        self.needles.extend(pii.needles().iter().cloned());
+        self.pii_keys.extend(pii.keys().iter().cloned());
+        self
     }
 
     /// Key-pattern masking plus by-value secret replacement over a JSON tree.
@@ -284,6 +295,9 @@ impl Redactor {
                     .map(|(k, v)| {
                         if secret_looking(k) {
                             self.learn(v);
+                            (k.clone(), json!("***"))
+                        } else if self.pii_keys.contains(k) {
+                            // Its values are already needles of the PII set.
                             (k.clone(), json!("***"))
                         } else {
                             (k.clone(), self.value(v))
@@ -308,17 +322,50 @@ impl Redactor {
         }
     }
 
-    /// Replaces every known secret value in `s`, longest first so a value
-    /// that contains another is fully covered.
+    /// Replaces every known secret or personal-data value in `s`; at each
+    /// position the longest needle wins, so a value that contains another is
+    /// fully covered and no partial value survives.
     pub fn text(&self, s: &str) -> String {
-        let mut order: Vec<&(String, String)> = self.needles.iter().filter(|(n, _)| s.contains(n.as_str())).collect();
-        order.sort_by_key(|(n, _)| std::cmp::Reverse(n.len()));
-        let mut out = s.to_string();
-        for (needle, replacement) in order {
-            out = out.replace(needle.as_str(), replacement);
-        }
-        out
+        scrub(&self.needles, s)
     }
+}
+
+/// One left-to-right pass replacing every `(needle, replacement)` match in
+/// `s`, longest needle first at each position. A single pass, so a needle
+/// that occurs inside a replacement (`pii` inside `[redacted:pii]`) is never
+/// matched again, and a replacement already in `s` (from an earlier writer's
+/// pass) is copied through, so the result is stable under a second pass.
+pub fn scrub(needles: &[(String, String)], s: &str) -> String {
+    if needles.is_empty() || s.is_empty() {
+        return s.to_string();
+    }
+    let mut order: Vec<&(String, String)> = needles.iter().filter(|(n, _)| !n.is_empty() && s.contains(n.as_str())).collect();
+    if order.is_empty() {
+        return s.to_string();
+    }
+    order.sort_by_key(|(n, _)| std::cmp::Reverse(n.len()));
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < s.len() {
+        let rest = &s[i..];
+        if let Some((_, done)) = order.iter().find(|(_, r)| rest.starts_with(r.as_str())) {
+            out.push_str(done);
+            i += done.len();
+            continue;
+        }
+        match order.iter().find(|(n, _)| rest.starts_with(n.as_str())) {
+            Some((n, replacement)) => {
+                out.push_str(replacement);
+                i += n.len();
+            }
+            None => {
+                let ch = rest.chars().next().expect("rest is not empty");
+                out.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+    }
+    out
 }
 
 /// The failure a trace records: the wire `code`, the message, and for a
@@ -350,7 +397,7 @@ pub fn build_trace(
     capture: Option<&SharedCapture>,
     error: Option<Value>,
 ) -> crate::db::NewCallTrace {
-    let mut redactor = Redactor::new(secrets);
+    let mut redactor = Redactor::new(secrets).with_pii(&crate::logsink::current());
     let mut request = json!({"tool": tool, "args": redactor.value(args)});
     let mut request_json = request.to_string();
     if request_json.len() > REQUEST_BYTES {
@@ -406,7 +453,7 @@ pub fn unresolved_secret_key(args: &mut Value, secrets: &HashMap<String, String>
                 for (name, value) in secrets {
                     *s = s.replace(&format!("{{{{ secret.{name} }}}}"), value);
                 }
-                (s == "***" || s.contains("{{ secret.")).then(|| key.to_string())
+                (s == "***" || s.contains("{{ secret.") || s.contains(crate::logsink::REDACTION)).then(|| key.to_string())
             }
             _ => None,
         }

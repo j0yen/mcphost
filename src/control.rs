@@ -344,6 +344,66 @@ fn parse_tool_scopes(args: &Value) -> Result<Vec<String>, AppError> {
     }
 }
 
+/// PRD-mcphost-pii-tagging-and-log-redaction-v2 R1: `host.tool.publish`'s
+/// optional `pii` -- the argument names whose values the host redacts from
+/// every persisted sink of tool output. `None` = absent (keep the stored
+/// list); `Some(empty)` clears it.
+fn parse_tool_pii(args: &Value) -> Result<Option<Vec<String>>, AppError> {
+    match args.get("pii") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(items)) => {
+            let mut names: Vec<String> = Vec::new();
+            for item in items {
+                let name = item
+                    .as_str()
+                    .ok_or_else(|| AppError::InvalidArgs("pii: every element must be a string".to_string()))?;
+                if !names.iter().any(|n| n == name) {
+                    names.push(name.to_string());
+                }
+            }
+            Ok(Some(names))
+        }
+        Some(_) => Err(AppError::InvalidArgs("pii: must be an array of argument names".to_string())),
+    }
+}
+
+/// R1: the tagged set a publish stores. `schema` is
+/// `kind.describe(spec).input_schema`; `stored` the tool's current list (empty
+/// for a new tool). An explicit `pii` must name schema properties
+/// (`args_invalid` otherwise) and, with the schema's `"x-pii": true`
+/// properties, is the new set; `pii: []` clears it outright. Without `pii` the
+/// stored names the new schema still has stay, and `x-pii` properties join.
+fn merge_pii_args(pii: Option<Vec<String>>, schema: &Value, stored: &[String]) -> Result<Vec<String>, AppError> {
+    let props = schema.get("properties").and_then(Value::as_object);
+    let has = |name: &str| props.is_some_and(|p| p.contains_key(name));
+    let x_pii = || -> Vec<String> {
+        props
+            .into_iter()
+            .flatten()
+            .filter(|(_, v)| v.get("x-pii").and_then(Value::as_bool) == Some(true))
+            .map(|(k, _)| k.clone())
+            .collect()
+    };
+    let mut merged: Vec<String> = match pii {
+        Some(names) if names.is_empty() => return Ok(Vec::new()),
+        Some(names) => {
+            if let Some(unknown) = names.iter().find(|n| !has(n)) {
+                return Err(AppError::InvalidArgs(format!(
+                    "pii: '{unknown}' is not a property of this tool's input schema"
+                )));
+            }
+            names
+        }
+        None => stored.iter().filter(|n| has(n)).cloned().collect(),
+    };
+    for name in x_pii() {
+        if !merged.contains(&name) {
+            merged.push(name);
+        }
+    }
+    Ok(merged)
+}
+
 /// PRD-mcphost-tool-versions requirement 4/8: `host.tool_rollback`'s
 /// `version` and `host.tool_diff`'s `from`/`to` -- required integer
 /// arguments, same `args_invalid` shape as [`arg_str`] for a missing one.
@@ -2064,6 +2124,7 @@ pub async fn tool_publish(
     // unconditionally, `dry_run` or not -- an invalid `scopes` argument is
     // never one of the "collectible" gates below, it's a malformed request.
     let scopes = parse_tool_scopes(args)?;
+    let pii = parse_tool_pii(args)?;
     if scopes.len() > MAX_SCOPES_PER_TOOL {
         return Err(AppError::InvalidParams(format!(
             "scopes: at most {MAX_SCOPES_PER_TOOL} scopes per tool, got {}",
@@ -2173,6 +2234,15 @@ pub async fn tool_publish(
     kind.validate_async(&spec)
         .await
         .map_err(|e| crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), e.into()))?;
+
+    // PRD-mcphost-pii-tagging-and-log-redaction-v2 R1: refused before anything
+    // is written (dry_run included), like a malformed `scopes`.
+    let pii_given = pii.is_some();
+    let stored_pii = match &pii {
+        Some(_) => Vec::new(),
+        None => state.db.get_tool(tenant.id, name.clone()).await?.map(|row| row.pii_args).unwrap_or_default(),
+    };
+    let pii = merge_pii_args(pii, &kind.describe(&spec).input_schema, &stored_pii)?;
 
     // PRD-mcphost-chain-host-steps requirement 4: a `chain` spec's every
     // step must resolve (a sibling tenant tool, or an allowlisted `host.*`
@@ -2492,6 +2562,10 @@ pub async fn tool_publish(
 
     if let Some(tags) = tags {
         state.db.set_tool_tags(tenant.id, name.clone(), tags).await?;
+    }
+    // An untagged tool that was never tagged needs no write.
+    if pii_given || !pii.is_empty() || !stored_pii.is_empty() {
+        state.db.set_tool_pii_args(tenant.id, name.clone(), pii).await?;
     }
 
     // PRD-mcphost-activation-funnel requirement 2: every successful publish
@@ -2837,6 +2911,9 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
                 // PRD-mcphost-tool-scopes-and-consent requirement 1: empty
                 // means the tool requires only `mcp`, never omitted.
                 "scopes": row.scopes,
+                // PRD-mcphost-pii-tagging-and-log-redaction-v2 R1: the argument
+                // names the host redacts from every persisted sink; `[]` when untagged.
+                "pii_args": row.pii_args,
                 // PRD-mcphost-scoped-tool-share R6: the `<owner>.<tool>` a fork
                 // was copied from, `null` on a tool that is not a fork (never
                 // omitted: the row keys and FIELDS are one set).

@@ -847,6 +847,15 @@ pub(crate) fn tool_publish_props(kinds: &KindRegistry) -> Value {
             "description": "Catalog tags: at most 16, each 1-32 chars of a-z, 0-9 and '-', \
                 stored lower-case and deduped.",
         },
+        "pii": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Argument names that carry personal data (each must be a property of \
+                the tool's input schema; a property marked \"x-pii\": true joins the set). The \
+                host replaces their values with [redacted:pii] in every persisted log, call \
+                trace and error summary; the caller's result is unchanged. Omit to keep the \
+                stored list, [] to clear it.",
+        },
     })
 }
 
@@ -9204,6 +9213,42 @@ impl McpHostHandler {
         auth_method: &str,
         token_scope: Option<&str>,
     ) -> Result<Value, AppError> {
+        // PRD-mcphost-pii-tagging-and-log-redaction-v2 R2: one scope per call,
+        // armed with the tool's tagged values once the row is resolved.
+        // Boxed: this call's future is very large, and the forward-stack
+        // budget (`FORWARD_STACK_BUDGET`) counts every debug-build frame copy.
+        crate::logsink::scoped(Box::pin(self.call_published_tool_scoped(
+            tenant,
+            local_name,
+            args,
+            mcp_name_mismatch,
+            caller,
+            version,
+            end_user,
+            auth_method,
+            token_scope,
+        )))
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn call_published_tool_scoped(
+        &self,
+        tenant: &Tenant,
+        local_name: &str,
+        args: Value,
+        mcp_name_mismatch: bool,
+        caller: Option<&Tenant>,
+        version: Option<i64>,
+        end_user: Option<&crate::enduser::EndUser>,
+        // PRD-mcphost-oauth-demand-signal requirement 1 (AC1): `"key"`,
+        // `"issuer_jwt"`, or `"hosted_token"` -- resolved once by every
+        // caller from the same `Auth`/`OauthCaller` `end_user` above was
+        // already resolved from, so this row's own `calls.auth_method`
+        // never has to re-derive it.
+        auth_method: &str,
+        token_scope: Option<&str>,
+    ) -> Result<Value, AppError> {
         let started = Instant::now();
         // PRD-mcphost-call-cost-estimate: resolution (tool row, scope,
         // pinned version, kind) then every `PREFLIGHT_CHECKS` row of the
@@ -9236,6 +9281,7 @@ impl McpHostHandler {
             return Err(settle(refusal).await);
         }
         let crate::preflight::Target { row, spec, kind, .. } = target;
+        crate::logsink::arm(&row.pii_args, &args);
 
         // PRD-mcphost-upstream-token-vault requirement 4 / AC6: resolved
         // (and, if it's within 120s of expiry, refreshed) BEFORE any of
