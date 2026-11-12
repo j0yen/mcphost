@@ -44,6 +44,7 @@ pub const DISPATCH_TABLE: &[(&str, Arm)] = &[
     ("host.call_trace", McpHostHandler::arm_host_call_trace),
     ("host.calls.export", McpHostHandler::arm_host_calls_export),
     ("host.calls.list", McpHostHandler::arm_host_calls_list),
+    ("host.calls.sessions", McpHostHandler::arm_host_calls_sessions),
     ("host.catalog.get", McpHostHandler::arm_host_catalog_get),
     ("host.catalog.search", McpHostHandler::arm_host_catalog_search),
     ("host.changelog", McpHostHandler::arm_host_changelog),

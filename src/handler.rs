@@ -1587,8 +1587,9 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
             "host.calls.list",
             "List the calls made with this tenant's keys, newest first: when, which credential \
              (primary, sub_key, oauth, trigger, cron, webhook, shared_caller), tool, outcome, \
-             duration and byte sizes. Filter by key_label, tool, outcome or credential. A sub-key \
-             sees only its own rows.",
+             duration, byte sizes, args_sha256 (a fingerprint of the call's masked arguments, so two \
+             calls of one tool can be told apart) and session_id. Filter by key_label, tool, outcome, \
+             credential or session. A sub-key sees only its own rows.",
             host_schema(
                 json!({
                     "since": {"type": ["string", "integer"], "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day, an RFC 3339 instant or Unix epoch seconds (default -24h)."},
@@ -1597,6 +1598,7 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                     "tool": {"type": "string", "description": "Only calls to this tool."},
                     "outcome": {"type": "string", "description": "Only calls with this outcome (ok, error, refused, ...)."},
                     "credential": {"type": "string", "enum": crate::calllog::Credential::ALL.iter().map(|c| c.as_str()).collect::<Vec<_>>(), "description": "Only calls made with this credential kind."},
+                    "session": {"type": "string", "description": "Only calls made over this MCP session id (a row's session_id); another tenant's session matches nothing."},
                 }),
                 &[],
             ),
@@ -1611,6 +1613,23 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                 json!({
                     "since": {"type": ["string", "integer"], "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day, an RFC 3339 instant or Unix epoch seconds (default -24h)."},
                     "until": {"type": ["string", "integer"], "description": "Window end, same forms (default now)."},
+                    "session": {"type": "string", "description": "Only calls made over this MCP session id (a row's session_id); another tenant's session matches nothing."},
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-session-journal-v2 R7.
+        Tool::new(
+            "host.calls.sessions",
+            "Roll this tenant's calls up per MCP session, newest first: session_id, first_ts, \
+             last_ts, calls, ok, failed and the tools it called. Pair a session_id with \
+             host.calls.list {session} to replay what that session did. Calls made without a \
+             session are not listed. A sub-key sees only its own rows.",
+            host_schema(
+                json!({
+                    "since": {"type": ["string", "integer"], "pattern": crate::calllog::BOUND_PATTERN, "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day, an RFC 3339 instant or Unix epoch seconds (default -24h)."},
+                    "until": {"type": ["string", "integer"], "pattern": crate::calllog::BOUND_PATTERN, "description": "Window end, same forms (default now)."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": crate::calllog::SESSIONS_MAX, "default": crate::calllog::SESSIONS_MAX, "description": "Most sessions to return (1..=20, default 20)."},
                 }),
                 &[],
             ),
@@ -9196,8 +9215,38 @@ impl McpHostHandler {
     // shape (same-tenant vs. cross-tenant); splitting it would just move
     // the same inputs into a struct with one constructor per call site.
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     async fn call_published_tool(
+        &self,
+        tenant: &Tenant,
+        local_name: &str,
+        args: Value,
+        mcp_name_mismatch: bool,
+        caller: Option<&Tenant>,
+        version: Option<i64>,
+        end_user: Option<&crate::enduser::EndUser>,
+        auth_method: &str,
+        token_scope: Option<&str>,
+    ) -> Result<Value, AppError> {
+        // PRD-mcphost-session-journal-v2 R4: one fingerprint cell per
+        // dispatch; `call_published_tool_inner` fills it once the arguments
+        // and the tenant's secrets are in scope.
+        crate::calllog::with_args_cell(Box::pin(self.call_published_tool_inner(
+            tenant,
+            local_name,
+            args,
+            mcp_name_mismatch,
+            caller,
+            version,
+            end_user,
+            auth_method,
+            token_scope,
+        )))
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    async fn call_published_tool_inner(
         &self,
         tenant: &Tenant,
         local_name: &str,
@@ -9258,6 +9307,7 @@ impl McpHostHandler {
         };
 
         let secret_map = build_secret_map(&self.state, tenant.id).await?;
+        crate::calllog::note_call_args(&args, &secret_map);
         let secrets = secret_resolver_for(&self.state, tenant.id, secret_map.clone()).await?;
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
         let resources = Arc::new(CellResourceSink::new());
@@ -12949,6 +12999,10 @@ impl ServerHandler for McpHostHandler {
         );
         let inner = crate::sampling::SAMPLING_CLIENT
             .scope(crate::sampling::SamplingClient { peer: sampling_peer, session_id: gate.session_id.clone() }, inner);
+        // PRD-mcphost-session-journal-v2 R3: the host-minted id of an MCP
+        // session the client echoed; a stateless request carries none.
+        let journal_session = gate.session_present.then(|| gate.session_id.clone()).flatten();
+        let inner = crate::calllog::with_session(journal_session, inner);
         let inner = crate::inband::CALL_GATE.scope(gate, inner);
         // PRD-mcphost-tools-call-progress-notifications P0: the slot every
         // `calls` row of this request reads `progress_token` / `progress_frames` from.

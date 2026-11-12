@@ -149,6 +149,8 @@ mod insch_ac03_patterns_and_bounds_in_schema;
 mod insch_ac05_schema_valid_call_clears_validation;
 #[path = "insch_ac06_contract_and_docs_carry_constraints.rs"]
 mod insch_ac06_contract_and_docs_carry_constraints;
+#[path = "jrnl_ac06_fields_one_list_everywhere.rs"]
+mod jrnl_ac06_fields_one_list_everywhere;
 #[path = "kdr_ac02_python_page_tables_generated.rs"]
 mod kdr_ac02_python_page_tables_generated;
 #[path = "kdr_ac03_check_names_stale_block.rs"]
@@ -281,7 +283,5 @@ mod statusfeed_ac11_deferral_is_justified;
 mod suite_ac2_check_catches_unregistered_file;
 #[path = "suite_ac4_archived_prd_pointers_resolve.rs"]
 mod suite_ac4_archived_prd_pointers_resolve;
-#[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
-mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;

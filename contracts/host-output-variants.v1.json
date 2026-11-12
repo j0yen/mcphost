@@ -289,6 +289,10 @@
       "unreached": [],
       "variants": []
     },
+    "host.calls.sessions": {
+      "unreached": [],
+      "variants": []
+    },
     "host.catalog.get": {
       "unreached": [
         {
@@ -2878,6 +2882,10 @@
       "variants": []
     },
     "host_calls_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_calls_sessions": {
       "unreached": [],
       "variants": []
     },

@@ -141,6 +141,8 @@ pub const SHAPE_CHECKS: &[ShapeCheck] = &[
     ShapeCheck { pattern: crate::notify::LINK_PATTERN, check: None, accepts: &["https://example.com/a"], orphan: false },
     ShapeCheck { pattern: crate::drafter::TOOL_NAME_REGEX, check: Some(crate::state::is_valid_tool_name), accepts: &["ab", "my_tool_2"], orphan: false },
     ShapeCheck { pattern: crate::index::NAME_PATTERN, check: None, accepts: &["docs", "a-b_c", "0x"], orphan: false },
+    // The window bound has no handler twin: `calllog::parse_bound` parses it against the clock.
+    ShapeCheck { pattern: crate::calllog::BOUND_PATTERN, check: None, accepts: &["-24h", "-30d", "1700000000", "2026-11-12", "2026-11-12T01:02:03Z", "2026-11-12T01:02:03.5+00:00"], orphan: false },
     // `signup` is the unauthenticated tool, outside `host_tool_descriptors`/`admin_tool_descriptors`.
     ShapeCheck { pattern: crate::state::SOURCE_PATTERN, check: Some(crate::state::is_valid_signup_source), accepts: &["docs.quickstart", "a", "x-y_z"], orphan: true },
 ];

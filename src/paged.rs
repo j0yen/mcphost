@@ -600,7 +600,7 @@ paged_verbs! {
         cursor_of: |r: &crate::db::RunPageRow, _o: RunsOrder| Cursor::new(r.rowid, r.run.id.clone()) }
     CallsList { verb: "host.calls.list", key: "calls", default: 100, max: 500,
         row: crate::calllog::CallRow, order: CallsOrder,
-        fields: ["ts", "credential", "key_label", "tool", "outcome", "error_class", "duration_ms", "bytes_in", "bytes_out", "end_user_subject", "run_id"],
+        fields: ["ts", "credential", "key_label", "tool", "outcome", "error_class", "duration_ms", "bytes_in", "bytes_out", "end_user_subject", "run_id", "args_sha256", "session_id"],
         cursor_of: |r: &crate::calllog::CallRow, _o: CallsOrder| Cursor::new(r.id, r.id.to_string()) }
     DocsList { verb: "host.docs.list", key: "documents", default: 100, max: 1000,
         row: crate::db::DocumentRow, order: DocsOrder,
@@ -657,6 +657,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.audit.chain", UNPAGED_WINDOW),
     ("host.audit.export", UNPAGED_EXPORT),
     ("host.blob.gc", UNPAGED_BOUNDED),
+    ("host.calls.sessions", UNPAGED_WINDOW),
     ("host.blob.list", UNPAGED_NAME_WINDOW),
     ("host.catalog.search", UNPAGED_WINDOW),
     ("host.changelog", UNPAGED_EXPORT),

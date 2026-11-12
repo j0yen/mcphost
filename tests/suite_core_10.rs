@@ -706,6 +706,18 @@ mod jqk_ac05_budgets;
 mod jqk_ac06_chain_prev;
 #[path = "jqk_ac07_unsupported_builtin.rs"]
 mod jqk_ac07_unsupported_builtin;
+#[path = "jrnl_ac01_args_fingerprint_on_call_rows.rs"]
+mod jrnl_ac01_args_fingerprint_on_call_rows;
+#[path = "jrnl_ac02_masked_values_never_stored_or_hashed.rs"]
+mod jrnl_ac02_masked_values_never_stored_or_hashed;
+#[path = "jrnl_ac03_session_id_on_rows_and_filter.rs"]
+mod jrnl_ac03_session_id_on_rows_and_filter;
+#[path = "jrnl_ac04_shared_caller_rows_carry_neither_value.rs"]
+mod jrnl_ac04_shared_caller_rows_carry_neither_value;
+#[path = "jrnl_ac05_two_values_cost_at_most_one_ms_p95.rs"]
+mod jrnl_ac05_two_values_cost_at_most_one_ms_p95;
+#[path = "jrnl_ac07_calls_sessions_rollup.rs"]
+mod jrnl_ac07_calls_sessions_rollup;
 #[path = "jtl_ac01_three_step_chain_timeline.rs"]
 mod jtl_ac01_three_step_chain_timeline;
 #[path = "jtl_ac02_mapping_miss_step_is_error_family_compose.rs"]
