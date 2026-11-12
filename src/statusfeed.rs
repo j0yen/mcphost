@@ -27,7 +27,7 @@ use crate::state::{AppState, now_unix, rfc3339_from_unix};
 /// Every table a status-feed tick writes (guarded by `tests/bsc_ac01_*`;
 /// `billing_events` is never a member).
 pub const STATUS_FEED_TABLES: &[&str] =
-    &["status_samples", "status_daily", "incidents", "alerts", "signals_probe"];
+    &["status_samples", "status_daily", "slo_daily", "incidents", "alerts", "signals_probe"];
 
 /// requirement 2: the four fixed self-probed components, in the order
 /// `/status.json` reports them.
@@ -467,6 +467,140 @@ async fn uptime_for_window(state: &AppState, component: &str, days: i64) -> Resu
     }
 }
 
+/// Which side of `target` counts as met.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SloDirection {
+    /// `measured >= target` is met (availability).
+    AtLeast,
+    /// `measured <= target` is met (latency, error rate).
+    AtMost,
+}
+
+/// PRD-mcphost-slo-targets-on-status R1: one row of [`SLO_TARGETS`], the
+/// only place a target number is spelled.
+#[derive(Debug, Clone, Copy)]
+pub struct SloTarget {
+    /// The `slo.<key>` name in `/status.json`, `www/status.html` and `www/llms.txt`.
+    pub key: &'static str,
+    pub target: f64,
+    pub unit: &'static str,
+    pub window_secs: i64,
+    pub direction: SloDirection,
+}
+
+/// R1: the three SLO targets. `/status.json`'s `slo` block, the `?slo=` daily
+/// rows and the drift test all read this table.
+pub const SLO_TARGETS: [SloTarget; 3] = [
+    SloTarget {
+        key: "availability_30d",
+        target: 99.5,
+        unit: "percent",
+        window_secs: 30 * 86_400,
+        direction: SloDirection::AtLeast,
+    },
+    SloTarget {
+        key: "tool_call_p95_ms_24h",
+        target: 2000.0,
+        unit: "ms",
+        window_secs: 86_400,
+        direction: SloDirection::AtMost,
+    },
+    SloTarget {
+        key: "error_rate_24h",
+        target: 0.5,
+        unit: "percent",
+        window_secs: 86_400,
+        direction: SloDirection::AtMost,
+    },
+];
+
+/// R3: fewer samples than this and `measured`/`met` are `null`.
+pub const SLO_MIN_SAMPLES: i64 = 20;
+
+/// R2: the `calls.error_class` values that count against the host -- every
+/// `ERROR_CODES` entry whose `class` is `HostFault`, derived (never a
+/// hand-written list) because `calls.error_class` stores the wire code.
+pub fn host_fault_codes() -> Vec<&'static str> {
+    crate::error_registry::ERROR_CODES
+        .iter()
+        .filter(|e| e.class == crate::error_registry::ErrorClass::HostFault)
+        .map(|e| e.code)
+        .collect()
+}
+
+/// R2: whether `measured` is on the right side of `target`.
+fn slo_met(target: &SloTarget, measured: f64) -> bool {
+    match target.direction {
+        SloDirection::AtLeast => measured >= target.target,
+        SloDirection::AtMost => measured <= target.target,
+    }
+}
+
+/// R2/R3: one `slo.<key>` object from a measurement (`None` = no sample
+/// yielded a value) and its `sample_n`; `source` says whether the number came
+/// from `calls` (tenant traffic) or `status_daily` (self-probe rollups),
+/// which is how a reader tells `slo` from `perf`.
+fn slo_entry(target: &SloTarget, measured: Option<Value>, sample_n: i64, source: &str) -> Value {
+    let measured = if sample_n < SLO_MIN_SAMPLES { None } else { measured };
+    let met = measured
+        .as_ref()
+        .and_then(Value::as_f64)
+        .map(|m| slo_met(target, m));
+    json!({
+        "target": target.target,
+        "measured": measured,
+        "met": met,
+        "window_secs": target.window_secs,
+        "source": source,
+        "sample_n": sample_n,
+    })
+}
+
+/// R2: `availability_30d`'s value from summed `status_daily` samples.
+fn availability_pct(ok: i64, total: i64) -> Option<f64> {
+    (total > 0).then(|| ok as f64 / total as f64 * 100.0)
+}
+
+/// R2: `error_rate_24h`'s value -- host faults over every finished row.
+fn error_rate_pct(stats: &crate::db::SloCallStats) -> Option<f64> {
+    (stats.total > 0).then(|| stats.host_faults as f64 / stats.total as f64 * 100.0)
+}
+
+/// R2: the `slo` object of `/status.json` -- all three [`SLO_TARGETS`] keys,
+/// always.
+pub async fn slo_block(state: &AppState) -> Result<Value, AppError> {
+    let now = now_unix();
+    let mut out = serde_json::Map::new();
+    let mut calls: Option<crate::db::SloCallStats> = None;
+    for target in &SLO_TARGETS {
+        let entry = match target.key {
+            "availability_30d" => {
+                let since_day = rfc3339_from_unix(now - target.window_secs)[..10].to_string();
+                let (ok, total) = state.db.status_daily_sum_all_since(since_day).await?;
+                slo_entry(target, availability_pct(ok, total).map(|m| json!(m)), total, "status_daily")
+            }
+            key => {
+                let stats = match calls {
+                    Some(s) => s,
+                    None => {
+                        let codes = host_fault_codes().into_iter().map(String::from).collect();
+                        let s = state.db.slo_calls_window(now - target.window_secs, now + 1, codes).await?;
+                        calls = Some(s);
+                        s
+                    }
+                };
+                if key == "tool_call_p95_ms_24h" {
+                    slo_entry(target, stats.p95_ms.map(|p| json!(p)), stats.ok_n, "calls")
+                } else {
+                    slo_entry(target, error_rate_pct(&stats).map(|m| json!(m)), stats.total, "calls")
+                }
+            }
+        };
+        out.insert(target.key.to_string(), entry);
+    }
+    Ok(Value::Object(out))
+}
+
 /// requirement 3: `GET /status.json`'s whole body.
 pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
     let mut components = Vec::with_capacity(COMPONENTS.len());
@@ -528,6 +662,9 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "onboarding_7d": onboarding_block(state).await?,
         // PRD-mcphost-performance-guarantees-measured R4.
         "perf": crate::perf::status_block(state).await?,
+        // PRD-mcphost-slo-targets-on-status R2: tenant-call aggregate against
+        // its target (`perf` above is the synthetic-probe target per plan).
+        "slo": slo_block(state).await?,
         "docs_gaps": crate::help_search::status_block(&state.db, now_unix()).await?,
         "deploy": {"last_refusal": last_refusal(state.db.data_dir())},
         // PRD-mcphost-email-inbound-route requirement 5: counts only.
@@ -683,6 +820,45 @@ pub async fn rollup_day(state: &AppState, component: &str, day: &str) -> Result<
         .await
 }
 
+/// R4: recomputes the `slo_daily` rows for one UTC calendar day -- the
+/// availability of that day's `status_daily` rows and the p95 / error rate of
+/// that day's `calls`. `measured` is NULL below [`SLO_MIN_SAMPLES`], the same
+/// rule the live block follows. Replaces any earlier row for `(day, key)`.
+pub async fn rollup_slo_day(state: &AppState, day: &str) -> Result<(), AppError> {
+    let (start, end) = day_bounds(day)?;
+    let codes = host_fault_codes().into_iter().map(String::from).collect();
+    let stats = state.db.slo_calls_window(start, end, codes).await?;
+    let (ok, total) = state.db.status_daily_sum_all_on(day.to_string()).await?;
+    for target in &SLO_TARGETS {
+        let (measured, sample_n) = match target.key {
+            "availability_30d" => (availability_pct(ok, total), total),
+            "tool_call_p95_ms_24h" => (stats.p95_ms.map(|p| p as f64), stats.ok_n),
+            _ => (error_rate_pct(&stats), stats.total),
+        };
+        let measured = if sample_n < SLO_MIN_SAMPLES { None } else { measured };
+        state.db.upsert_slo_daily(day.to_string(), target.key.to_string(), measured, sample_n).await?;
+    }
+    Ok(())
+}
+
+/// R6: `GET /status.json?slo=<key>&days=<n>` -- the `n` most recent
+/// `slo_daily` rows for `key`, newest last. `None` for a key that is not in
+/// [`SLO_TARGETS`].
+pub async fn slo_daily_rows(state: &AppState, key: &str, days: i64) -> Result<Option<Value>, AppError> {
+    if !SLO_TARGETS.iter().any(|t| t.key == key) {
+        return Ok(None);
+    }
+    let rows = state.db.slo_daily_recent(key.to_string(), days).await?;
+    Ok(Some(json!({
+        "slo": key,
+        "days": rows.iter().map(|r| json!({
+            "day": r.day,
+            "measured": r.measured,
+            "sample_n": r.sample_n,
+        })).collect::<Vec<_>>(),
+    })))
+}
+
 /// requirement 1/8: recomputes every `(component, day)` pair with at least
 /// one raw sample in `[since_ts, until_ts)` -- the daily tick's own range
 /// (yesterday and today) and `admin.status.rollup`'s caller-chosen range
@@ -712,6 +888,11 @@ pub async fn prune_once(state: &AppState) -> Result<i64, AppError> {
 pub async fn daily_tick_once(state: &AppState) -> Result<(), AppError> {
     let now = now_unix();
     rollup_range(state, now - 2 * 86_400, now).await?;
+    // PRD-mcphost-slo-targets-on-status R4: yesterday (complete) and today
+    // (partial), after the `status_daily` rows they read.
+    for days_ago in [1, 0] {
+        rollup_slo_day(state, &rfc3339_from_unix(now - days_ago * 86_400)[..10]).await?;
+    }
     prune_once(state).await?;
     Ok(())
 }

@@ -1248,6 +1248,7 @@ openssl dgst -sha256 -verify jwks-key.pem -signature sig.bin calls.csv
 ## Measured performance
 
 - 200 concurrent `echo` calls: p95 34.20 ms, 0 errors, 37.3 MiB RSS (acceptance test AC11, Hetzner CPX21-class box) <!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
+- Before you publish here, read `/status.json`'s `slo` block: `slo.availability_30d`, `slo.tool_call_p95_ms_24h` and `slo.error_rate_24h` each carry `target`, `measured`, `met`, `window_secs`, `source` and `sample_n`. `measured` and `met` are `null` while `sample_n` is too small to judge; `met: false` means use a fallback host. `slo` is the tenant-call aggregate for the whole host (`source` says `calls` or `status_daily`); `perf` is the synthetic-probe target per plan and path.
 - Published tools appear in `tools/list` immediately; no cache layer
 
 ## Operator notes
