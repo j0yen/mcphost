@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 pub mod sypul;
+pub mod tenp;
 pub mod tenx;
 pub mod texp;
 pub mod testoauth;
@@ -649,7 +650,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
         implicit_signup_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
         tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
-        redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
+        redeemed_peers: mcphost::peer_recent::PeerRecents::from_env(),
         reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         signals: mcphost::signals::Signals::compiled(),
         anon_healthz_extra_key: Default::default(),
@@ -1452,7 +1453,7 @@ impl TestServer {
             url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
             implicit_signup_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
             tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
-            redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
+            redeemed_peers: mcphost::peer_recent::PeerRecents::from_env(),
             reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             signals: mcphost::signals::Signals::compiled(),
         anon_healthz_extra_key: Default::default(),
@@ -2330,7 +2331,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
         implicit_signup_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
         tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
-        redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
+        redeemed_peers: mcphost::peer_recent::PeerRecents::from_env(),
         reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         signals: mcphost::signals::Signals::compiled(),
         anon_healthz_extra_key: Default::default(),

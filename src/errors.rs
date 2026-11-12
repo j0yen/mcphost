@@ -128,10 +128,10 @@ const DID_YOU_MEAN_HINTS: &[(&str, &str)] = &[
 
 /// Requirement 4: "edit distance ≤ 2 against kinds and aliases" -- the
 /// threshold a typo'd request (`"pythom"`, `"htpp"`) is matched under.
-const MAX_DID_YOU_MEAN_DISTANCE: usize = 2;
+pub(crate) const MAX_DID_YOU_MEAN_DISTANCE: usize = 2;
 
 /// Requirement 4: "max 3" -- `did_you_mean`'s own cap, hints included.
-const MAX_DID_YOU_MEAN: usize = 3;
+pub(crate) const MAX_DID_YOU_MEAN: usize = 3;
 
 /// Plain Levenshtein distance (insert/delete/substitute, unit cost), byte-
 /// wise -- every candidate this compares against (`registered`/`aliases`)
@@ -249,7 +249,8 @@ pub enum Reason {
     Anonymous,
     /// This connection already named the tenant in the payload.
     ConnectionBound(String),
-    /// This peer (IP + User-Agent) redeemed a key in the last 10 minutes.
+    /// This peer (IP + User-Agent) redeemed a key or minted a tenant without
+    /// a session in the last 10 minutes.
     /// Carries no namespace: a different agent at the same address must
     /// not learn another tenant's name.
     PeerRecent,
@@ -293,17 +294,34 @@ impl Reason {
 
 /// The `Anonymous` message, byte-identical to v0.118.8.
 pub const ANONYMOUS_MESSAGE: &str = "tenant_key is required: pass the key that signup returned as the tenant_key argument";
-/// The `PeerRecent` message (R4): a session or a tenant URL, no key.
-pub const PEER_RECENT_MESSAGE: &str = "no tenant for this call: a key was redeemed from your address in the last 10 minutes and this request presented no session of its own; send initialize first, or call your tenant URL";
+/// The `PeerRecent` message (PRD-mcphost-implicit-signup-key-in-hand R3): the
+/// field, the argument and `initialize`; no key, namespace or URL.
+pub const PEER_RECENT_MESSAGE: &str = "no tenant for this call: a tenant was created from your address in the last 10 minutes and this request presented no session of its own; pass onboarding.tenant_key from that response as the tenant_key argument, or send initialize first for a session of your own";
 /// The `ConnectionBound` message (R4): this session's own tenant, no key.
 pub const CONNECTION_BOUND_MESSAGE: &str = "no tenant for this call: this session already belongs to a tenant; keep calling on the same session or call its tenant URL";
 
 /// `data` key on a named refusal that points at the ways to get a key.
 pub const GET_A_KEY: &str = "get_a_key";
 pub const GET_A_KEY_TEXT: &str = "call signup for your own key (host.quickstart explains the flow)";
-/// PRD-mcphost-implicit-signup-per-session-not-per-peer R3: the PeerRecent hint
-/// names two remedies, a session or a tenant URL, and no key or namespace.
-pub const PEER_RECENT_HINT: &str = "a key was redeemed from your address in the last 10 minutes and this request presented no session of its own; send initialize first (a session of your own gets its own tenant on its first host.* call) or, if that tenant is yours, call its tenant URL: https://mcphost.dev/t/<namespace>/mcp";
+/// PRD-mcphost-implicit-signup-key-in-hand R3: the PeerRecent hint names the
+/// field the first response carried, the argument to pass it as, and
+/// `initialize` for a session of one's own; `data` carries the counts and
+/// `next_call.retry_after_s` the seconds until the next mint is allowed.
+pub const PEER_RECENT_HINT: &str = "this request presented no session of its own and a tenant was created from your address in the last 10 minutes; pass onboarding.tenant_key from that response as the tenant_key argument on every call, or send initialize first (a session of your own gets its own tenant on its first host.* call); data.mints_in_window of data.cap mints are used and next_call.retry_after_s says when the next one is allowed";
+
+/// PRD-mcphost-implicit-signup-key-in-hand R3: add the mint counts and the
+/// wait to a `peer_recent` refusal built by [`AppError::into_error_data_at`].
+pub fn with_peer_recent_counts(mut err: ErrorData, capped: crate::peer_recent::CapReached, cap: usize) -> ErrorData {
+    if let Some(Value::Object(data)) = err.data.as_mut() {
+        data.insert("mints_in_window".to_string(), json!(capped.mints_in_window));
+        data.insert("window_secs".to_string(), json!(crate::peer_recent::PEER_TTL_SECS));
+        data.insert("cap".to_string(), json!(cap));
+        if let Some(Value::Object(next)) = data.get_mut("next_call") {
+            next.insert("retry_after_s".to_string(), json!(capped.retry_after_s));
+        }
+    }
+    err
+}
 
 /// The ConnectionBound hint (R3).
 pub fn connection_hint(namespace: &str) -> String {
@@ -339,10 +357,24 @@ pub fn implicit_tenant_hint(created_unix: i64) -> String {
     )
 }
 
+/// PRD-mcphost-refusals-name-the-nearest-move R4: the `data.hint` of a
+/// `tenant_key_invalid` -- the handoff path, named without the presented value.
+pub const TENANT_KEY_INVALID_HINT: &str = "no tenant matches this tenant_key; call signup {handoff: true} for a new \
+    tenant, then host.redeem {handoff_token} returns its tenant_key";
+
+/// `data.hint` when the presented `tenant_key` is a handoff token.
+pub const HANDOFF_TOKEN_AS_KEY_HINT: &str = "this tenant_key is a handoff_token, not a key; call host.redeem \
+    {handoff_token} once to exchange it for the tenant_key, then pass that as tenant_key";
+
+/// The one hint every cross-tenant `<owner_ns>.<tool>` miss carries.
+pub const SHARED_TOOL_NOT_FOUND_HINT: &str = "shared tools are called as <owner_namespace>.<tool>; ask the owner \
+    to host.tool_share it with you or your group";
+
 /// Every key a serialized `tool_not_found` refusal's `data` may carry.
 pub const TOOL_NOT_FOUND_FIELDS: &[&str] = &[
     "error_code", "reason", "tenant", "signup_source", "created_unix", "hint", "anchor", "docs", "request_id",
     "next_call", "class", "family", "feedback_hint", "help_url", "remedy", "retry",
+    "nearest", "did_you_mean", "tools_published", "catalog_matches",
 ];
 
 /// Every key a serialized `tenant_key_missing` refusal's `data` may carry.
@@ -388,6 +420,13 @@ pub enum AppError {
     /// `resolve_tenant_key_auth`). Never interpolates the offending key.
     #[error("tenant_key was not recognized; call signup for a new key or check the value")]
     TenantKeyInvalid,
+    /// PRD-mcphost-refusals-name-the-nearest-move R4: [`AppError::TenantKeyInvalid`]
+    /// for a `tenant_key` that carries the handoff-token prefix
+    /// ([`crate::auth::HANDOFF_TOKEN_PREFIX`]): same code, JSON-RPC code and
+    /// message; `data.reason` is `handoff_token_as_key`. Carries nothing of
+    /// the presented value.
+    #[error("tenant_key was not recognized; call signup for a new key or check the value")]
+    TenantKeyIsHandoffToken,
     #[error("forbidden")]
     Forbidden,
     #[error("tenant is disabled")]
@@ -401,8 +440,18 @@ pub enum AppError {
     /// under [`IMPLICIT_TENANT_HINT_WINDOW_S`] ago. Same code, JSON-RPC code and
     /// message as `ToolNotFound`; `data` adds the connection's OWN tenant and
     /// the hint, never anything about a tenant that owns the name.
+    /// PRD-mcphost-refusals-name-the-nearest-move R1: `near` carries the
+    /// candidates and the chosen `next_call` when the site could compute them.
     #[error("tool not found: {name}")]
-    ToolNotFoundOnImplicitTenant { name: String, tenant: String, created_unix: i64 },
+    ToolNotFoundOnImplicitTenant { name: String, tenant: String, created_unix: i64, near: Option<Box<crate::nearest::Near>> },
+    /// PRD-mcphost-refusals-name-the-nearest-move R1: a tenant-path
+    /// [`AppError::ToolNotFound`] built with the caller-visible candidates --
+    /// same code, JSON-RPC code and message; `data` adds `nearest`,
+    /// `did_you_mean`, `tools_published`, `catalog_matches` and the
+    /// `next_call` chosen from them. Built only by
+    /// `McpHostHandler::tool_not_found_near`.
+    #[error("tool not found: {name}")]
+    ToolNotFoundNear { name: String, near: Box<crate::nearest::Near> },
     /// PRD-mcphost-tenant-delete AC7: distinct from [`AppError::ToolNotFound`]
     /// so `admin.tenant_delete` on an unknown tenant reads as
     /// `tenant_not_found`, not `tool_not_found`.
@@ -604,11 +653,13 @@ pub fn all_variants_for_test() -> Vec<AppError> {
             AppError::Unauthorized
             | AppError::TenantKeyMissing(_)
             | AppError::TenantKeyInvalid
+            | AppError::TenantKeyIsHandoffToken
             | AppError::Forbidden
             | AppError::TenantDisabled { .. }
             | AppError::RateLimited
             | AppError::ToolNotFound(_)
             | AppError::ToolNotFoundOnImplicitTenant { .. }
+            | AppError::ToolNotFoundNear { .. }
             | AppError::TenantNotFound(_)
             | AppError::InvalidParams(_)
             | AppError::UnknownKind { .. }
@@ -648,11 +699,16 @@ pub fn all_variants_for_test() -> Vec<AppError> {
         AppError::Unauthorized,
         AppError::TenantKeyMissing(Reason::Anonymous),
         AppError::TenantKeyInvalid,
+        AppError::TenantKeyIsHandoffToken,
         AppError::Forbidden,
         AppError::TenantDisabled { disabled_reason: None, claim_url: None },
         AppError::RateLimited,
         AppError::ToolNotFound("t.no_such".into()),
-        AppError::ToolNotFoundOnImplicitTenant { name: s(), tenant: s(), created_unix: 1 },
+        AppError::ToolNotFoundOnImplicitTenant { name: s(), tenant: s(), created_unix: 1, near: None },
+        AppError::ToolNotFoundNear {
+            name: s(),
+            near: Box::new(crate::nearest::build(&s(), &json!({}), &crate::nearest::Universe::default(), 0, Some(0))),
+        },
         AppError::TenantNotFound(s()),
         AppError::InvalidParams(s()),
         AppError::UnknownKind { requested: s(), registered: vec!["http"], aliases: vec![] },
@@ -762,11 +818,13 @@ impl AppError {
             // there are three ways to fail auth instead of one.
             AppError::Unauthorized => BEARER_INVALID,
             AppError::TenantKeyMissing(_) => TENANT_KEY_MISSING,
-            AppError::TenantKeyInvalid => TENANT_KEY_INVALID,
+            AppError::TenantKeyInvalid | AppError::TenantKeyIsHandoffToken => TENANT_KEY_INVALID,
             AppError::Forbidden => FORBIDDEN,
             AppError::TenantDisabled { .. } => TENANT_DISABLED,
             AppError::RateLimited => RATE_LIMITED,
-            AppError::ToolNotFound(_) | AppError::ToolNotFoundOnImplicitTenant { .. } => TOOL_NOT_FOUND,
+            AppError::ToolNotFound(_) | AppError::ToolNotFoundOnImplicitTenant { .. } | AppError::ToolNotFoundNear { .. } => {
+                TOOL_NOT_FOUND
+            }
             AppError::TenantNotFound(_) => TENANT_NOT_FOUND,
             AppError::InvalidParams(_) => INVALID_PARAMS,
             AppError::UnknownKind { .. } => UNKNOWN_KIND,
@@ -809,6 +867,12 @@ impl AppError {
             AppError::TrustedIssuerQuotaExceeded { .. } => QUOTA_TRUSTED_ISSUERS,
         }
     }
+}
+
+crate::err_code! {
+    pub NAMESPACE_RESERVED => "namespace_reserved",
+    Storage, AgentFault, false,
+    "Pick another namespace: this one belonged to a tenant that was deleted and is never handed out again.",
 }
 
 crate::err_code! {
@@ -892,7 +956,7 @@ crate::err_code! {
 crate::err_code! {
     pub INVALID_SPEC => "invalid_spec",
     Spec, AgentFault, false,
-    "Fix the spec field named in data.field to match data.expected.",
+    "Fix the spec field named in data.field; paste a spec from data.minimal_specs (also in the message); see data.docs_url.",
     data_keys: crate::kinds::kinddoc::INVALID_SPEC_DATA_KEYS,
 }
 
@@ -990,6 +1054,7 @@ crate::err_code! {
     pub TENANT_KEY_INVALID => "tenant_key_invalid",
     Auth, AgentFault, false,
     "Call signup for a fresh key; this tenant_key matched no tenant.",
+    data_keys: &["hint"],
 }
 
 crate::err_code! {
@@ -1022,6 +1087,7 @@ crate::err_code! {
     pub TOOL_NOT_FOUND => "tool_not_found",
     Call, AgentFault, false,
     "Check the name against host.tool_list; shared tools are called as <owner_namespace>.<tool>.",
+    data_keys: &["nearest", "did_you_mean", "tools_published", "catalog_matches"],
 }
 
 crate::err_code! {
@@ -1041,6 +1107,7 @@ impl AppError {
         match self {
             AppError::ToolNotFound(_)
             | AppError::ToolNotFoundOnImplicitTenant { .. }
+            | AppError::ToolNotFoundNear { .. }
             | AppError::TenantNotFound(_)
             | AppError::GroupNotFound(_) => {
                 ErrorCode::RESOURCE_NOT_FOUND
@@ -1071,6 +1138,7 @@ impl AppError {
             | AppError::RegistryRejected(_) => ErrorCode::INTERNAL_ERROR,
             AppError::Unauthorized
             | AppError::TenantKeyInvalid
+            | AppError::TenantKeyIsHandoffToken
             | AppError::Forbidden
             | AppError::TenantDisabled { .. }
             | AppError::RateLimited
@@ -1241,7 +1309,7 @@ impl AppError {
                 // already uses for the analogous KV-store rejections.
                 "table_schema_violation" | "table_not_found" | "table_column_not_found" | "table_query_rejected"
                 | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
-                c if c == crate::tables::TABLE_ROW_CONFLICT => ErrorCode::INVALID_PARAMS,
+                c if c == crate::tables::TABLE_ROW_CONFLICT || c == NAMESPACE_RESERVED => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-document-store P0 requirements 2-5: a too-large
                 // put, an unsupported mime, or either quota overrun are all
                 // caller-input problems, same INVALID_PARAMS bucket as the
@@ -1472,9 +1540,65 @@ impl AppError {
             (AppError::ToolNotFound(name), Some("implicit"), Some(created))
                 if now.saturating_sub(created) <= IMPLICIT_TENANT_HINT_WINDOW_S =>
             {
-                AppError::ToolNotFoundOnImplicitTenant { name, tenant: namespace.to_string(), created_unix: created }
+                AppError::ToolNotFoundOnImplicitTenant { name, tenant: namespace.to_string(), created_unix: created, near: None }
+            }
+            (AppError::ToolNotFoundNear { name, near }, Some("implicit"), Some(created))
+                if now.saturating_sub(created) <= IMPLICIT_TENANT_HINT_WINDOW_S =>
+            {
+                AppError::ToolNotFoundOnImplicitTenant {
+                    name,
+                    tenant: namespace.to_string(),
+                    created_unix: created,
+                    near: Some(near),
+                }
             }
             (other, _, _) => other,
+        }
+    }
+
+    /// PRD-mcphost-refusals-name-the-nearest-move R1: `Some((name, shared))`
+    /// when `self` is the plain `tool_not_found` -- [`AppError::ToolNotFound`]
+    /// or the cross-tenant [`AppError::shared_tool_not_found`] shape
+    /// (`shared`, recognised by its single static hint) -- naming one of
+    /// `names`; `None` for any other error, including one that already
+    /// carries candidates.
+    pub fn plain_tool_miss(&self, names: &[String]) -> Option<(String, bool)> {
+        match self {
+            AppError::ToolNotFound(n) if names.contains(n) => Some((n.clone(), false)),
+            AppError::Structured { code, message, data }
+                if *code == TOOL_NOT_FOUND
+                    && data.as_object().is_some_and(|o| {
+                        o.len() == 1 && o.get("hint").and_then(Value::as_str) == Some(SHARED_TOOL_NOT_FOUND_HINT)
+                    }) =>
+            {
+                message
+                    .strip_prefix("tool not found: ")
+                    .filter(|n| names.iter().any(|x| x == n))
+                    .map(|n| (n.to_string(), true))
+            }
+            _ => None,
+        }
+    }
+
+    /// The candidates and chosen `next_call` a tenant-path `tool_not_found`
+    /// carries, when its site computed them.
+    pub fn near(&self) -> Option<&crate::nearest::Near> {
+        match self {
+            AppError::ToolNotFoundNear { near, .. } => Some(near),
+            AppError::ToolNotFoundOnImplicitTenant { near: Some(near), .. } => Some(near),
+            _ => None,
+        }
+    }
+
+    /// A [`AppError::ToolNotFoundNear`] keeping the cross-tenant miss's one
+    /// static hint in `data`; any other error is returned unchanged.
+    pub fn with_shared_hint(self) -> Self {
+        match self {
+            AppError::ToolNotFoundNear { name, mut near } => {
+                near.hint = Some(SHARED_TOOL_NOT_FOUND_HINT);
+                AppError::ToolNotFoundNear { name, near }
+            }
+            other => other,
         }
     }
 
@@ -1580,8 +1704,10 @@ impl AppError {
         // PRD-mcphost-error-envelope-schema-contract AC6: the machine-readable
         // reason a tenant-key rejection carries, so a client branches on
         // `data.reason` rather than the message, on every verb alike.
-        if matches!(self, AppError::TenantKeyInvalid) {
-            obj.insert("reason".to_string(), json!("unknown_key"));
+        if matches!(self, AppError::TenantKeyInvalid | AppError::TenantKeyIsHandoffToken) {
+            let handoff = matches!(self, AppError::TenantKeyIsHandoffToken);
+            obj.insert("reason".to_string(), json!(if handoff { "handoff_token_as_key" } else { "unknown_key" }));
+            obj.insert("hint".to_string(), json!(if handoff { HANDOFF_TOKEN_AS_KEY_HINT } else { TENANT_KEY_INVALID_HINT }));
         }
         if let AppError::TenantKeyMissing(reason) = &self {
             obj.insert("reason".to_string(), json!(reason.wire()));
@@ -1599,6 +1725,13 @@ impl AppError {
                     obj.insert(GET_A_KEY.to_string(), json!(GET_A_KEY_TEXT));
                 }
             }
+        }
+        // PRD-mcphost-refusals-name-the-nearest-move R1/R2: the candidates, the
+        // counts that explain them and the `next_call` chosen from them.
+        if let AppError::ToolNotFoundNear { near, .. }
+        | AppError::ToolNotFoundOnImplicitTenant { near: Some(near), .. } = &self
+        {
+            near.insert_into(&mut obj);
         }
         // PRD-mcphost-refusals-name-their-cause R4: the connection's own new
         // tenant, from the bound tenant row only.
@@ -1681,8 +1814,14 @@ impl AppError {
         // PRD-mcphost-onboarding-dead-ends-zero R3: the one place every
         // error gets its `next_call`; a payload naming its own keeps it.
         if !obj.contains_key("next_call") {
-            let ctx = crate::next_call::ErrorCtx::from_error(&self);
-            obj.insert("next_call".to_string(), self.next_call(&ctx).to_json());
+            // PRD-mcphost-refusals-name-the-nearest-move R2: a refusal built
+            // with its candidates carries the `next_call` chosen from them;
+            // every other error takes the table's row.
+            let next = match self.near() {
+                Some(near) => near.next_call.clone(),
+                None => self.next_call(&crate::next_call::ErrorCtx::from_error(&self)).to_json(),
+            };
+            obj.insert("next_call".to_string(), next);
         }
         // PRD-mcphost-first-hour-support-surface requirement 1 (AC1):
         // every payload carries its own correlation id, not just
@@ -1694,7 +1833,9 @@ impl AppError {
         // tool is the one the error names (`ToolNotFound`) or `data.tool`.
         if !obj.contains_key("feedback_hint") {
             let tool = match &self {
-                AppError::ToolNotFound(name) | AppError::ToolNotFoundOnImplicitTenant { name, .. } => Some(name.clone()),
+                AppError::ToolNotFound(name)
+                | AppError::ToolNotFoundOnImplicitTenant { name, .. }
+                | AppError::ToolNotFoundNear { name, .. } => Some(name.clone()),
                 _ => obj.get("tool").and_then(Value::as_str).map(str::to_string),
             };
             let id = matches!(
@@ -2266,10 +2407,7 @@ impl AppError {
         AppError::Structured {
             code: TOOL_NOT_FOUND,
             message: format!("tool not found: {owner_ns}.{local_name}"),
-            data: json!({
-                "hint": "shared tools are called as <owner_namespace>.<tool>; ask the owner \
-                    to host.tool_share it with you or your group",
-            }),
+            data: json!({ "hint": SHARED_TOOL_NOT_FOUND_HINT }),
         }
     }
 
@@ -2297,6 +2435,40 @@ impl AppError {
             code: INVITE_INVALID,
             message: "this invite link is no longer valid".to_string(),
             data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-synthetic-tenant-purge R6: a `tenants` insert that names a
+    /// namespace in `namespace_tombstones`. Same data shape as `table_row_conflict`.
+    pub fn namespace_reserved() -> Self {
+        AppError::Structured {
+            code: NAMESPACE_RESERVED,
+            message: "row conflicts on namespace (reserved)".to_string(),
+            data: json!({"constraint": "reserved", "table": "tenants", "column": "namespace"}),
+        }
+    }
+
+    /// PRD-mcphost-synthetic-tenant-purge R6: every namespace draw collided
+    /// (taken or reserved); the `table_row_conflict` a collision always was.
+    pub fn namespace_draws_exhausted() -> Self {
+        AppError::Structured {
+            code: crate::tables::TABLE_ROW_CONFLICT,
+            message: "row conflicts on namespace (unique)".to_string(),
+            data: json!({"constraint": "unique", "table": "tenants", "column": "namespace"}),
+        }
+    }
+
+    /// Whether this error is a namespace collision a fresh draw can fix: the
+    /// `UNIQUE` conflict on `tenants.namespace` or a reserved namespace.
+    pub fn is_namespace_collision(&self) -> bool {
+        match self {
+            AppError::Structured { code, data, .. } => {
+                *code == NAMESPACE_RESERVED
+                    || (*code == crate::tables::TABLE_ROW_CONFLICT
+                        && data.get("table").and_then(Value::as_str) == Some("tenants")
+                        && data.get("column").and_then(Value::as_str) == Some("namespace"))
+            }
+            _ => false,
         }
     }
 

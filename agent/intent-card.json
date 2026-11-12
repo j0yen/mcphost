@@ -1,70 +1,58 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-admin-signup-pause-tool.md",
-  "intent_slug": "mcphost-admin-signup-pause-tool",
-  "root_motivation": "WHO: Joe as operator of mcphost-1 when he is not at a shell, and synthorg's mtproof probe, which only reaches the host over MCP. WHAT: the signup kill switch is a file the host already reads, but nothing over MCP can create or remove it, so the mtproof kill_switch link refuses on every chain run. WHY: PRD-mcphost-signup-kill-switch-and-source requirement 8 named the tool and never had an AC, so it was never built.",
-  "user_persona": "An operator (or the probe acting for them) holding the admin key who must pause and resume signups with one MCP call each, audited, and restore the host with one call if a sequence dies halfway.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-response-size-budget-explicit-v2.md",
+  "intent_slug": "mcphost-response-size-budget-explicit-v2",
+  "root_motivation": "WHO: an agent reading host.table.query, host.runs.list or host.docs.list on a plan or client that cannot use a very large answer, and Joe, who sets the byte budget by editing one plan row. WHAT: nothing sizes a page of a paged verb and nothing tells an agent where a shorter page stopped, so a client that cuts the text on its side reasons over a partial result as if it were whole. WHY: a page over the plan's byte budget must be cut at a row boundary and name its size, the full size and the exact next call, and a cut must never happen without that marker.",
+  "user_persona": "An agent (or its operator) paging a host list verb or a SQL result who needs every page to fit a stated budget, end on a whole row, and carry a continue_with call it can make verbatim; and an operator who raises the pro budget by editing one plan row.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 5
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a test server with the admin key, When the admin lists tools, Then `admin.signup_pause` is listed with `message` (string), `resume` (boolean), `until` (integer), its description says exactly one of `message` or `resume: true` is required, the arms-equal-descriptors drift test passes, and README.md § signup names the tool.",
-      "test": "tests/aspt_ac01_tool_listed_with_schema_and_readme.rs"
+      "description": "Given a page cut for budget on a paged verb, When rszb_ac01_one_truncation_struct serializes _meta.mcphost.truncated, Then it has exactly the keys bytes, of and continue_with, and a response that was also clamped by limit holds both limit_clamped and truncated under _meta.mcphost.",
+      "test": "tests/rszb_ac01_one_truncation_struct.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given no pause file, When the admin calls `admin.signup_pause` with a message, Then the pause file holds it as line 1, the result is `{paused: true, changed: true, message, retry_after_secs: 3600}`, healthz reports `signups_enabled: false` plus the message, and `signup` returns `signup_paused` with it; a hand-written file is replaced the same way.",
-      "test": "tests/aspt_ac02_pause_writes_file_and_refuses_signup.rs"
+      "description": "Given each verb in PAGED_VERBS with enough rows to pass an 8 KiB plan budget, When it is read at its maximum limit and every continue_with is followed verbatim, Then each page is within 8 KiB or is one row, ends on a whole row, continue_with.args.limit equals the request's limit, and the walk visits every row once; Given host.channel.read {ack: true} cut, Then the stored position is the last row kept.",
+      "test": "tests/rszb_ac02_every_paged_verb_walks_within_budget.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a pause file written by the tool or by hand, When the admin calls `admin.signup_pause` with `resume: true`, Then the file is gone, the result is `{paused: false, changed: true}`, healthz reports `signups_enabled: true` with no `signup_pause_message`, and a `signup` succeeds.",
-      "test": "tests/aspt_ac03_resume_removes_file_and_reopens_signup.rs"
+      "description": "Given the free and pro plans, When host.quickstart runs, Then limits.plan.response_budget_bytes equals the plan struct's field, limits.output_bytes_max still reads the 1 MiB wall, and render_ceilings_table lists the field in docs/plans.md with the docs drift test green.",
+      "test": "tests/rszb_ac03_plan_field_in_quickstart_and_docs.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given calls with no arguments, both `message` and `resume: true`, `resume: false` alone, an empty message, a newline in the message, a message over 512 bytes, and `until` not in the future, When the admin makes each, Then each returns `invalid_params` naming the field and the pause file is unchanged.",
-      "test": "tests/aspt_ac04_invalid_calls_refused_and_file_untouched.rs"
+      "description": "Given a python tool that returns a 2 MiB line, When called synchronously, Then the existing tool_output_too_large answers with limit_bytes equal to limits.output_bytes_max and no truncated key; Given a non-paged verb under the wall, Then its response is whole.",
+      "test": "tests/rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs"
     },
     {
       "id": "AC5",
-      "level": "MUST",
-      "description": "Given a tenant key and an anonymous client, When each calls `admin.signup_pause`, Then each is refused with the same error code every other `admin.*` tool returns to that caller (`forbidden` for a tenant key), no pause file is created, and healthz still reports `signups_enabled: true`.",
-      "test": "tests/aspt_ac05_non_admin_callers_refused.rs"
+      "level": "SHOULD",
+      "description": "Given a 5 MiB table and a 32 KiB plan budget, When host.table.query {sql: \"SELECT * FROM t\", limit: 1000} runs and each continue_with is followed, Then every page is within the budget and ends on a whole row and the walk visits every row once; Given an empty table, Then rows: [] with no marker.",
+      "test": "tests/rszb_ac05_table_query_offset_walk.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given no pause file, When the admin calls `resume: true` twice, Then both return `{paused: false, changed: false}`; and Given `MCPHOST_SIGNUP_PAUSE_FILE` points into a missing directory, When the admin pauses, Then the error code is `storage`, nothing panics, and healthz answers `signups_enabled: true`.",
-      "test": "tests/aspt_ac06_resume_idempotent_and_io_failure_is_storage.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given 20 concurrent admin calls (10 distinct messages, 10 resumes), When all complete, Then every call succeeded, no `status()` read saw a truncated file, the final state agrees with healthz, and `admin.audit_log` holds 10 `signup_pause` and 10 `signup_resume` rows with `actor_key_id`.",
-      "test": "tests/aspt_ac07_concurrent_toggles_atomic_and_audited.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given `message: \"window\"` and `until` 600 s ahead, When paused, Then the file's line 2 is `until=<ts>`, the result and `signup`'s error carry `retry_after_secs` within 2 s of 600, and alerts `signup.paused` and `signup.resumed` are raised within `PAUSE_POLL_INTERVAL_SECS` + 2 s.",
-      "test": "tests/aspt_ac08_until_bounds_retry_and_alerts_fire.rs"
+      "description": "Given prod after landing, When tests/rszb_ac06_live_prod_quickstart_budget.rs calls anonymous host.quickstart {}, Then limits.plan.response_budget_bytes is a positive integer (Live; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)",
+      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)"
     }
   ],
   "scope": [
-    "src/handler.rs: the `admin.signup_pause` descriptor in `admin_tools_raw` and its `dispatch_admin_tool` arm; src/admin.rs: `signup_pause`, argument validation and the `admin_audit_entry` arm; src/state.rs: `SignupPause::pause` (atomic temp-file rename) and `resume` writers; README.md § signup via docs/agent-quickstart.md and the regenerated www/llms.txt."
+    "src/response_budget.rs (Truncated, Call, cut_page, cut_values, budget_of); src/plans.rs (response_budget_bytes); src/paged.rs (project_rows); the byte-budget cut in src/runs.rs, src/docs.rs, src/calllog.rs, src/messaging.rs and src/channels.rs; src/tables.rs and src/handler/arms.rs (host.table.query offset and cut); src/handler.rs (_meta.mcphost.truncated, host.table.query descriptor); docs/plans.md, docs/tools.md, docs/openapi.json, contracts/host-tools.v1.json and the SDKs rendered from it."
   ],
   "non_goals": [
-    "Any change to how `signup` decides it is paused, to healthz fields, to alert keys or to the `signup_paused` error code; a default expiry on a tool-set pause; scheduled or per-source pauses; any synthorg change; hand-editing www/llms.txt."
+    "A per-client budget axis; compression; streaming; cutting a non-paged response; paging host.tool.logs; the AC 6 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -73,40 +61,50 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_schema_change": "No migration, schema change or new env var: the tool only writes the file `SignupPause::status` already reads."
+      "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
+      "one_marker": "A cut is reported only as _meta.mcphost.truncated {bytes, of, continue_with}; the kinds' 1 MiB wall still refuses and never cuts."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the mtproof kill_switch link refuse on every chain run?",
-      "a": "Its preflight requires admin.signup_pause in the admin tools/list, and the tool does not exist."
+      "q": "Why can an agent reason over a partial result as if it were whole?",
+      "a": "A page of a paged verb has no byte bound and nothing says where a shorter page stopped."
     },
     {
       "why": 2,
-      "q": "Why does the tool not exist?",
-      "a": "PRD-mcphost-signup-kill-switch-and-source listed it as requirement 8 (P2) with no acceptance criterion."
+      "q": "Why is there no byte bound?",
+      "a": "limits.output_bytes_max is one global 1 MiB constant read only by the kinds; the plan catalog has no byte ceiling."
     },
     {
       "why": 3,
-      "q": "Why did a missing AC let the requirement go unbuilt?",
-      "a": "The builder derives its tests from ACs, so a requirement without one is never proven nor demanded."
+      "q": "Why not cut at the wall?",
+      "a": "The wall refuses a synchronous kind call and chunks an async run; a cut is only well defined at a row boundary of a paged verb."
     },
     {
       "why": 4,
-      "q": "Why can an operator not just touch the file?",
-      "a": "The probe cannot ssh and Joe off a shell has no path to the data dir; SignupPause had no writer."
-    }
-  ],
-  "created_at": "2026-11-02T00:00:00Z",
-  "ambiguities_resolved": [
-    {
-      "question": "Which error code do argument-validation failures carry?",
-      "resolution": "`invalid_params` via AppError::InvalidParams, not the descriptor precheck's `args_invalid`, so the descriptor declares types only and the handler enforces the 1..=512 byte, one-line and future-`until` rules."
+      "q": "Why must the cut carry a continue_with?",
+      "a": "A cut without the next call is worse than an error; the keyset cursor each verb already mints makes the call exact."
     },
     {
-      "question": "Is a resume that removed no file still audited?",
-      "resolution": "Yes: AC7 counts one `signup_resume` row per resume call, so the audit arm is unconditional on `changed`."
+      "why": 5,
+      "q": "Why does host.table.query need an offset?",
+      "a": "It has limit but no continuation, so its cut page could not be resumed without the agent rewriting its own SQL."
+    }
+  ],
+  "created_at": "2026-11-12T00:00:00Z",
+  "ambiguities_resolved": [
+    {
+      "question": "Where is the size measured, before or after fields projection?",
+      "resolution": "After: the page is projected first and the serialized rows array is what is compared with the budget, so bytes and of equal what the client receives."
+    },
+    {
+      "question": "What does a row larger than the whole budget do?",
+      "resolution": "It is returned alone (a page always keeps at least one row), and the next continue_with resumes after it."
+    },
+    {
+      "question": "Offset or keyset for host.table.query?",
+      "resolution": "Offset, applied as LIMIT n OFFSET m over the caller's own SELECT, because arbitrary SELECTs, row-policy rewrites and CTEs do not guarantee a rowid order."
     }
   ]
 }

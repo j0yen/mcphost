@@ -576,6 +576,16 @@ mod nk401_ac04_oauth_paths_and_anonymous_keep_401;
 mod nk401_ac05_every_raise_site_has_a_reason_row;
 #[path = "nk401_ac06_request_log_records_wire_status.rs"]
 mod nk401_ac06_request_log_records_wire_status;
+#[path = "nmove_ac01_candidates_and_next_call.rs"]
+mod nmove_ac01_candidates_and_next_call;
+#[path = "nmove_ac02_fresh_tenant_names_publish.rs"]
+mod nmove_ac02_fresh_tenant_names_publish;
+#[path = "nmove_ac03_verbs_and_shares_are_named.rs"]
+mod nmove_ac03_verbs_and_shares_are_named;
+#[path = "nmove_ac04_one_builder_five_sites.rs"]
+mod nmove_ac04_one_builder_five_sites;
+#[path = "nmove_ac06_tenant_key_invalid_names_handoff.rs"]
+mod nmove_ac06_tenant_key_invalid_names_handoff;
 #[path = "ntfy_ac03_webhook_send_receipt.rs"]
 mod ntfy_ac03_webhook_send_receipt;
 #[path = "ntfy_ac04_email_channel_owner_only.rs"]
@@ -1026,7 +1036,3 @@ mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
 mod refrow_ac05_host_usage_reports_refused;
 #[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
 mod refrow_ac06_unwritable_db_refusal_still_returned;
-#[path = "refst_ac01_unimplemented_method_status_by_revision.rs"]
-mod refst_ac01_unimplemented_method_status_by_revision;
-#[path = "refst_ac03_refusal_status_rule_and_batch.rs"]
-mod refst_ac03_refusal_status_rule_and_batch;

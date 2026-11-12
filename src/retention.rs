@@ -240,6 +240,52 @@ pub fn external_lifecycle_view(subject: &crate::db::ExternalSubject, window: i64
 /// Tenants claimed and torn down per batch (measured on 6,000 subjects).
 pub const EXPIRE_BATCH_SIZE: i64 = 500;
 
+// ---- synthetic tenant purge (PRD-mcphost-synthetic-tenant-purge) ----
+
+/// Idle days between the disable (or the policy floor) and the purge of a
+/// synthetic subject; the literal `off` stops the purge stage only.
+pub const SYNTHETIC_PURGE_GRACE_ENV: &str = "MCPHOST_RETENTION_SYNTHETIC_PURGE_GRACE_DAYS";
+pub const SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS: i64 = 14;
+/// Subjects purged per batch.
+pub const PURGE_BATCH: i64 = 500;
+/// Wall budget of one stage (expire or purge) in seconds, measured from the
+/// stage's own start; the remainder is reported as `held_over`.
+pub const PURGE_BUDGET_SECS: u64 = 120;
+/// The expire stage's wall budget (per stage, like the purge's).
+pub const EXPIRE_BUDGET_SECS: u64 = PURGE_BUDGET_SECS;
+/// Pages each purge batch returns to the filesystem (8 MiB at 4 KiB pages).
+pub const PURGE_VACUUM_PAGES: i64 = 2048;
+/// Most pre-floor rows the report-only sweep lists by name.
+pub const PRE_FLOOR_SAMPLE_LIMIT: usize = 200;
+/// `admin_events.action` of a synthetic purge (survives the cascade).
+pub const SYNTHETIC_PURGE_ACTION: &str = "tenant_purge_synthetic";
+/// `disabled_reason` values the synthetic purge accepts.
+pub const SYNTHETIC_PURGE_REASONS: &[&str] = &["idle_expired", "self_offboard"];
+/// Draws a mint makes before giving up on a free namespace.
+pub const NAMESPACE_DRAW_LIMIT: usize = 16;
+
+/// The purge grace in days; `None` while the grace env reads `off`.
+pub fn synthetic_purge_grace_days() -> Option<i64> {
+    if env_is_off(SYNTHETIC_PURGE_GRACE_ENV) {
+        return None;
+    }
+    Some(days_from_env(SYNTHETIC_PURGE_GRACE_ENV, SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS))
+}
+
+/// A stage's wall budget. A `test-support` build reads
+/// `MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_BUDGET_SECS` so a test can make one
+/// sweep unable to finish; a release build never does.
+pub fn stage_budget_secs() -> u64 {
+    if cfg!(feature = "test-support")
+        && let Some(secs) = std::env::var("MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_BUDGET_SECS")
+            .ok()
+            .and_then(|raw| raw.parse::<u64>().ok())
+    {
+        return secs;
+    }
+    PURGE_BUDGET_SECS
+}
+
 /// A policy table's window as the seed stores it. Every row ignores `0`
 /// (falls back to its default) except the synthetic tenant-expiry row, where
 /// `0` is an off switch; both tenant rows also accept the literal `off`.
@@ -758,7 +804,9 @@ fn prune_sync_inner(
     // database to `auto_vacuum=INCREMENTAL` (always true past that
     // migration) -- harmless (a documented no-op) on the `NONE` mode a
     // brand-new connection would otherwise never see in this crate.
-    let _ = conn.execute_batch("PRAGMA incremental_vacuum;");
+    // PRD-mcphost-synthetic-tenant-purge R9: bounded like the purge's own batches,
+    // never the whole freelist in one write transaction.
+    let _ = conn.execute_batch(&format!("PRAGMA incremental_vacuum({PURGE_VACUUM_PAGES});"));
     PruneOutcome {
         deleted,
         error: None,

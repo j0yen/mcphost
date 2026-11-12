@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use rmcp::ErrorData as McpError;
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, Implementation,
-    ListToolsResult, PaginatedRequestParams, ServerInfo, Tool,
+    ListToolsResult, PaginatedRequestParams, ServerConfig, Tool,
 };
 use rmcp::service::{NotificationContext, Peer, RequestContext};
 use rmcp::{RoleServer, ServerHandler};
@@ -2796,6 +2796,16 @@ fn host_tools_part_04() -> Vec<Tool> {
                         "description": "Return at most this many rows of the result. The \
                             response carries total (exact when the result has at most 10000 \
                             rows) or total_estimate with exact: false.",
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Skip this many rows of the result first (LIMIT n OFFSET m \
+                            over your SELECT, so ORDER BY and joins work). A result over your \
+                            plan's response budget is cut at a row boundary and \
+                            _meta.mcphost.truncated.continue_with is this call with offset \
+                            moved past the rows sent; it assumes the table is not rewritten \
+                            between pages.",
                     },
                 }),
                 &["sql"],
@@ -6107,8 +6117,16 @@ fn admin_tools_raw() -> Vec<Tool> {
         Tool::new(
             "admin.prune_now",
             "Run one retention-prune cycle immediately (the same cycle the nightly scheduler \
-             runs) and return its per-table deleted counts.",
-            schema(json!({}), &[]),
+             runs) and return its per-table deleted counts. With `dry_run: true` it instead \
+             returns the synthetic tenant policy's would_expire, pre_floor, would_purge, \
+             purge_due_unix, cross_refs and held_entangled, taking no sweep lock, writing no \
+             prune_log row and deleting nothing.",
+            schema(
+                json!({
+                    "dry_run": {"type": "boolean", "description": "Report the synthetic policy's numbers without sweeping; default false."},
+                }),
+                &[],
+            ),
         ),
         Tool::new(
             "admin.db.stats",
@@ -7516,21 +7534,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 230 forwardable ids is 1,028,096 B (every id measures it:
+/// maximum over all 230 forwardable ids is 1,032,192 B (every id measures it:
 /// `test:host.trigger.set`, `call:host.whoami`,
 /// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
-/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-21 with the implicit-signup rollback guard on the first-call path: 983,040 -> 991,232 B; and 2026-10-23 with the schema-shape validators on the argument path: 991,232 -> 1,007,616 B; and 2026-10-24 CI's debug build measured `call:host.whoami` at 1,011,712 B (PR #515 run 40094459445; a CI figure, not `scripts/fwd-stack-measure.sh all`, so a script re-run must not lower it); and 2026-10-24 merged with the progress-token sink on the call path: CI figure, run 40114224490 (debug build), `call:host.whoami` minimum stack 1019904 bytes, so a script re-run must not lower it; and 2026-10-27 merged with the subscriptions-listen stream: `scripts/fwd-stack-measure.sh call:host.whoami` (debug build) 1,024,000 B, +4,096 B over main; the branch alone measured 995,328 B; and 2026-10-30 with the per-session implicit-signup peer-recent gate on the first-call path: `scripts/fwd-stack-measure.sh` (debug build) 1,024,000 -> 1,028,096 B on `test:host.trigger.set`, `call:host.whoami`, `call:host.webhook_inbox.create` and `call:host.vault.status`), after the dispatch table
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-21 with the implicit-signup rollback guard on the first-call path: 983,040 -> 991,232 B; and 2026-10-23 with the schema-shape validators on the argument path: 991,232 -> 1,007,616 B; and 2026-10-24 CI's debug build measured `call:host.whoami` at 1,011,712 B (PR #515 run 40094459445; a CI figure, not `scripts/fwd-stack-measure.sh all`, so a script re-run must not lower it); and 2026-10-24 merged with the progress-token sink on the call path: CI figure, run 40114224490 (debug build), `call:host.whoami` minimum stack 1019904 bytes, so a script re-run must not lower it; and 2026-10-27 merged with the subscriptions-listen stream: `scripts/fwd-stack-measure.sh call:host.whoami` (debug build) 1,024,000 B, +4,096 B over main; the branch alone measured 995,328 B; and 2026-10-30 with the per-session implicit-signup peer-recent gate on the first-call path: `scripts/fwd-stack-measure.sh` (debug build) 1,024,000 -> 1,028,096 B on `test:host.trigger.set`, `call:host.whoami`, `call:host.webhook_inbox.create` and `call:host.vault.status`; and 2026-11-03 with the synthetic-tenant purge on the db path: `scripts/fwd-stack-measure.sh call:host.whoami` (debug build) 1,028,096 -> 1,032,192 B, one 4 KiB step), after the dispatch table
 /// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
 /// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
 /// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
 /// compiling its error-envelope report on the caller's stack) and the
-/// budget is that + 25 % = 1,285,120 B, so CI's 2 MiB test thread keeps
+/// budget is that + 25 % = 1,290,240 B, so CI's 2 MiB test thread keeps
 /// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_285_120;
+pub const FORWARD_STACK_BUDGET: usize = 1_290_240;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
 /// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
@@ -7635,6 +7653,129 @@ impl McpHostHandler {
             }
         }
         Ok(caller)
+    }
+
+    /// PRD-mcphost-refusals-name-the-nearest-move R1/R2/R6: the one builder of
+    /// every tenant-path `tool_not_found`. Gathers the caller-visible name
+    /// sets (its own tools, the shares it can call, the exact catalog hits, the
+    /// control-plane verbs -- `tenant: None` is the admin bearer, whose
+    /// universe is the `admin.*` names alone), scores them with
+    /// [`crate::nearest::build`] and returns the refusal carrying `nearest`,
+    /// `did_you_mean`, `tools_published`, `catalog_matches` and a `next_call`
+    /// chosen from them. Every lookup is best effort: a failed one empties its
+    /// set (or omits `catalog_matches`) and the refusal is still returned. A
+    /// non-empty `did_you_mean` writes one `record_did_you_mean` row.
+    /// `sent` is the call's own arguments, replayed in a control-plane
+    /// `next_call` with `tenant_key` removed.
+    pub(crate) async fn tool_not_found_near(&self, tenant: Option<&Tenant>, requested: &str, sent: Option<&Value>) -> AppError {
+        self.build_tool_not_found(tenant, requested, sent, true).await
+    }
+
+    /// [`Self::tool_not_found_near`] with the ledger write optional: a dry run
+    /// answers with the same refusal the real call gives and records nothing.
+    async fn build_tool_not_found(
+        &self,
+        tenant: Option<&Tenant>,
+        requested: &str,
+        sent: Option<&Value>,
+        record: bool,
+    ) -> AppError {
+        let sent = crate::nearest::sent_args(sent);
+        let (own, shared, control, catalog_matches) = match tenant {
+            Some(tenant) => {
+                let own: Vec<String> = self
+                    .state
+                    .db
+                    .list_tools(tenant.id)
+                    .await
+                    .map(|rows| rows.into_iter().map(|r| r.name).collect())
+                    .unwrap_or_default();
+                let mut shared: Vec<String> = crate::sharing::visible_shared_tools(&self.state, tenant)
+                    .await
+                    .map(|v| v.into_iter().map(|(o, r)| format!("{}.{}", o.namespace, r.name)).collect())
+                    .unwrap_or_default();
+                let local = requested.rsplit_once('.').map_or(requested, |(_, l)| l);
+                let catalog_matches = match self
+                    .state
+                    .db
+                    .catalog_probe(requested.to_string(), local.to_string(), tenant.is_synthetic_marked())
+                    .await
+                {
+                    Ok((exact, names)) => {
+                        if requested.contains('.') {
+                            for n in names {
+                                if !shared.contains(&n) && !own.contains(&n) {
+                                    shared.push(n);
+                                }
+                            }
+                        }
+                        Some(exact)
+                    }
+                    Err(_) => None,
+                };
+                let control: Vec<String> = canonical_control_plane_names(&self.state.kinds)
+                    .into_iter()
+                    .map(|c| {
+                        crate::tool_aliases::aliases_of(&c)
+                            .into_iter()
+                            .find(|a| a.starts_with("host."))
+                            .map_or(c, str::to_string)
+                    })
+                    .collect();
+                (own, shared, control, catalog_matches)
+            }
+            None => (
+                Vec::new(),
+                Vec::new(),
+                admin_tool_descriptors().into_iter().map(|t| t.name.to_string()).collect(),
+                Some(0),
+            ),
+        };
+        let tools_published = own.len() as i64;
+        let universe = crate::nearest::Universe { own: &own, shared: &shared, control: &control };
+        let mut near = crate::nearest::build(requested, &sent, &universe, tools_published, catalog_matches);
+        if tenant.is_none() && near.did_you_mean.is_empty() {
+            // The admin bearer cannot publish; `host.whoami` is the one control-plane read it holds.
+            near.next_call = json!({"tool": "host.whoami", "args": {}});
+        }
+        let called: String = requested.chars().take(128).collect();
+        tracing::info!(
+            tenant = tenant.map_or("admin", |t| t.namespace.as_str()),
+            requested = %called,
+            did_you_mean = near.did_you_mean.len(),
+            tools_published,
+            "tool_not_found"
+        );
+        if record
+            && let Some(tenant) = tenant
+            && !near.did_you_mean.is_empty()
+        {
+            self.record_did_you_mean(tenant, &called, "tool_not_found").await;
+        }
+        AppError::ToolNotFoundNear { name: requested.to_string(), near: Box::new(near) }
+    }
+
+    /// PRD-mcphost-refusals-name-the-nearest-move R1: the plain tenant-path miss
+    /// (`ToolNotFound`, raised where a call resolves its tool in
+    /// `preflight`/`runs`/`sharing`) or the cross-tenant
+    /// [`crate::errors::AppError::shared_tool_not_found`] shape, when it names
+    /// one of the `(names, sent)` pair's names (the name the caller typed, qualified or local; `sent` is the call's own arguments), is
+    /// rebuilt through [`Self::tool_not_found_near`]. The shared shape keeps its
+    /// one hint; its facts come from caller-visible sets only, so the unknown
+    /// owner, unknown tool and unshared tool still read byte-identically. Any
+    /// other error is returned as it came.
+    async fn refine_tool_not_found(
+        &self,
+        tenant: &Tenant,
+        err: AppError,
+        (names, sent): (&[String], &Value),
+        record: bool,
+    ) -> AppError {
+        let Some((name, shared)) = err.plain_tool_miss(names) else {
+            return err;
+        };
+        let refined = self.build_tool_not_found(Some(tenant), &name, Some(sent), record).await;
+        if shared { refined.with_shared_hint() } else { refined }
     }
 
     /// PRD-mcphost-kind-ask-routing requirement 5 (AC6): best-effort ledger
@@ -8454,9 +8595,18 @@ impl McpHostHandler {
         // timeout or a panic deletes the tenant it created and tells the caller how
         // to get a key.
         use futures_util::FutureExt as _;
+        // PRD-mcphost-implicit-signup-key-in-hand R1: a client that presented no
+        // server-issued session id cannot be recognised on its next call, so its
+        // first response hands it the key; a session-presenting client is served
+        // by the session binding and its `url`.
+        let presented = parts
+            .extensions
+            .get::<crate::session_bind::SessionPresented>()
+            .is_some_and(|p| p.0);
+        let handed_key = (!presented).then_some(key.as_str());
         let guarded = std::panic::AssertUnwindSafe(tokio::time::timeout(
             self.state.call_timeout,
-            self.implicit_after_mint(ctx, &tenant, session_id, name, args),
+            self.implicit_after_mint(ctx, &tenant, session_id, handed_key, name, args),
         ))
         .catch_unwind()
         .await;
@@ -8465,12 +8615,8 @@ impl McpHostHandler {
                 // R3: a client that presented no server-issued session id has no way
                 // to be recognised on its next call but its peer (IP + User-Agent);
                 // `redeemed_peers` is the memory the refusal block reads.
-                let presented = parts
-                    .extensions
-                    .get::<crate::session_bind::SessionPresented>()
-                    .is_some_and(|p| p.0);
                 if !presented {
-                    self.state.redeemed_peers.record_at(
+                    self.state.redeemed_peers.record_sessionless_mint_at(
                         &request_peer_key(parts),
                         &tenant.namespace,
                         session_id,
@@ -8485,6 +8631,130 @@ impl McpHostHandler {
         };
         self.rollback_implicit_signup(&tenant, session_id).await;
         Err(err.with_get_a_key(&self.state.public_url))
+    }
+
+    /// PRD-mcphost-implicit-signup-key-in-hand AC2: a call that passes the key
+    /// of the tenant its peer just obtained has adopted it, so the peer record
+    /// has nothing left to hold.
+    fn free_peer_on_key(&self, parts: &http::request::Parts, tenant: &Tenant) {
+        if !self.state.redeemed_peers.is_empty() {
+            self.state.redeemed_peers.forget_if_namespace(&request_peer_key(parts), &tenant.namespace);
+        }
+    }
+
+    /// PRD-mcphost-webhook-inbox-one-call R3 + PRD-mcphost-implicit-signup-key-in-hand
+    /// R2: the peer gate in front of implicit signup. Refuses a key-less call
+    /// from a peer that obtained a tenant recently and may not mint again, or
+    /// admits it; the reservation it returns keeps the mint counted until the
+    /// call ends.
+    async fn peer_recent_gate(
+        &self,
+        parts: &http::request::Parts,
+        body_name: &str,
+        session_id: Option<&str>,
+    ) -> Result<Option<crate::peer_recent::MintReservation>, McpError> {
+        let mut reservation: Option<crate::peer_recent::MintReservation> = None;
+        let peer = request_peer_key(parts);
+        let redeemed_peers = &self.state.redeemed_peers;
+        // PRD-mcphost-implicit-signup-per-session-not-per-peer R2: the gate
+        // holds a request that presented no host-minted session, or the
+        // very session that redeemed. A request presenting a DIFFERENT
+        // host-minted session is another agent behind the same address and
+        // reaches implicit signup. `SessionPresented` is false for a forged
+        // or foreign id (the transport replaced it), so a forged header
+        // never turns the gate off.
+        let presented = parts.extensions.get::<crate::session_bind::SessionPresented>().is_some_and(|p| p.0);
+        let recent = redeemed_peers.state(&peer, now_unix());
+        let yields = recent
+            .as_ref()
+            .is_some_and(|r| presented && r.session_id.as_deref() != session_id);
+        if yields {
+            // R5: the journal splits a yield (a session of its own) from a
+            // refusal (none); neither line names a key or a namespace.
+            tracing::info!(
+                peer_recent_yielded = true,
+                tool = %body_name,
+                "host.* call proceeds to implicit signup: peer redeemed recently but this request presents a different session"
+            );
+        }
+        if !yields && let Some(state) = recent {
+            match self.state.db.find_tenant_by_namespace(state.namespace.clone()).await {
+                Ok(Some(t)) if !t.disabled => {
+                    // PRD-mcphost-implicit-signup-key-in-hand R2: a peer whose
+                    // tenant was minted sessionless was handed its key; a
+                    // sessionless neighbour is served up to the mint cap. A
+                    // redeem always holds: its client has the key already.
+                    if state.sessionless_mint && !presented {
+                        match redeemed_peers.reserve_mint(&peer, now_unix()) {
+                            Ok(admitted) => {
+                                tracing::info!(
+                                    peer_recent_yielded = true,
+                                    session_presented = false,
+                                    mints_in_window = state.mints_in_window,
+                                    tool = %body_name,
+                                    "host.* call proceeds to implicit signup: peer minted recently, below the mint cap, request presented no session"
+                                );
+                                reservation = Some(admitted);
+                            }
+                            Err(capped) => {
+                                return Err(self.peer_recent_refusal(parts, presented, body_name, capped).await);
+                            }
+                        }
+                    } else {
+                        let held = crate::peer_recent::CapReached {
+                            mints_in_window: state.mints_in_window,
+                            retry_after_s: state.retry_after_s,
+                        };
+                        return Err(self.peer_recent_refusal(parts, presented, body_name, held).await);
+                    }
+                }
+                // A self-offboarded or idle-expired tenant no longer blocks a fresh start.
+                Ok(Some(t)) if crate::auth_shape::frees_peer(t.disabled_reason.as_deref()) => {
+                    redeemed_peers.forget(&peer);
+                }
+                Ok(Some(t)) => {
+                    redeemed_peers.forget(&peer);
+                    return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None }.into_error_data_at(Some(&self.state.public_url)));
+                }
+                Ok(None) => redeemed_peers.forget(&peer),
+                Err(e) => return Err(e.into_error_data_at(Some(&self.state.public_url))),
+            }
+        }
+        // A peer with no live record (first call, window elapsed, tenant gone)
+        // is admitted through the same lock, so the cap holds under concurrency.
+        if reservation.is_none() && !presented && !yields {
+            match redeemed_peers.reserve_mint(&peer, now_unix()) {
+                Ok(admitted) => reservation = Some(admitted),
+                Err(capped) => {
+                    return Err(self.peer_recent_refusal(parts, presented, body_name, capped).await);
+                }
+            }
+        }
+        Ok(reservation)
+    }
+
+    /// PRD-mcphost-implicit-signup-key-in-hand R3/R4: the `peer_recent` refusal.
+    /// Journals the decision, counts it, and answers with the counts and the
+    /// seconds until the oldest counted mint leaves the window.
+    async fn peer_recent_refusal(
+        &self,
+        parts: &http::request::Parts,
+        presented: bool,
+        tool: &str,
+        capped: crate::peer_recent::CapReached,
+    ) -> McpError {
+        tracing::warn!(
+            session_presented = presented,
+            mints_in_window = capped.mints_in_window,
+            tool = %tool,
+            "host.* call refused: peer obtained a tenant recently, request presented no session of its own"
+        );
+        self.note_implicit_peer_refused(parts).await;
+        crate::errors::with_peer_recent_counts(
+            AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent).into_error_data_at(Some(&self.state.public_url)),
+            capped,
+            self.state.redeemed_peers.cap(),
+        )
     }
 
     /// R4: one `signup_events` row (kind `implicit_peer_refused`) per R3 refusal,
@@ -8519,6 +8789,7 @@ impl McpHostHandler {
         ctx: &RequestContext<RoleServer>,
         tenant: &Tenant,
         session_id: Option<&str>,
+        handed_key: Option<&str>,
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
@@ -8582,42 +8853,59 @@ impl McpHostHandler {
         // just created the tenant, never on a later call on the same
         // (now session-bound) connection.
         if let Some(obj) = value.as_object_mut() {
-            obj.insert(
-                "onboarding".to_string(),
-                json!({
-                    "tenant": tenant.namespace,
-                    "url": url,
-                    // PRD-mcphost-session-bound-tenant-key P2 requirement 5
-                    // (the note "names the rule"): a later key-less call on
-                    // THIS connection is refused and named, not a second
-                    // implicit signup -- so an agent that reads this once
-                    // never has to discover `tenant_key_missing` the hard
-                    // way.
-                    "note": format!(
-                        "You are now tenant {0}. Save this URL as your mcphost server address; \
-                         it is your credential. Call host.key_rotate if it leaks. Later calls on \
-                         this connection without tenant_key will be refused, not re-signed-up as \
-                         a new tenant -- pass {0}'s own key (or reconnect over the URL above).",
-                        tenant.namespace
-                    ),
-                    // PRD-mcphost-first-call-gift requirement 3 (AC8): this
-                    // session is already URL-bound (the `url` above), so
-                    // `memory_line` carries it rather than falling back to
-                    // `host.whoami`. No `welcome_back` on this same
-                    // response -- this tenant was just created, so it has
-                    // no earlier session (mutually exclusive by
-                    // construction: the outer `auth` this call resolved
-                    // stays `Auth::Anonymous` throughout this function,
-                    // which is exactly what gates `welcome_back` off in
-                    // `call_tool`'s own success handler).
-                    "memory_line": control::memory_line(Some(&url)),
-                    "memory_hint": control::MEMORY_HINT,
-                    // PRD-mcphost-ownership-moment requirement 1 (AC1): the
-                    // same stable claim link `host.whoami` will keep
-                    // reporting until this tenant is claimed.
-                    "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, tenant),
-                }),
-            );
+            // PRD-mcphost-session-bound-tenant-key P2 requirement 5 (the note
+            // "names the rule"): a later key-less call on THIS connection is
+            // refused and named, not a second implicit signup -- so an agent
+            // that reads this once never has to discover `tenant_key_missing`
+            // the hard way. PRD-mcphost-implicit-signup-key-in-hand R1: a
+            // client with no session of its own is told where the key is.
+            let note = if handed_key.is_some() {
+                format!(
+                    "You are now tenant {0}. Save this URL as your mcphost server address; \
+                     it is your credential. Call host.key_rotate if it leaks. This connection \
+                     carries no session, so pass onboarding.tenant_key as the tenant_key \
+                     argument on every later call: a call without tenant_key will be refused, \
+                     not re-signed-up as a new tenant.",
+                    tenant.namespace
+                )
+            } else {
+                format!(
+                    "You are now tenant {0}. Save this URL as your mcphost server address; \
+                     it is your credential. Call host.key_rotate if it leaks. Later calls on \
+                     this connection without tenant_key will be refused, not re-signed-up as \
+                     a new tenant -- pass {0}'s own key (or reconnect over the URL above).",
+                    tenant.namespace
+                )
+            };
+            let mut onboarding = json!({
+                "tenant": tenant.namespace,
+                "url": url,
+                "note": note,
+                // PRD-mcphost-first-call-gift requirement 3 (AC8): this
+                // session is already URL-bound (the `url` above), so
+                // `memory_line` carries it rather than falling back to
+                // `host.whoami`. No `welcome_back` on this same
+                // response -- this tenant was just created, so it has
+                // no earlier session (mutually exclusive by
+                // construction: the outer `auth` this call resolved
+                // stays `Auth::Anonymous` throughout this function,
+                // which is exactly what gates `welcome_back` off in
+                // `call_tool`'s own success handler).
+                "memory_line": control::memory_line(Some(&url)),
+                "memory_hint": control::MEMORY_HINT,
+                // PRD-mcphost-ownership-moment requirement 1 (AC1): the
+                // same stable claim link `host.whoami` will keep
+                // reporting until this tenant is claimed.
+                "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, tenant),
+            });
+            if let (Some(key), Some(fields)) = (handed_key, onboarding.as_object_mut()) {
+                fields.insert("tenant_key".to_string(), json!(key));
+            }
+            obj.insert("onboarding".to_string(), onboarding);
+            // AC 1: the marker a sessionless client branches on, beside the key.
+            if handed_key.is_some() {
+                obj.insert("implicit".to_string(), json!(true));
+            }
         }
         Ok(value)
     }
@@ -8681,7 +8969,7 @@ impl McpHostHandler {
             }
             "admin.usage" => admin::usage(&self.state, &args).await,
             "admin.usage.top" => admin::usage_top(&self.state, &args).await,
-            "admin.prune_now" => admin::prune_now(&self.state).await,
+            "admin.prune_now" => admin::prune_now(&self.state, &args).await,
             "admin.db.stats" => admin::db_stats(&self.state).await,
             "admin.dependency_reaudit" => admin::dependency_reaudit(&self.state).await,
             "admin.tool_list" => admin::tool_list(&self.state, &args).await,
@@ -8762,7 +9050,7 @@ impl McpHostHandler {
             "admin.funnel" => admin::funnel(&self.state, &args).await,
             // PRD-mcphost-upgrade-moment requirement 6 (AC7).
             "admin.upgrades" => admin::upgrades(&self.state, &args).await,
-            other => Err(AppError::ToolNotFound(other.to_string())),
+            other => Err(self.tool_not_found_near(None, other, Some(&args)).await),
         };
 
         // PRD-mcphost-provenance-audit requirement 4: every admin-bearer
@@ -9508,7 +9796,7 @@ impl McpHostHandler {
                         Err(AppError::host_verb_not_forwarded(&canonical, &call_args))
                     }
                     Some(canonical) => self.test_forward_host_verb(tenant, &canonical, call_args).await,
-                    None => Err(AppError::ToolNotFound(local_name)),
+                    None => Err(self.tool_not_found_near(Some(tenant), &local_name, Some(&call_args)).await),
                 };
             }
         };
@@ -10353,12 +10641,9 @@ impl McpHostHandler {
     /// `host.tool_test` (which stamps on pass). A `will_fail`/`unverifiable`
     /// verdict or an error leaves the stored visibility untouched.
     async fn require_tested(&self, tenant: &Tenant, name: &str) -> Result<(), AppError> {
-        let row = self
-            .state
-            .db
-            .get_tool(tenant.id, name.to_string())
-            .await?
-            .ok_or_else(|| AppError::ToolNotFound(name.to_string()))?;
+        let Some(row) = self.state.db.get_tool(tenant.id, name.to_string()).await? else {
+            return Err(self.tool_not_found_near(Some(tenant), name, None).await);
+        };
         if row.tested_version == Some(row.current_version) {
             return Ok(());
         }
@@ -10939,12 +11224,9 @@ impl McpHostHandler {
             .cloned()
             .unwrap_or_else(|| Value::Object(Default::default()));
 
-        let row: ToolRow = self
-            .state
-            .db
-            .get_tool(tenant.id, local_name.clone())
-            .await?
-            .ok_or_else(|| AppError::ToolNotFound(local_name.clone()))?;
+        let Some(row) = self.state.db.get_tool(tenant.id, local_name.clone()).await? else {
+            return Err(self.tool_not_found_near(Some(tenant), &local_name, Some(&call_args)).await);
+        };
         let kind: Arc<dyn Kind> = self.state.kinds.get(&row.kind).ok_or_else(|| {
             AppError::Internal(format!(
                 "published tool names unregistered kind '{}'",
@@ -11559,6 +11841,13 @@ impl McpHostHandler {
                 // PRD-mcphost-onboarding-dead-ends-zero R1: the same
                 // `data.tool` (so the same `next_call`) the real call's
                 // `ran_tool` gives this refusal.
+                let mut typed = vec![name.to_string()];
+                if let Some((_, local)) = name.split_once('.') {
+                    typed.push(local.to_string());
+                }
+                // PRD-mcphost-refusals-name-the-nearest-move: the dry run's
+                // not-found carries the same candidates the real call's does.
+                let err = self.refine_tool_not_found(tenant, err, (&typed, &call_args), false).await;
                 let err = err.with_tool(crate::next_call::caller_tool_name(&tenant.namespace, name));
                 let data = err.into_error_data_at(Some(&self.state.public_url));
                 json!({
@@ -12156,7 +12445,7 @@ impl ServerHandler for McpHostHandler {
     /// That is no longer true on the first such call on a fresh connection
     /// -- it implicitly signs up instead (requirement 1) -- so the prose
     /// says that now.
-    fn get_info(&self) -> ServerInfo {
+    fn get_info(&self) -> ServerConfig {
         let mut instructions = String::from(
             "Call `signup` with a display name to receive a bearer key. Recommended: pass \
                  `handoff: true` to signup instead -- you get a short-lived, single-use \
@@ -12172,8 +12461,10 @@ impl ServerHandler for McpHostHandler {
                  every call after that; no reconnect and no Authorization header is required. \
                  A `host.*` call with no `tenant_key` and no Authorization header, on a \
                  connection that never ran signup, no longer fails `tenant_key_missing` -- it \
-                 implicitly signs that connection up as a new tenant instead; a `tenant_key` \
-                 that doesn't match any tenant still fails `tenant_key_invalid`. ",
+                 implicitly signs that connection up as a new tenant instead; a client that \
+                 sends no `Mcp-Session-Id` finds that tenant's key in the first response's \
+                 `onboarding.tenant_key` and passes it as `tenant_key` on every later call; a \
+                 `tenant_key` that doesn't match any tenant still fails `tenant_key_invalid`. ",
         );
         // The spec-field sentence is generated from the kind registry, never
         // hand-written: it cannot promise `outputs` on a kind that refuses it.
@@ -12223,7 +12514,8 @@ impl ServerHandler for McpHostHandler {
         // PRD-mcphost-server-capabilities-from-registry requirement 1: the
         // advertisement is generated from `capabilities::CAPABILITIES`, the
         // only place a capability is named.
-        ServerInfo::new(crate::capabilities::server_capabilities())
+        ServerConfig::new(crate::capabilities::server_capabilities())
+        .with_protocol_version(crate::http::ADVERTISED_PROTOCOL_VERSION)
         // PRD-mcphost-contract-version-reported R4: the crate version with
         // the contract identity as semver build metadata.
         .with_server_info(Implementation::new(
@@ -12697,13 +12989,15 @@ impl McpHostHandler {
         let present = parts
             .and_then(|p| p.extensions.get::<crate::session_bind::SessionPresented>())
             .is_some_and(|p| p.0);
-        crate::inband::CallGate::read(
+        let mut gate = crate::inband::CallGate::read(
             self.state.session_bindings.inband(),
             id.as_deref(),
             present,
             ctx.meta.client_capabilities().is_some(),
             now_unix(),
-        )
+        );
+        gate.owner = parts.map(|p| crate::inband::caller_fingerprint(&p.headers, &p.extensions, &p.uri));
+        gate
     }
 
     /// PRD-mcphost-external-class-positive-evidence requirement (b): classify
@@ -12802,7 +13096,15 @@ impl McpHostHandler {
         // tenant_key argument at all (AC1). `None` for every other path, in
         // which case resolution falls through to the pre-existing header
         // path exactly as before this PRD.
-        let path_secret_auth = resolve_path_secret_auth(&self.state, parts, &body_name)
+        // The four credential resolvers below are `Box::pin`'d: awaited inline
+        // each one's future sits in this frame's debug stack, and a forwarded
+        // dotted verb re-enters `call_tool_inner`, so the frame is paid twice.
+        // rmcp 3.9's service-loop frames (`serve_inner`, `handle_request`,
+        // `serve_server_with_ct_inner`) grew ~+30 KiB over 3.3.0 on the same
+        // path; boxing these takes `call:host.whoami` from 1,060,864 B back to
+        // 1,011,712 B (`scripts/fwd-stack-measure.sh`), inside the documented
+        // FORWARD_STACK_BUDGET maximum.
+        let path_secret_auth = Box::pin(resolve_path_secret_auth(&self.state, parts, &body_name))
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
         let via_url_secret = path_secret_auth.is_some();
@@ -12810,7 +13112,7 @@ impl McpHostHandler {
         let mut auth = match path_secret_auth {
             Some(a) => a,
             None => {
-                resolve_auth(&self.state, parts, &mut sub_key, &body_name)
+                Box::pin(resolve_auth(&self.state, parts, &mut sub_key, &body_name))
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
@@ -12832,7 +13134,7 @@ impl McpHostHandler {
         // play for whatever `auth` becomes next.
         let via_tenant_key_arg = matches!(auth, Auth::Anonymous);
         if via_tenant_key_arg {
-            auth = resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key, &body_name)
+            auth = Box::pin(resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key, &body_name))
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
             // PRD-mcphost-session-bound-tenant-key requirement 1: this is
@@ -12845,6 +13147,11 @@ impl McpHostHandler {
                 && let Some(sid) = session_id(parts).as_deref()
             {
                 self.state.tenant_key_arg_memory.bind(sid, tenant.id, now_unix());
+            }
+            // PRD-mcphost-implicit-signup-key-in-hand AC2: a client that now
+            // passes the key it was handed no longer needs the peer hold.
+            if let Auth::Tenant(tenant, _) = &auth {
+                self.free_peer_on_key(parts, tenant);
             }
         }
         // PRD-mcphost-session-bound-tenant-after-signup requirements 1-2
@@ -12860,7 +13167,7 @@ impl McpHostHandler {
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && let Some(session_id) = session_id.as_deref()
-            && let Some(bound) = resolve_session_binding(&self.state, session_id, &body_name)
+            && let Some(bound) = Box::pin(resolve_session_binding(&self.state, session_id, &body_name))
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
@@ -12965,6 +13272,10 @@ impl McpHostHandler {
         // left no session to remember. Refuse and name that tenant rather
         // than implicit-signup a second one. The pre-auth names stay served
         // (quickstart is the page that explains the rule).
+        // PRD-mcphost-implicit-signup-key-in-hand R2: held until this call's
+        // implicit signup has run, so concurrent mints from one peer cannot
+        // pass the cap together; dropped with the call.
+        let mut _mint_reservation: Option<crate::peer_recent::MintReservation> = None;
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && (body_name.starts_with("host.") || body_name.starts_with("billing."))
@@ -12974,52 +13285,8 @@ impl McpHostHandler {
             && crate::invites::invite_path_code(parts).is_none()
             && crate::tenant_clients::join_path_code(parts).is_none()
         {
-            let peer = request_peer_key(parts);
-            // PRD-mcphost-implicit-signup-per-session-not-per-peer R2: the gate
-            // holds a request that presented no host-minted session, or the
-            // very session that redeemed. A request presenting a DIFFERENT
-            // host-minted session is another agent behind the same address and
-            // reaches implicit signup. `SessionPresented` is false for a forged
-            // or foreign id (the transport replaced it), so a forged header
-            // never turns the gate off.
-            let presented = parts.extensions.get::<crate::session_bind::SessionPresented>().is_some_and(|p| p.0);
-            let recent = self.state.redeemed_peers.lookup(&peer, now_unix());
-            let yields = recent
-                .as_ref()
-                .is_some_and(|(_, redeemer)| presented && redeemer.as_deref() != session_id.as_deref());
-            if yields {
-                // R5: the journal splits a yield (a session of its own) from a
-                // refusal (none); neither line names a key or a namespace.
-                tracing::info!(
-                    peer_recent_yielded = true,
-                    tool = %body_name,
-                    "host.* call proceeds to implicit signup: peer redeemed recently but this request presents a different session"
-                );
-            }
-            if !yields && let Some((namespace, _)) = recent {
-                match self.state.db.find_tenant_by_namespace(namespace.clone()).await {
-                    Ok(Some(t)) if !t.disabled => {
-                        tracing::warn!(
-                            session_presented = presented,
-                            tool = %body_name,
-                            "host.* call refused: peer just redeemed, request presented no session of its own"
-                        );
-                        Box::pin(self.note_implicit_peer_refused(parts)).await;
-                        return Err(AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent)
-                            .into_error_data_at(Some(&self.state.public_url)));
-                    }
-                    // A self-offboarded or idle-expired tenant no longer blocks a fresh start.
-                    Ok(Some(t)) if crate::auth_shape::frees_peer(t.disabled_reason.as_deref()) => {
-                        self.state.redeemed_peers.forget(&peer);
-                    }
-                    Ok(Some(t)) => {
-                        self.state.redeemed_peers.forget(&peer);
-                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None }.into_error_data_at(Some(&self.state.public_url)));
-                    }
-                    Ok(None) => self.state.redeemed_peers.forget(&peer),
-                    Err(e) => return Err(e.into_error_data_at(Some(&self.state.public_url))),
-                }
-            }
+            // Boxed: its state lives on the heap, not in this call's frame.
+            _mint_reservation = Box::pin(self.peer_recent_gate(parts, &body_name, session_id.as_deref())).await?;
         }
         // PRD-mcphost-invite-links requirement 2 (AC2), requirement 6: a
         // genuinely fresh session on `/i/{code}/mcp` -- no header, no
@@ -13655,7 +13922,17 @@ impl McpHostHandler {
                 Err(err)
             }
             (Auth::Invalid, _) if via_tenant_key_arg => {
-                let err = AppError::TenantKeyInvalid;
+                // PRD-mcphost-refusals-name-the-nearest-move R4: only the
+                // presented value's prefix is read; none of it is kept.
+                let err = if raw_args
+                    .get("tenant_key")
+                    .and_then(Value::as_str)
+                    .is_some_and(|k| k.starts_with(crate::auth::HANDOFF_TOKEN_PREFIX))
+                {
+                    AppError::TenantKeyIsHandoffToken
+                } else {
+                    AppError::TenantKeyInvalid
+                };
                 tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key invalid");
                 Err(err)
             }
@@ -13799,7 +14076,7 @@ impl McpHostHandler {
                     )
                     .await
                 }
-                None => Err(AppError::ToolNotFound(name.to_string())),
+                None => Err(self.tool_not_found_near(Some(tenant), name, Some(&args)).await),
             },
             }
         };
@@ -13814,6 +14091,35 @@ impl McpHostHandler {
         // PRD-mcphost-refusals-name-their-cause R4: a published-tool call that
         // finds nothing, on a connection whose own tenant implicit sign-up made
         // moments ago, says so. Reads the bound tenant row only.
+        // PRD-mcphost-refusals-name-the-nearest-move R1/R2: a tool the call
+        // resolved by name and did not find carries the nearest names and the
+        // `next_call` chosen from them. Only a miss on the name the caller
+        // typed is rebuilt (`host.tool_call {name}` or a raw `tools/call`).
+        let outcome = match (outcome, &auth) {
+            (Err(e), Auth::Tenant(tenant, _)) if e.code() == "tool_not_found" => {
+                let via_host_call = matches!(body_name.as_str(), "host.tool.call" | "host.tool_call");
+                let typed = if via_host_call {
+                    raw_args.get("name").and_then(Value::as_str)
+                } else if body_name.starts_with("host.") || body_name.starts_with("billing.") || body_name.starts_with("admin.") {
+                    None
+                } else {
+                    Some(body_name.as_str())
+                };
+                match typed {
+                    Some(typed) => {
+                        let mut names = vec![typed.to_string()];
+                        if let Some((_, local)) = typed.split_once('.') {
+                            names.push(local.to_string());
+                        }
+                        let sent = if via_host_call { raw_args.get("args") } else { Some(&raw_args) };
+                        let sent = crate::secrets::redact_keys(sent.unwrap_or(&Value::Null), &["tenant_key"]);
+                        Err(self.refine_tool_not_found(tenant, e, (&names, &sent), true).await)
+                    }
+                    None => Err(e),
+                }
+            }
+            (outcome, _) => outcome,
+        };
         let outcome = outcome.map_err(|e| match &auth {
             Auth::Tenant(tenant, _)
                 if !body_name.starts_with("host.")
@@ -13987,6 +14293,9 @@ impl McpHostHandler {
                 // PRD-mcphost-paged-trait-on-every-list-verb requirement 7:
                 // a clamped `limit` rides out as `_meta.mcphost.limit_clamped`.
                 let limit_clamped = crate::paged::take_clamp(&mut value);
+                // PRD-mcphost-response-size-budget-explicit-v2 R2: a page cut
+                // for size rides out as `_meta.mcphost.truncated`.
+                let truncated = crate::response_budget::take_truncated(&mut value);
                 let deprecated_arg = crate::paged::take_deprecated_arg(&mut value);
                 let resources_used = value.as_object_mut().and_then(|obj| obj.remove(RESOURCES_USED_KEY));
                 let result = crate::output_schemas::success_result(value);
@@ -14075,8 +14384,15 @@ impl McpHostHandler {
                 if let Some(nudge) = claim_nudge {
                     meta.0.insert("next".to_string(), nudge);
                 }
-                if let Some(clamped) = limit_clamped {
-                    meta.0.insert("mcphost".to_string(), json!({"limit_clamped": clamped}));
+                if limit_clamped.is_some() || truncated.is_some() {
+                    let mut mcphost = serde_json::Map::new();
+                    if let Some(clamped) = limit_clamped {
+                        mcphost.insert("limit_clamped".to_string(), clamped);
+                    }
+                    if let Some(truncated) = truncated {
+                        mcphost.insert("truncated".to_string(), truncated);
+                    }
+                    meta.0.insert("mcphost".to_string(), Value::Object(mcphost));
                 }
                 // PRD-mcphost-sandbox-resource-limits-from-plan R4/R5/R7.
                 if let Some(used) = resources_used {

@@ -18,6 +18,8 @@ mod rgpt;
 #[path = "support/whin.rs"]
 mod whin;
 
+#[path = "qdiag_ac09_python_bridge_query_stats.rs"]
+mod qdiag_ac09_python_bridge_query_stats;
 #[path = "retshape_ac03_list_access_is_a_named_will_fail.rs"]
 mod retshape_ac03_list_access_is_a_named_will_fail;
 #[path = "retshape_ac04_envelope_behaves_as_plain_dict.rs"]
@@ -36,6 +38,8 @@ mod rgpt_team_memory_golden_path;
 mod rgpt_webhook_inbox_golden_path;
 #[path = "rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"]
 mod rowpol_ac12_python_bridge_threads_end_user_through_table_query;
+#[path = "rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs"]
+mod rszb_ac04_wall_refuses_and_unpaged_stays_whole;
 #[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
 mod runenvelope_ac1_call_and_tool_run_parity;
 #[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]

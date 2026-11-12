@@ -39,12 +39,18 @@ pub use crate::envelope::OUTPUT_ENVELOPE_FIELDS;
 /// PRD-mcphost-implicit-signup-per-session-not-per-peer R6: the onboarding
 /// rule a live judge reads, built from the peer-recent constants (never typed
 /// here). Implicit signup is granted per host-minted session; the peer-recent
-/// gate holds a request that presents no session for the window. Additive
+/// gate holds a request that presents no session for the window.
+/// PRD-mcphost-implicit-signup-key-in-hand R5: a sessionless client is handed
+/// its key in the envelope, and the gate serves such a peer up to the mint
+/// cap (`MCPHOST_IMPLICIT_PEER_MINT_CAP`, read once at startup). Additive
 /// top-level key, as for [`tenant_lifecycle`].
 pub fn onboarding_contract() -> Value {
     json!({
-        "implicit_signup": {"scope": "session"},
-        "peer_recent": {"window_secs": crate::peer_recent::PEER_TTL_SECS},
+        "implicit_signup": {"scope": "session", "sessionless": "tenant_key_in_envelope"},
+        "peer_recent": {
+            "window_secs": crate::peer_recent::PEER_TTL_SECS,
+            "mint_cap": crate::peer_recent::mint_cap_from_env(),
+        },
     })
 }
 
@@ -63,12 +69,25 @@ pub fn tenant_lifecycle() -> Value {
             "claimed": false,
             "paid": false,
             "billing_ref": null,
-            "minted_at_or_after_policy_floor": true,
+            "owner_verified": false,
+            "minted_at_or_after_policy_floor": false,
         },
         "env_var": crate::retention::SYNTHETIC_IMPLICIT_ENV,
         "default_days": crate::retention::contract_default_days(),
-        "zero_disables": true,
+        "zero_disables": false,
+        "floor_rule": "idle_from_floor",
         "disabled_reason": crate::auth_shape::IDLE_EXPIRED_REASON,
+        "purge": {
+            "grace_days": crate::retention::SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS,
+            "grace_env": crate::retention::SYNTHETIC_PURGE_GRACE_ENV,
+            "batch": crate::retention::PURGE_BATCH,
+            "budget_secs": crate::retention::PURGE_BUDGET_SECS,
+            "vacuum_pages": crate::retention::PURGE_VACUUM_PAGES,
+            "disabled_reasons": crate::retention::SYNTHETIC_PURGE_REASONS,
+            "signup_source": "any",
+            "admin_event": crate::retention::SYNTHETIC_PURGE_ACTION,
+            "first_sweep_reports_only": true,
+        },
         "external_unclaimed": external_unclaimed(),
     })
 }

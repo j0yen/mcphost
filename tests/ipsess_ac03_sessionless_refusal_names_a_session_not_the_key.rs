@@ -4,8 +4,13 @@
 //! never minted, When each calls `host.table.create` without `tenant_key`,
 //! Then each error is `-32602` `tenant_key_missing`, `data.reason`
 //! `peer_recent`, `data.session_presented` `false`, no `data.tenant`, and the
-//! hint contains `initialize` and `/t/` but neither A's namespace nor
-//! `pass the key`.
+//! hint contains `initialize` but neither A's namespace nor
+//! `pass the key that signup returned`.
+//!
+//! Revised by PRD-mcphost-implicit-signup-key-in-hand R3: the hint now names
+//! `onboarding.tenant_key` and the `tenant_key` argument (a sessionless client
+//! holds the value), so it requires those and forbids the retired ritual; the
+//! tenant URL is no longer one of its remedies.
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured};
@@ -51,9 +56,9 @@ async fn ipsess_ac03() {
         assert!(err.data.get("tenant").is_none(), "{label}: {err:?}");
         let hint = err.data["hint"].as_str().expect("hint");
         assert!(hint.contains("initialize"), "{label}: {hint}");
-        assert!(hint.contains("/t/"), "{label}: {hint}");
+        assert!(hint.contains("onboarding.tenant_key"), "{label}: {hint}");
         assert!(!hint.contains(&a_namespace), "{label}: {hint}");
-        assert!(!hint.contains("pass the key"), "{label}: {hint}");
+        assert!(!hint.contains("pass the key that signup returned"), "{label}: {hint}");
         assert!(!format!("{err:?}").contains(&a_namespace), "{label}: no namespace anywhere: {err:?}");
     }
     assert_eq!(server.state.db.list_tenants().await.expect("tenants").len(), 1, "no tenant minted by a refusal");

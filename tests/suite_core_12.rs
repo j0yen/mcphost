@@ -29,11 +29,13 @@ mod tcpn;
 mod timp;
 #[path = "support/tssdk.rs"]
 mod tssdk;
-#[path = "support/uprg.rs"]
-mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "refst_ac01_unimplemented_method_status_by_revision.rs"]
+mod refst_ac01_unimplemented_method_status_by_revision;
+#[path = "refst_ac03_refusal_status_rule_and_batch.rs"]
+mod refst_ac03_refusal_status_rule_and_batch;
 #[path = "refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs"]
 mod refusals_ac01_oversize_body_is_a_413_json_rpc_error;
 #[path = "refusals_ac02_tool_not_found_names_the_implicit_tenant.rs"]
@@ -144,6 +146,14 @@ mod rsm_ac05_anonymous_resume_creates_no_tenant;
 mod rsm_ac06_welcome_back_points_at_resume;
 #[path = "rsm_ac07_usage_reports_the_resume_first_call_rate.rs"]
 mod rsm_ac07_usage_reports_the_resume_first_call_rate;
+#[path = "rszb_ac01_one_truncation_struct.rs"]
+mod rszb_ac01_one_truncation_struct;
+#[path = "rszb_ac02_every_paged_verb_walks_within_budget.rs"]
+mod rszb_ac02_every_paged_verb_walks_within_budget;
+#[path = "rszb_ac03_plan_field_in_quickstart_and_docs.rs"]
+mod rszb_ac03_plan_field_in_quickstart_and_docs;
+#[path = "rszb_ac05_table_query_offset_walk.rs"]
+mod rszb_ac05_table_query_offset_walk;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
@@ -454,6 +464,16 @@ mod spkind_ac04_payload_size_cap;
 mod spkind_ac05_registry_carries_data_keys;
 #[path = "spkind_ac06_unknown_secret_names_the_fix.rs"]
 mod spkind_ac06_unknown_secret_names_the_fix;
+#[path = "spmsg_ac01_http_missing_method_message.rs"]
+mod spmsg_ac01_http_missing_method_message;
+#[path = "spmsg_ac02_every_kind_every_field_message.rs"]
+mod spmsg_ac02_every_kind_every_field_message;
+#[path = "spmsg_ac03_same_message_across_verbs.rs"]
+mod spmsg_ac03_same_message_across_verbs;
+#[path = "spmsg_ac04_message_byte_cap.rs"]
+mod spmsg_ac04_message_byte_cap;
+#[path = "spmsg_ac05_remedy_names_only_data_keys.rs"]
+mod spmsg_ac05_remedy_names_only_data_keys;
 #[path = "sqlpass_ac01_table_level_description_in_schema.rs"]
 mod sqlpass_ac01_table_level_description_in_schema;
 #[path = "sqlpass_ac02_column_description_in_schema.rs"]
@@ -522,6 +542,18 @@ mod statusfeed_ac07_prune_keeps_rollup;
 mod statusfeed_ac08_status_html_renders;
 #[path = "statusfeed_ac10_component_days_query.rs"]
 mod statusfeed_ac10_component_days_query;
+#[path = "stclp_ac01_selftest_passes.rs"]
+mod stclp_ac01_selftest_passes;
+#[path = "stclp_ac02_usage_and_missing_tool.rs"]
+mod stclp_ac02_usage_and_missing_tool;
+#[path = "stclp_ac03_key_hygiene_through_the_shim.rs"]
+mod stclp_ac03_key_hygiene_through_the_shim;
+#[path = "stclp_ac04_warning_in_json_and_sse.rs"]
+mod stclp_ac04_warning_in_json_and_sse;
+#[path = "stclp_ac05_unreachable_signup.rs"]
+mod stclp_ac05_unreachable_signup;
+#[path = "stclp_ac07_no_warning_is_an_error_with_receipt.rs"]
+mod stclp_ac07_no_warning_is_an_error_with_receipt;
 #[path = "stgl_ac01_grantee_list_names_group_share.rs"]
 mod stgl_ac01_grantee_list_names_group_share;
 #[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]
@@ -752,6 +784,10 @@ mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
 mod tenantprm_ac07_key_and_oauth_suites_unchanged;
 #[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
 mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
+#[path = "tenp_ac02_cascade_complete_and_entangled_subject_held.rs"]
+mod tenp_ac02_cascade_complete_and_entangled_subject_held;
+#[path = "tenp_ac05_grace_clock_report_first_and_bounded_vacuum.rs"]
+mod tenp_ac05_grace_clock_report_first_and_bounded_vacuum;
 #[path = "testtruth_ac01_chain_prev_will_fail.rs"]
 mod testtruth_ac01_chain_prev_will_fail;
 #[path = "testtruth_ac02_chain_prev_result_pass.rs"]
@@ -998,43 +1034,3 @@ mod upfam_ac05_hints_name_real_tools;
 mod upfam_ac06_host_not_allowed_names_tool_call;
 #[path = "upfam_ac07_tool_test_matches_real_call.rs"]
 mod upfam_ac07_tool_test_matches_real_call;
-#[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
-mod upgrade_ac01_calls_per_day_next_checkout;
-#[path = "upgrade_ac02_billing_off_refusal_text.rs"]
-mod upgrade_ac02_billing_off_refusal_text;
-#[path = "upgrade_ac03_checkout_source_metadata.rs"]
-mod upgrade_ac03_checkout_source_metadata;
-#[path = "upgrade_ac04_webhook_stamps_paid_unix.rs"]
-mod upgrade_ac04_webhook_stamps_paid_unix;
-#[path = "upgrade_ac05_billing_status_receipt.rs"]
-mod upgrade_ac05_billing_status_receipt;
-#[path = "upgrade_ac06_admin_funnel_upgrades_by_trigger.rs"]
-mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
-#[path = "upgrade_ac07_admin_upgrades_listing.rs"]
-mod upgrade_ac07_admin_upgrades_listing;
-#[path = "uprg_ac01_one_call_creates_probe_status_schedule.rs"]
-mod uprg_ac01_one_call_creates_probe_status_schedule;
-#[path = "uprg_ac02_status_tool_returns_readable_table.rs"]
-mod uprg_ac02_status_tool_returns_readable_table;
-#[path = "uprg_ac03_bad_urls_refused_nothing_created.rs"]
-mod uprg_ac03_bad_urls_refused_nothing_created;
-#[path = "uprg_ac04_free_interval_clamped_pro_keeps_60.rs"]
-mod uprg_ac04_free_interval_clamped_pro_keeps_60;
-#[path = "uprg_ac06_llms_txt_plan_numbers_generated.rs"]
-mod uprg_ac06_llms_txt_plan_numbers_generated;
-#[path = "uprg_ac07_slow_target_is_a_timeout_row.rs"]
-mod uprg_ac07_slow_target_is_a_timeout_row;
-#[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
-mod urltenant_ac01_path_secret_whoami_auth_method_url;
-#[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]
-mod urltenant_ac02_wrong_or_rotated_secret_404;
-#[path = "urltenant_ac03_key_rotate_rotates_key_and_url.rs"]
-mod urltenant_ac03_key_rotate_rotates_key_and_url;
-#[path = "urltenant_ac04_new_url_page_and_signup_limiter.rs"]
-mod urltenant_ac04_new_url_page_and_signup_limiter;
-#[path = "urltenant_ac05_browser_get_shows_explainer_page.rs"]
-mod urltenant_ac05_browser_get_shows_explainer_page;
-#[path = "urltenant_ac06_quickstart_url_bound_no_signup_step.rs"]
-mod urltenant_ac06_quickstart_url_bound_no_signup_step;
-#[path = "urltenant_ac07_header_conflict_is_auth_conflict.rs"]
-mod urltenant_ac07_header_conflict_is_auth_conflict;

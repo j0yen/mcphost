@@ -3806,6 +3806,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `handle`: boolean
 - `limit`: integer
   - `limit` minimum: 1
+- `offset`: integer
+  - `offset` minimum: 0
 - `sql`: string, required
 - `tenant_key`: string
 - `ttl_s`: integer

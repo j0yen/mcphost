@@ -1479,7 +1479,7 @@ fn run_query_sync_with_bindings(
     if !stmt.readonly() {
         return Err(query_rejected("statement is not read-only"));
     }
-    let column_names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
+    let column_names: Vec<String> = stmt.column_names().map(str::to_string).collect();
     let mut rows_out = Vec::new();
     let sql_values: Vec<(String, rusqlite::types::Value)> =
         bindings.iter().map(|(k, v)| (k.clone(), json_to_sql_value(v))).collect();
@@ -2293,7 +2293,7 @@ fn referenced_table_names(sql: &str) -> Result<std::collections::HashSet<String>
 /// caller-facing arbitrary SQL string).
 fn select_all_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> {
     let mut stmt = conn.prepare(sql)?;
-    let column_names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
+    let column_names: Vec<String> = stmt.column_names().map(str::to_string).collect();
     let mut out = Vec::new();
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
@@ -2400,7 +2400,7 @@ fn dataset_summary_sync(
     let row_count = row_count_sync(conn, handle)?;
     let column_names: Vec<String> = {
         let stmt = conn.prepare(&format!("SELECT * FROM {} LIMIT 0", quote_ident(handle)))?;
-        stmt.column_names().into_iter().map(str::to_string).collect()
+        stmt.column_names().map(str::to_string).collect()
     };
 
     let mut columns_meta = Vec::with_capacity(column_names.len());
@@ -2598,7 +2598,7 @@ async fn table_query_select(
     state: &AppState,
     tenant: &Tenant,
     sql: &str,
-    limit: Option<i64>,
+    window: Window,
     end_user: Option<&EndUser>,
 ) -> Result<Value, AppError> {
     // PRD-mcphost-query-diagnosis requirement 1/2: the AST parse is pure
@@ -2692,7 +2692,7 @@ async fn table_query_select(
                             _ => return Err(handle_not_found(h)),
                         }
                     }
-                    run_query_sync(conn, &limit_wrap(&sql_owned, limit))
+                    run_query_sync(conn, &limit_wrap(&sql_owned, window))
                 })();
                 let duration_ms = started.elapsed().as_millis() as i64;
                 // `run_query_sync` leaves this connection's own `query_only`
@@ -2801,7 +2801,7 @@ async fn table_query_select(
                 state.db.counters_handle(),
                 move |conn| {
                     let started = std::time::Instant::now();
-                    let result = run_query_sync_with_bindings(conn, &limit_wrap(&rewritten_sql, limit), &bindings);
+                    let result = run_query_sync_with_bindings(conn, &limit_wrap(&rewritten_sql, window), &bindings);
                     let duration_ms = started.elapsed().as_millis() as i64;
                     // same "turn query_only back off before the log write"
                     // reasoning as the Unrestricted branch above.
@@ -2896,11 +2896,22 @@ fn rows_with_total(rows: Vec<Value>, count: Option<crate::paged::Count>) -> Valu
     Value::Object(out)
 }
 
-/// `SELECT * FROM (<sql>) LIMIT n` when the caller passed `limit`.
-fn limit_wrap(sql: &str, limit: Option<i64>) -> String {
-    match limit {
-        Some(n) => format!("SELECT * FROM ({}) LIMIT {n}", sql.trim().trim_end_matches(';')),
-        None => sql.to_string(),
+/// The caller's `limit` and `offset` over a result.
+#[derive(Clone, Copy, Debug, Default)]
+struct Window {
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+/// `SELECT * FROM (<sql>) LIMIT n [OFFSET m]` when the caller passed `limit`
+/// or `offset` (an `offset` alone reads every remaining row, `LIMIT -1`).
+fn limit_wrap(sql: &str, window: Window) -> String {
+    let inner = sql.trim().trim_end_matches(';');
+    match (window.limit, window.offset) {
+        (Some(n), Some(m)) => format!("SELECT * FROM ({inner}) LIMIT {n} OFFSET {m}"),
+        (Some(n), None) => format!("SELECT * FROM ({inner}) LIMIT {n}"),
+        (None, Some(m)) => format!("SELECT * FROM ({inner}) LIMIT -1 OFFSET {m}"),
+        (None, None) => sql.to_string(),
     }
 }
 
@@ -2951,7 +2962,46 @@ pub async fn table_query(
             _ => return Err(AppError::InvalidArgs("limit: must be an integer >= 1".to_string())),
         },
     };
-    table_query_select(state, tenant, &sql, limit, end_user).await
+    let offset = match args.get("offset") {
+        None | Some(Value::Null) => None,
+        Some(v) => match v.as_i64() {
+            Some(n) if n >= 0 => Some(n),
+            _ => return Err(AppError::InvalidArgs("offset: must be an integer >= 0".to_string())),
+        },
+    };
+    table_query_select(state, tenant, &sql, Window { limit, offset }, end_user).await
+}
+
+/// The `host.table.query` tool call (PRD-mcphost-response-size-budget-explicit-v2
+/// R5): [`table_query`], with a result over the caller's plan budget cut at a
+/// row boundary and `_meta.mcphost.truncated.continue_with` naming the same
+/// call with `offset` moved past the rows sent. Internal readers of
+/// [`table_query`] (charts, resources, the sandbox bridge) get every row.
+pub async fn table_query_page(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
+    use crate::response_budget::{self, Call};
+    let mut out = table_query(state, tenant, args, end_user).await?;
+    if args.get("handle").and_then(Value::as_bool).unwrap_or(false) {
+        return Ok(out);
+    }
+    let Some(rows) = out.get_mut("rows").and_then(Value::as_array_mut) else {
+        return Ok(out);
+    };
+    let Some(cut) = response_budget::cut_values(rows, response_budget::budget_of(state, tenant)) else {
+        return Ok(out);
+    };
+    let sent = rows.len() as i64;
+    let offset = args.get("offset").and_then(Value::as_i64).unwrap_or(0);
+    let mut next_args = args.clone();
+    if let Some(map) = next_args.as_object_mut() {
+        map.insert("offset".to_string(), json!(offset + sent));
+    }
+    response_budget::note_marker(&mut out, cut, Some(Call { verb: "host.table.query".to_string(), args: next_args }));
+    Ok(out)
 }
 
 /// PRD-mcphost-count-and-total-semantics R3: `host.table.count {table, where?}`
@@ -3147,7 +3197,7 @@ pub async fn handle_export_rows(
         }
         let column_names: Vec<String> = {
             let stmt = conn.prepare(&format!("SELECT * FROM {} LIMIT 0", quote_ident(&handle_owned)))?;
-            stmt.column_names().into_iter().map(str::to_string).collect()
+            stmt.column_names().map(str::to_string).collect()
         };
         let rows = select_all_sync(conn, &format!("SELECT * FROM {}", quote_ident(&handle_owned)))?;
         conn.execute(

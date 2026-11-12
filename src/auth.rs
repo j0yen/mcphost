@@ -36,6 +36,39 @@ pub fn generate_namespace() -> String {
     format!("t_{}", to_hex(&bytes))
 }
 
+/// PRD-mcphost-synthetic-tenant-purge R6: the `draw`-th (0-based) candidate of
+/// one mint. A `test-support` build reads `MCPHOST_TEST_ONLY_NAMESPACE_CANDIDATES`
+/// (comma-separated) and answers from it in order before falling back to
+/// [`generate_namespace`]; a release build never reads it.
+pub fn draw_namespace(draw: usize) -> String {
+    #[cfg(feature = "test-support")]
+    if let Ok(list) = std::env::var("MCPHOST_TEST_ONLY_NAMESPACE_CANDIDATES")
+        && let Some(candidate) = list.split(',').map(str::trim).filter(|c| !c.is_empty()).nth(draw)
+    {
+        return candidate.to_string();
+    }
+    let _ = draw;
+    generate_namespace()
+}
+
+/// PRD-mcphost-synthetic-tenant-purge R6: runs `attempt` with a fresh namespace
+/// draw, re-drawing when it fails on a namespace collision (reserved or taken),
+/// at most [`crate::retention::NAMESPACE_DRAW_LIMIT`] draws; then the
+/// `table_row_conflict` a collision always was. Any other error returns as is.
+pub async fn with_fresh_namespace<T, F, Fut>(mut attempt: F) -> Result<T, crate::errors::AppError>
+where
+    F: FnMut(String) -> Fut,
+    Fut: std::future::Future<Output = Result<T, crate::errors::AppError>>,
+{
+    for draw in 0..crate::retention::NAMESPACE_DRAW_LIMIT {
+        match attempt(draw_namespace(draw)).await {
+            Err(e) if e.is_namespace_collision() => continue,
+            other => return other,
+        }
+    }
+    Err(crate::errors::AppError::namespace_draws_exhausted())
+}
+
 /// PRD-mcphost-handoff-token requirement 1: a single-use handoff token
 /// `signup(handoff: true)` returns in place of the raw tenant key. Same
 /// entropy as [`generate_key`] (32 random bytes, hex) with a `ho_` prefix
@@ -45,8 +78,14 @@ pub fn generate_namespace() -> String {
 /// tenant keys -- one hashing convention, not two) hashed, never in the
 /// clear (see `db::Db::create_handoff_token`).
 pub fn generate_handoff_token() -> String {
-    format!("ho_{}", generate_key())
+    format!("{HANDOFF_TOKEN_PREFIX}{}", generate_key())
 }
+
+/// The prefix [`generate_handoff_token`] puts on every handoff token --
+/// distinct from a tenant key's `t_` and a sub-key's [`SUB_KEY_PREFIX`], so
+/// a token passed where a key belongs is recognisable without looking it up
+/// (PRD-mcphost-refusals-name-the-nearest-move R4).
+pub const HANDOFF_TOKEN_PREFIX: &str = "ho_";
 
 /// PRD-mcphost-url-bound-tenants requirement 2: a tenant's secret-URL
 /// token -- 26-character Crockford base32 (same alphabet/packing

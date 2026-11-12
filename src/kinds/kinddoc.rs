@@ -126,11 +126,16 @@ pub fn derive_requiredness<K: super::Kind + ?Sized>(kind: &K) -> Vec<(FieldDoc, 
 /// envelope ones: the `err_code!` row for `invalid_spec` reads this, so
 /// `/errors.json`, `docs/errors.md` and both SDKs list exactly these.
 pub const INVALID_SPEC_DATA_KEYS: &[&str] =
-    &["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names", "received_type"];
+    &["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names", "received_type", "defs_found"];
 
 /// Cap on the serialized `fields` plus `minimal_specs` of an `invalid_spec`
 /// refusal (PRD-mcphost-invalid-spec-error-carries-kind-fields R5).
 pub const INVALID_SPEC_PAYLOAD_CAP: usize = 8 * 1024;
+
+/// Cap on an `invalid_spec` refusal's `message` in bytes
+/// (PRD-mcphost-invalid-spec-message-carries-fix R4): the message sits in model
+/// context on every refusal, so it is far smaller than the `data` cap.
+pub const INVALID_SPEC_MESSAGE_CAP: usize = 1024;
 
 /// A kind's full `fields` and `minimal_specs` before the cap applies. A kind whose
 /// probe cannot run (no minimal specs, or one that is not minimal) ships no
@@ -211,6 +216,70 @@ pub fn invalid_spec_data<K: super::Kind + ?Sized>(kind: &K, named_field: Option<
     })
 }
 
+/// The `field `<f>` is required <phrase>` clause: the phrase comes from the
+/// `fields` row for `data.field` (`always` for `yes`, the `unless ...` cell
+/// plus ` is set` for an `unless` row); none for a `no` row, a missing row or a
+/// null `field`.
+fn field_clause(data: &Value) -> Option<String> {
+    let field = data["field"].as_str()?;
+    let row = data["fields"].as_array()?.iter().find(|r| r["name"].as_str() == Some(field))?;
+    let cell = row["required"].as_str()?;
+    let phrase = match cell {
+        "yes" => "always".to_string(),
+        c if c.starts_with("unless ") => format!("{c} is set"),
+        _ => return None,
+    };
+    Some(format!("field `{field}` is required {phrase}"))
+}
+
+/// The compact one-line JSON of the first `minimal_specs` entry that contains
+/// `data.field`, else the first entry; none when the list is empty.
+fn minimal_spec_json(data: &Value) -> Option<String> {
+    let specs = data["minimal_specs"].as_array()?;
+    let field = data["field"].as_str();
+    let chosen = field
+        .and_then(|f| specs.iter().find(|s| s.get(f).is_some()))
+        .or_else(|| specs.first())?;
+    serde_json::to_string(chosen).ok()
+}
+
+/// `head` followed by the generated clauses of an `invalid_spec` `data`,
+/// within [`INVALID_SPEC_MESSAGE_CAP`]: over the cap the `minimal spec` clause
+/// goes first, then `head` is cut with a trailing `…`; the `field` and `docs`
+/// clauses always stay.
+fn render_message(head: &str, data: &Value) -> String {
+    let field = field_clause(data);
+    let minimal = minimal_spec_json(data).map(|j| format!("minimal spec: {j}"));
+    let docs = data["docs_url"].as_str().map(|u| format!("docs: {u}"));
+    let join = |parts: &[&Option<String>]| -> String {
+        parts.iter().filter_map(|p| p.as_deref()).map(|p| format!("; {p}")).collect()
+    };
+    let full = join(&[&field, &minimal, &docs]);
+    if head.len() + full.len() <= INVALID_SPEC_MESSAGE_CAP {
+        return format!("{head}{full}");
+    }
+    let tail = join(&[&field, &docs]);
+    if head.len() + tail.len() <= INVALID_SPEC_MESSAGE_CAP {
+        return format!("{head}{tail}");
+    }
+    let budget = INVALID_SPEC_MESSAGE_CAP.saturating_sub(tail.len() + '…'.len_utf8());
+    let mut cut = budget.min(head.len());
+    while !head.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}…{tail}", &head[..cut])
+}
+
+/// The `message` of an `invalid_spec` refusal, rendered from the
+/// [`invalid_spec_data`] value: `invalid spec: <reason>` then, `; `-separated
+/// and present only when their source is set, `field `<f>` is required ...`,
+/// `minimal spec: <json>` and `docs: <url>`
+/// (PRD-mcphost-invalid-spec-message-carries-fix R1). The one place the three
+/// verbs that validate a raw spec get their text from.
+pub fn invalid_spec_message(data: &Value) -> String {
+    render_message(&format!("invalid spec: {}", data["reason"].as_str().unwrap_or_default()), data)
+}
+
 /// Merges [`invalid_spec_data`] into an `invalid_spec` refusal (a plain
 /// `InvalidSpec`, or a `Structured` one with that code, keeping its own
 /// `data` keys); any other error passes through. `MultiInvalid` enriches each
@@ -220,11 +289,7 @@ pub fn enrich_invalid_spec(kind: &dyn super::Kind, err: crate::errors::AppError)
     match err {
         AppError::InvalidSpec(m) => {
             let data = invalid_spec_data(kind, None, &m);
-            AppError::Structured {
-                code: crate::errors::INVALID_SPEC,
-                message: format!("invalid spec: {m}"),
-                data,
-            }
+            AppError::Structured { code: crate::errors::INVALID_SPEC, message: invalid_spec_message(&data), data }
         }
         AppError::Structured { code, message, data } if code == crate::errors::INVALID_SPEC => {
             let named = data.get("field").and_then(Value::as_str).map(str::to_string);
@@ -236,6 +301,7 @@ pub fn enrich_invalid_spec(kind: &dyn super::Kind, err: crate::errors::AppError)
                     }
                 }
             }
+            let message = render_message(&message, &merged);
             AppError::Structured { code, message, data: merged }
         }
         AppError::MultiInvalid { message, errors } => AppError::MultiInvalid {

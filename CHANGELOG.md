@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.130.0 — 2026-11-11
+
+Released by wm-build land: loop: mcphost-synthetic-tenant-purge.
+
+## v0.129.0 — 2026-11-10
+
+Released by wm-build land: loop: mcphost-refusals-name-the-nearest-move.
+
+## v0.128.0 — 2026-11-09
+
+Released by wm-build land: loop: mcphost-implicit-signup-key-in-hand.
+
+## v0.127.1 — 2026-11-08
+
+Released by wm-build land: loop: mcphost-sandbox-timeout-clamp-live-probe.
+
+## v0.126.1 — 2026-11-03
+
+Released by wm-build land: loop: mcphost-invalid-spec-message-carries-fix.
+
 ## v0.125.0 — 2026-11-03
 
 Released by wm-build land: loop: mcphost-admin-signup-pause-tool.

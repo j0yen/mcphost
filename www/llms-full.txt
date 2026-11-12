@@ -1030,6 +1030,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `recipients_per_msg_max` | 5 | 20 |
 | `resource_read_bytes_max` | 1048576 | 1048576 |
 | `resources_max` | 8 | 64 |
+| `response_budget_bytes` | 262144 | 1048576 |
 | `sampling_tokens_per_day` | 20000 | 500000 |
 | `sandbox_cpu_s_max` | 30 | 60 |
 | `sandbox_memory_mb_max` | 256 | 1024 |

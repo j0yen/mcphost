@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-admin-signup-pause-tool.md (test_prefix: aspt)",
+  "ac_test_map_prd": "PRD-mcphost-response-size-budget-explicit-v2.md (test_prefix: rszb)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,12 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/aspt_ac01_tool_listed_with_schema_and_readme.rs",
-    "AC2": "tests/aspt_ac02_pause_writes_file_and_refuses_signup.rs",
-    "AC3": "tests/aspt_ac03_resume_removes_file_and_reopens_signup.rs",
-    "AC4": "tests/aspt_ac04_invalid_calls_refused_and_file_untouched.rs",
-    "AC5": "tests/aspt_ac05_non_admin_callers_refused.rs",
-    "AC6": "tests/aspt_ac06_resume_idempotent_and_io_failure_is_storage.rs",
-    "AC7": "tests/aspt_ac07_concurrent_toggles_atomic_and_audited.rs",
-    "AC8": "tests/aspt_ac08_until_bounds_retry_and_alerts_fire.rs"
+    "AC1": "tests/rszb_ac01_one_truncation_struct.rs",
+    "AC2": "tests/rszb_ac02_every_paged_verb_walks_within_budget.rs",
+    "AC3": "tests/rszb_ac03_plan_field_in_quickstart_and_docs.rs",
+    "AC4": "tests/rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs",
+    "AC5": "tests/rszb_ac05_table_query_offset_walk.rs",
+    "AC6": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)"
   },
   "ac_test_map_by_prefix": {
     "mcphost-resource-listing-shape-in-contract": {
@@ -2455,6 +2453,17 @@
       "AC5": "tests/spkind_ac05_registry_carries_data_keys.rs",
       "AC6": "tests/spkind_ac06_unknown_secret_names_the_fix.rs"
     },
+    "spmsg": {
+      "_prd": "PRD-mcphost-invalid-spec-message-carries-fix.md (test_prefix: spmsg)",
+      "AC1": "tests/spmsg_ac01_http_missing_method_message.rs",
+      "AC2": "tests/spmsg_ac02_every_kind_every_field_message.rs",
+      "AC3": "tests/spmsg_ac03_same_message_across_verbs.rs",
+      "AC4": "tests/spmsg_ac04_message_byte_cap.rs",
+      "AC5": "tests/spmsg_ac05_remedy_names_only_data_keys.rs",
+      "AC6": "tests/spmsg_ac06_driver_compiles_plans_and_fails_closed.rs",
+      "AC7": "tests/spmsg_ac07_driver_passes_on_test_server.rs",
+      "AC8": "deferred: Live (prod /mcp from the build host; evidence: ~/.local/state/mcphost-live/spmsg-ac08-results.jsonl)"
+    },
     "actforlive": {
       "_prd": "PRD-mcphost-acting-for-live-proof.md (test_prefix: actforlive)",
       "AC1": "tests/actforlive_ac01_control_verbs_uncounted.rs",
@@ -2625,6 +2634,60 @@
       "AC6": "tests/linrt_ac06_concurrent_runs_write_one_edge_per_table.rs",
       "AC7": "tests/linrt_ac07_dry_runs_and_refusals_write_nothing.rs",
       "AC8": "deferred: Live (prod; evidence: mcphost-1 healthz version after deploy plus the trace and self_offboard responses in the receipt under docs/receipts/)"
+    },
+    "stclp": {
+      "_prd": "PRD-mcphost-sandbox-timeout-clamp-live-probe.md (test_prefix: stclp)",
+      "AC01": "tests/stclp_ac01_selftest_passes.rs",
+      "AC02": "tests/stclp_ac02_usage_and_missing_tool.rs",
+      "AC03": "tests/stclp_ac03_key_hygiene_through_the_shim.rs",
+      "AC04": "tests/stclp_ac04_warning_in_json_and_sse.rs",
+      "AC05": "tests/stclp_ac05_unreachable_signup.rs",
+      "AC07": "tests/stclp_ac07_no_warning_is_an_error_with_receipt.rs",
+      "AC6": "deferred: Live (prod; evidence: bash scripts/live/timeout-clamp.sh https://mcphost.dev exits 0 with status: ok, warning: timeout_s 45 -> 30 free, offboarded: tenant_disabled)"
+    },
+    "kih": {
+      "_prd": "PRD-mcphost-implicit-signup-key-in-hand.md (test_prefix: kih)",
+      "AC1": "tests/kih_ac01_envelope_hands_a_sessionless_client_its_key.rs",
+      "AC2": "tests/kih_ac02_the_handed_key_runs_as_the_minted_tenant.rs",
+      "AC3": "tests/kih_ac03_sessionless_neighbours_mint_up_to_the_cap.rs",
+      "AC4": "tests/kih_ac04_refusal_text_names_the_field_the_argument_and_initialize.rs",
+      "AC5": "tests/kih_ac05_yield_and_release_branches_keep_their_answers.rs",
+      "AC6": "tests/kih_ac06_journal_contract_and_instructions_state_the_rule.rs",
+      "AC7": "tests/kih_ac07_two_sessionless_clients_driver_runs_in_the_suite.rs",
+      "AC8": "deferred: Live (prod; evidence: python3 -I tests/live/kih_ac08_two_sessionless_clients.py https://mcphost.dev/mcp prints kih_ac08 A=offboarded B=offboarded rc=0)"
+    },
+    "nmove": {
+      "_prd": "PRD-mcphost-refusals-name-the-nearest-move.md (test_prefix: nmove)",
+      "AC1": "tests/nmove_ac01_candidates_and_next_call.rs",
+      "AC2": "tests/nmove_ac02_fresh_tenant_names_publish.rs",
+      "AC3": "tests/nmove_ac03_verbs_and_shares_are_named.rs",
+      "AC4": "tests/nmove_ac04_one_builder_five_sites.rs",
+      "AC5": "tests/nmove_ac05_nomain_names_the_definitions.rs",
+      "AC6": "tests/nmove_ac06_tenant_key_invalid_names_handoff.rs",
+      "AC7": "tests/nmove_ac07_registry_and_driver.rs",
+      "AC8": "deferred: Live (prod /mcp from the build host; evidence: python3 -I tests/live/nmove_ac08_nearest_move.py https://mcphost.dev/mcp prints nmove_ac08 tenant=offboarded rc=0)"
+    },
+    "aspt": {
+      "_prd": "PRD-mcphost-admin-signup-pause-tool.md (test_prefix: aspt)",
+      "AC1": "tests/aspt_ac01_tool_listed_with_schema_and_readme.rs",
+      "AC2": "tests/aspt_ac02_pause_writes_file_and_refuses_signup.rs",
+      "AC3": "tests/aspt_ac03_resume_removes_file_and_reopens_signup.rs",
+      "AC4": "tests/aspt_ac04_invalid_calls_refused_and_file_untouched.rs",
+      "AC5": "tests/aspt_ac05_non_admin_callers_refused.rs",
+      "AC6": "tests/aspt_ac06_resume_idempotent_and_io_failure_is_storage.rs",
+      "AC7": "tests/aspt_ac07_concurrent_toggles_atomic_and_audited.rs",
+      "AC8": "tests/aspt_ac08_until_bounds_retry_and_alerts_fire.rs"
+    },
+    "tenp": {
+      "_prd": "PRD-mcphost-synthetic-tenant-purge.md (test_prefix: tenp)",
+      "AC1": "tests/tenp_ac01_batched_purge_under_load_exactly_once.rs",
+      "AC2": "tests/tenp_ac02_cascade_complete_and_entangled_subject_held.rs",
+      "AC3": "tests/tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned.rs",
+      "AC4": "tests/tenp_ac04_idle_clock_runs_from_the_floor.rs",
+      "AC5": "tests/tenp_ac05_grace_clock_report_first_and_bounded_vacuum.rs",
+      "AC6": "tests/tenp_ac06_dry_run_report_funnel_count_and_contract_keys.rs",
+      "AC7": "tests/tenp_ac07_class_matrix_off_switches_and_namespace_reservation.rs",
+      "AC8": "deferred: Live (prod; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)"
     }
   }
 }
