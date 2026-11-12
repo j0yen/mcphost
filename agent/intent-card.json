@@ -1,70 +1,58 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-synthetic-tenant-purge.md",
-  "intent_slug": "mcphost-synthetic-tenant-purge",
-  "root_motivation": "WHO: Joe as operator of mcphost-1 (one 1.9 GB SQLite file in WAL mode serving every tenant), rb who reads its prune_log, and the live judge that reads /contract.json. WHAT: the synthetic-tenant idle policy disables nothing on prod because its floor is a selector term, and nothing ever deletes a synthetic tenant, so about 2.3 M child rows of idle and self-offboarded synthetic tenants sit in the file. WHY: a delete on that scale must be batched under load, exactly once, complete across every table that names a tenant, held while a real tenant's row names the subject, and report-only on its first sweep.",
-  "user_persona": "An operator holding the admin key who needs the numbers (would_expire, pre_floor, would_purge, cross_refs, held_entangled) before any delete and a purge that never touches a claimed, verified, paid or billed tenant, plus the live judge reading the lifecycle rule from /contract.json.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-response-size-budget-explicit-v2.md",
+  "intent_slug": "mcphost-response-size-budget-explicit-v2",
+  "root_motivation": "WHO: an agent reading host.table.query, host.runs.list or host.docs.list on a plan or client that cannot use a very large answer, and Joe, who sets the byte budget by editing one plan row. WHAT: nothing sizes a page of a paged verb and nothing tells an agent where a shorter page stopped, so a client that cuts the text on its side reasons over a partial result as if it were whole. WHY: a page over the plan's byte budget must be cut at a row boundary and name its size, the full size and the exact next call, and a cut must never happen without that marker.",
+  "user_persona": "An agent (or its operator) paging a host list verb or a SQL result who needs every page to fit a stated budget, end on a whole row, and carry a continue_with call it can make verbatim; and an operator who raises the pro budget by editing one plan row.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 5
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the § Fixture (6,000 due subjects, 20 heavy) and a host.tool_call loop on a live tenant, When the scheduled sweep and admin.prune_now start together with a budget one sweep cannot finish, Then one reports busy, every subject is deleted exactly once over two or more batches, held_over equals the remainder, loop p95 stays under 250 ms and under max(2× the idle baseline, 50 ms), and per-batch wall time in the PR body.",
-      "test": "tests/tenp_ac01_batched_purge_under_load_exactly_once.rs"
+      "description": "Given a page cut for budget on a paged verb, When rszb_ac01_one_truncation_struct serializes _meta.mcphost.truncated, Then it has exactly the keys bytes, of and continue_with, and a response that was also clamped by limit holds both limit_clamped and truncated under _meta.mcphost.",
+      "test": "tests/rszb_ac01_one_truncation_struct.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a subject with a row in every table naming tenants by key or name (enumerated at test time; two-sided set = § Cascade) and, per two-sided column, a synthetic and a claimed two-marker tenant's row naming it, When sweeps run, Then it is held, held_entangled names each claimed-owned column, no row of either tenant changes; claimed rows gone, it is purged, synthetic rows get their § Cascade outcome and no row names it.",
-      "test": "tests/tenp_ac02_cascade_complete_and_entangled_subject_held.rs"
+      "description": "Given each verb in PAGED_VERBS with enough rows to pass an 8 KiB plan budget, When it is read at its maximum limit and every continue_with is followed verbatim, Then each page is within 8 KiB or is one row, ends on a whole row, continue_with.args.limit equals the request's limit, and the walk visits every row once; Given host.channel.read {ack: true} cut, Then the stored position is the last row kept.",
+      "test": "tests/rszb_ac02_every_paged_verb_walks_within_budget.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the migrated schema, When a test lists every foreign-key column referencing tenants through pragma_foreign_key_list, Then each has an index whose first column it is, the migration adding the missing ones takes the next free number at land time and also creates namespace_tombstones holding each tenant-delete admin_events namespace, and dropping any one of those indexes inside the test fails it naming the table and column.",
-      "test": "tests/tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned.rs"
+      "description": "Given the free and pro plans, When host.quickstart runs, Then limits.plan.response_budget_bytes equals the plan struct's field, limits.output_bytes_max still reads the 1 MiB wall, and render_ceilings_table lists the field in docs/plans.md with the docs drift test green.",
+      "test": "tests/rszb_ac03_plan_field_in_quickstart_and_docs.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given implicit synthetic unclaimed rows minted before the floor, When the sweep runs with the window elapsed since the floor, Then each is disabled idle_expired with a lifecycle event, the expire stage stops at the wall budget reporting held_over, a row idle under the window is untouched, and the sweep with no prior prune_log row carrying purge_due_unix logs pre_floor with a ≤ 200-row pre_floor_sample, no key or address.",
-      "test": "tests/tenp_ac04_idle_clock_runs_from_the_floor.rs"
+      "description": "Given a python tool that returns a 2 MiB line, When called synchronously, Then the existing tool_output_too_large answers with limit_bytes equal to limits.output_bytes_max and no truncated key; Given a non-paged verb under the wall, Then its response is whole.",
+      "test": "tests/rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs"
     },
     {
       "id": "AC5",
-      "level": "MUST",
-      "description": "Given two-marker rows disabled idle_expired or self_offboard, When sweeps run on a mock clock, Then none is deleted before MAX(last_seen or created, last lifecycle event, floor) + grace, a sweep with no prior prune_log row carrying purge_due_unix only reports would_purge and cross_refs, later sweeps delete via delete_tenant_as logging tenant_purge_synthetic; each batch ends in incremental_vacuum(PURGE_VACUUM_PAGES), no VACUUM.",
-      "test": "tests/tenp_ac05_grace_clock_report_first_and_bounded_vacuum.rs"
+      "level": "SHOULD",
+      "description": "Given a 5 MiB table and a 32 KiB plan budget, When host.table.query {sql: \"SELECT * FROM t\", limit: 1000} runs and each continue_with is followed, Then every page is within the budget and ends on a whole row and the walk visits every row once; Given an empty table, Then rows: [] with no marker.",
+      "test": "tests/rszb_ac05_table_query_offset_walk.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given purge-due and pre-floor rows, When admin.prune_now is called with dry_run true, Then it returns would_expire, pre_floor, would_purge, purge_due_unix, cross_refs by column and class and held_entangled, writes no prune_log row and deletes nothing; admin.funnel carries tenants_synthetic_purged; contract dump shows the § Contract keys and contract --check fails when a constant moves.",
-      "test": "tests/tenp_ac06_dry_run_report_funnel_count_and_contract_keys.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given the § Classes rows, When sweeps pass the window and grace, Then only the both-markers unclaimed row gains event, flag and deletion, the other eight none, even if a class flips between mark and delete; grace env off purges nothing, idle-days env off disables or purges nothing; a disabled subject's old tenant_key gets tenant_key_invalid and moves no due date, and a keyless new peer still mints, never a purged namespace.",
-      "test": "tests/tenp_ac07_class_matrix_off_switches_and_namespace_reservation.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 8 command in § Live evidence commands runs from the build host with no credential, Then jq prints true on purge.grace_days 14, floor_rule idle_from_floor, zero_disables false and self_offboard among the purge reasons, and the last line is jq_rc=0 (Live; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)",
-      "test": "deferred: Live (prod; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)"
+      "description": "Given prod after landing, When tests/rszb_ac06_live_prod_quickstart_budget.rs calls anonymous host.quickstart {}, Then limits.plan.response_budget_bytes is a positive integer (Live; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)",
+      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)"
     }
   ],
   "scope": [
-    "src/db/synthetic_purge.rs (purge stage, report, dry run, relation registry); src/db.rs (prune_once_at, sweep lock, idle clock from the floor, delete_tenant_rows with NULLings, by-value deletes and namespace tombstones, reserved-namespace checks in the two tenants inserts, funnel count); src/retention.rs constants and bounded incremental_vacuum; src/auth.rs namespace draw loop; src/control.rs and src/invites.rs callers; src/errors.rs namespace_reserved; src/admin.rs and src/handler.rs admin.prune_now dry_run and admin.funnel tenants_synthetic_purged; src/api_contract.rs tenant_lifecycle; migrations/0140_synthetic_tenant_purge.sql; contracts/host-tools.v1.json and the SDKs rendered from it."
+    "src/response_budget.rs (Truncated, Call, cut_page, cut_values, budget_of); src/plans.rs (response_budget_bytes); src/paged.rs (project_rows); the byte-budget cut in src/runs.rs, src/docs.rs, src/calllog.rs, src/messaging.rs and src/channels.rs; src/tables.rs and src/handler/arms.rs (host.table.query offset and cut); src/handler.rs (_meta.mcphost.truncated, host.table.query descriptor); docs/plans.md, docs/tools.md, docs/openapi.json, contracts/host-tools.v1.json and the SDKs rendered from it."
   ],
   "non_goals": [
-    "A full VACUUM; purging explicit synthetic sign-ups or any tenant outside the two-marker class; deleting or rewriting a text column that carries a namespace; blocking the keyless inflow; a fleet-dash field for the purge; the AC 8 prod read (operator-provisioned, deferred)."
+    "A per-client budget axis; compression; streaming; cutting a non-paged response; paging host.tool.logs; the AC 6 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -73,45 +61,50 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "one_migration": "One migration at the next free number, CREATE INDEX IF NOT EXISTS and namespace_tombstones only; no table rebuild; foreign_keys stays as it is.",
-      "no_full_vacuum": "No VACUUM anywhere in the sweep; incremental_vacuum(PURGE_VACUUM_PAGES) per batch."
+      "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
+      "one_marker": "A cut is reported only as _meta.mcphost.truncated {bytes, of, continue_with}; the kinds' 1 MiB wall still refuses and never cuts."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the synthetic expiry policy leave 17,159 idle rows on prod?",
-      "a": "The policy floor is a selector term and no implicit synthetic tenant was minted after it."
+      "q": "Why can an agent reason over a partial result as if it were whole?",
+      "a": "A page of a paged verb has no byte bound and nothing says where a shorter page stopped."
     },
     {
       "why": 2,
-      "q": "Why does nothing delete a synthetic tenant?",
-      "a": "The policy only disables; the delete path existed for the external policy alone."
+      "q": "Why is there no byte bound?",
+      "a": "limits.output_bytes_max is one global 1 MiB constant read only by the kinds; the plan catalog has no byte ceiling."
     },
     {
       "why": 3,
-      "q": "Why not extend the external purge as is?",
-      "a": "Synthetic subjects have entangled rows in 23 tables, 26 foreign keys lack an index and one sweep cannot finish inside a request window."
+      "q": "Why not cut at the wall?",
+      "a": "The wall refuses a synchronous kind call and chunks an async run; a cut is only well defined at a row boundary of a paged verb."
     },
     {
       "why": 4,
-      "q": "Why must the first sweep only report?",
-      "a": "A delete on this scale cannot be undone without a restore, so the numbers and cross-references are read before anything is removed."
+      "q": "Why must the cut carry a continue_with?",
+      "a": "A cut without the next call is worse than an error; the keyset cursor each verb already mints makes the call exact."
+    },
+    {
+      "why": 5,
+      "q": "Why does host.table.query need an offset?",
+      "a": "It has limit but no continuation, so its cut page could not be resumed without the agent rewriting its own SQL."
     }
   ],
-  "created_at": "2026-11-03T00:00:00Z",
+  "created_at": "2026-11-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Which test decides the R1 gate?",
-      "resolution": "json_type on $.synthetic_implicit_tenants.purge_due_unix, not LIKE, because the external block already carries pre_floor.purge_due_unix."
+      "question": "Where is the size measured, before or after fields projection?",
+      "resolution": "After: the page is projected first and the serialized rows array is what is compared with the budget, so bytes and of equal what the client receives."
     },
     {
-      "question": "How does a namespace re-draw reach the callers without changing their signatures?",
-      "resolution": "auth::with_fresh_namespace re-runs the insert with a new draw on namespace_reserved or the UNIQUE conflict on tenants.namespace, at most NAMESPACE_DRAW_LIMIT draws."
+      "question": "What does a row larger than the whole budget do?",
+      "resolution": "It is returned alone (a page always keeps at least one row), and the next continue_with resumes after it."
     },
     {
-      "question": "Does dry_run return any key beyond the six numbers?",
-      "resolution": "No: admin.prune_now with dry_run returns only synthetic_implicit_tenants with would_expire, pre_floor, would_purge, purge_due_unix, cross_refs and held_entangled."
+      "question": "Offset or keyset for host.table.query?",
+      "resolution": "Offset, applied as LIMIT n OFFSET m over the caller's own SELECT, because arbitrary SELECTs, row-policy rewrites and CTEs do not guarantee a rowid order."
     }
   ]
 }

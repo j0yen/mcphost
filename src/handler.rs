@@ -2797,6 +2797,16 @@ fn host_tools_part_04() -> Vec<Tool> {
                             response carries total (exact when the result has at most 10000 \
                             rows) or total_estimate with exact: false.",
                     },
+                    "offset": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Skip this many rows of the result first (LIMIT n OFFSET m \
+                            over your SELECT, so ORDER BY and joins work). A result over your \
+                            plan's response budget is cut at a row boundary and \
+                            _meta.mcphost.truncated.continue_with is this call with offset \
+                            moved past the rows sent; it assumes the table is not rewritten \
+                            between pages.",
+                    },
                 }),
                 &["sql"],
             ),
@@ -14283,6 +14293,9 @@ impl McpHostHandler {
                 // PRD-mcphost-paged-trait-on-every-list-verb requirement 7:
                 // a clamped `limit` rides out as `_meta.mcphost.limit_clamped`.
                 let limit_clamped = crate::paged::take_clamp(&mut value);
+                // PRD-mcphost-response-size-budget-explicit-v2 R2: a page cut
+                // for size rides out as `_meta.mcphost.truncated`.
+                let truncated = crate::response_budget::take_truncated(&mut value);
                 let deprecated_arg = crate::paged::take_deprecated_arg(&mut value);
                 let resources_used = value.as_object_mut().and_then(|obj| obj.remove(RESOURCES_USED_KEY));
                 let result = crate::output_schemas::success_result(value);
@@ -14371,8 +14384,15 @@ impl McpHostHandler {
                 if let Some(nudge) = claim_nudge {
                     meta.0.insert("next".to_string(), nudge);
                 }
-                if let Some(clamped) = limit_clamped {
-                    meta.0.insert("mcphost".to_string(), json!({"limit_clamped": clamped}));
+                if limit_clamped.is_some() || truncated.is_some() {
+                    let mut mcphost = serde_json::Map::new();
+                    if let Some(clamped) = limit_clamped {
+                        mcphost.insert("limit_clamped".to_string(), clamped);
+                    }
+                    if let Some(truncated) = truncated {
+                        mcphost.insert("truncated".to_string(), truncated);
+                    }
+                    meta.0.insert("mcphost".to_string(), Value::Object(mcphost));
                 }
                 // PRD-mcphost-sandbox-resource-limits-from-plan R4/R5/R7.
                 if let Some(used) = resources_used {

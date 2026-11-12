@@ -529,7 +529,20 @@ pub async fn read(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         .db
         .channel_posts_after(channel_id.clone(), effective_cursor, rl.limit + 1)
         .await?;
-    let next = paged::split_page(&mut rows, rl.limit, |p| ChannelRead::cursor_at(p, paged::ChannelOrder::DEFAULT));
+    let mut next = paged::split_page(&mut rows, rl.limit, |p| ChannelRead::cursor_at(p, paged::ChannelOrder::DEFAULT));
+    // The byte-budget cut comes before `ack`: the stored position is the last
+    // row kept, so the rows the cut dropped are read again by the next call.
+    let mut page_json: Vec<Value> = rows.iter().map(post_row_json).collect();
+    if let Some(fields) = &fields {
+        paged::project_rows(&mut page_json, fields);
+    }
+    let cut = crate::response_budget::cut_page(
+        &mut rows,
+        &mut page_json,
+        &mut next,
+        crate::response_budget::budget_of(state, tenant),
+        |p| ChannelRead::cursor_at(p, paged::ChannelOrder::DEFAULT),
+    );
     // `ack` stores the last row actually returned, whether or not a
     // `next_cursor` was emitted; an empty read leaves the stored cursor
     // exactly as it was.
@@ -537,12 +550,10 @@ pub async fn read(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         state.db.channel_cursor_ack(channel_id, tenant.id, last.seq).await?;
     }
     let mut out = serde_json::Map::new();
-    out.insert(ChannelRead::KEY.to_string(), json!(rows.iter().map(post_row_json).collect::<Vec<_>>()));
+    out.insert(ChannelRead::KEY.to_string(), json!(page_json));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut value = Value::Object(out);
-    if let Some(fields) = &fields {
-        paged::project_page(&mut value, ChannelRead::KEY, fields);
-    }
+    crate::response_budget::note_truncated(&mut value, cut, ChannelRead::VERB, args);
     paged::note_clamp(&mut value, &rl);
     Ok(value)
 }
