@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-synthetic-tenant-purge.md",
-  "intent_slug": "mcphost-synthetic-tenant-purge",
-  "root_motivation": "WHO: Joe as operator of mcphost-1 (one 1.9 GB SQLite file in WAL mode serving every tenant), rb who reads its prune_log, and the live judge that reads /contract.json. WHAT: the synthetic-tenant idle policy disables nothing on prod because its floor is a selector term, and nothing ever deletes a synthetic tenant, so about 2.3 M child rows of idle and self-offboarded synthetic tenants sit in the file. WHY: a delete on that scale must be batched under load, exactly once, complete across every table that names a tenant, held while a real tenant's row names the subject, and report-only on its first sweep.",
-  "user_persona": "An operator holding the admin key who needs the numbers (would_expire, pre_floor, would_purge, cross_refs, held_entangled) before any delete and a purge that never touches a claimed, verified, paid or billed tenant, plus the live judge reading the lifecycle rule from /contract.json.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-queue-primitive-v2.md",
+  "intent_slug": "mcphost-queue-primitive-v2",
+  "root_motivation": "WHO: the autonomous coding agent that published a one-item tool and now holds 100 or 10 000 items, and the human whose laptop closes mid-batch. WHAT: push the items once, let the host work through them, come back later. WHY: runs::enqueue starts one run per call and nothing groups, counts or paces them, so \"process these N things\" stays in the agent's session and mcphost hosts functions rather than work.",
+  "user_persona": "An agent with a batch and a tool that takes one item: it creates a queue over the tool, pushes up to 1 000 items per call, reads stats next session, and pauses, resumes, drains or deletes the queue; the host runs the items as ordinary trigger=queue runs within the queue's concurrency and the plan's jobs_concurrent.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,57 +14,57 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the § Fixture (6,000 due subjects, 20 heavy) and a host.tool_call loop on a live tenant, When the scheduled sweep and admin.prune_now start together with a budget one sweep cannot finish, Then one reports busy, every subject is deleted exactly once over two or more batches, held_over equals the remainder, loop p95 stays under 250 ms and under max(2× the idle baseline, 50 ms), and per-batch wall time in the PR body.",
-      "test": "tests/tenp_ac01_batched_purge_under_load_exactly_once.rs"
+      "description": "Given a queue with `concurrency: 2` and 10 pushed items whose consumer sleeps 2 s, When `stats` is polled every 200 ms for 3 s, Then `running` reaches 2 and never exceeds it, the four counts sum to 10 at every poll, and `host.runs.list {trigger: \"queue\"}` never shows more than 2 runs `queued` or `running`; Given `jobs_concurrent: 1`, Then at most one is `running` at any poll.",
+      "test": "tests/qprim_ac01_concurrency_cap_holds.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a subject with a row in every table naming tenants by key or name (enumerated at test time; two-sided set = § Cascade) and, per two-sided column, a synthetic and a claimed two-marker tenant's row naming it, When sweeps run, Then it is held, held_entangled names each claimed-owned column, no row of either tenant changes; claimed rows gone, it is purged, synthetic rows get their § Cascade outcome and no row names it.",
-      "test": "tests/tenp_ac02_cascade_complete_and_entangled_subject_held.rs"
+      "description": "Given a push of 1 000 items where items 3 and 500 violate the consumer's schema, When it returns, Then `accepted` is 998, `rejected` names indexes 3 and 500 with the schema message, and the 998 sit in `pending` in push order (`idx` 0 to 997).",
+      "test": "tests/qprim_ac02_bad_items_named_rest_in_order.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the migrated schema, When a test lists every foreign-key column referencing tenants through pragma_foreign_key_list, Then each has an index whose first column it is, the migration adding the missing ones takes the next free number at land time and also creates namespace_tombstones holding each tenant-delete admin_events namespace, and dropping any one of those indexes inside the test fails it naming the table and column.",
-      "test": "tests/tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned.rs"
+      "description": "Given a free tenant with 2 queues, When a third `host.queue.create` runs, Then `quota_exceeded` with `data.limit {name: \"queues_max\", value: 2}`, `limits.plan.queues_max` in `host.quickstart` is 2, and a push past `queue_items_max` inserts nothing and names `queue_items_max`.",
+      "test": "tests/qprim_ac03_ceilings_name_themselves.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given implicit synthetic unclaimed rows minted before the floor, When the sweep runs with the window elapsed since the floor, Then each is disabled idle_expired with a lifecycle event, the expire stage stops at the wall budget reporting held_over, a row idle under the window is untouched, and the sweep with no prior prune_log row carrying purge_due_unix logs pre_floor with a ≤ 200-row pre_floor_sample, no key or address.",
-      "test": "tests/tenp_ac04_idle_clock_runs_from_the_floor.rs"
+      "description": "Given two dispatcher ticks invoked concurrently over the same pending item, When both run, Then exactly one `runs` row exists for it and the item is `running` once; Given a `running` item whose run row is missing, Then the next tick returns it to `pending`.",
+      "test": "tests/qprim_ac04_claim_is_atomic_and_orphans_recover.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given two-marker rows disabled idle_expired or self_offboard, When sweeps run on a mock clock, Then none is deleted before MAX(last_seen or created, last lifecycle event, floor) + grace, a sweep with no prior prune_log row carrying purge_due_unix only reports would_purge and cross_refs, later sweeps delete via delete_tenant_as logging tenant_purge_synthetic; each batch ends in incremental_vacuum(PURGE_VACUUM_PAGES), no VACUUM.",
-      "test": "tests/tenp_ac05_grace_clock_report_first_and_bounded_vacuum.rs"
+      "description": "Given an active queue with 4 items running, When `pause` is called, Then no item starts within 3 ticks, the 4 finish as `done`, and `resume` starts the next within 2 s; Given `drain` on an empty active queue, Then `state` is `drained` with `drained_at_ms` set and a `push` answers `queue_not_accepting`.",
+      "test": "tests/qprim_ac05_pause_resume_drain.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given purge-due and pre-floor rows, When admin.prune_now is called with dry_run true, Then it returns would_expire, pre_floor, would_purge, purge_due_unix, cross_refs by column and class and held_entangled, writes no prune_log row and deletes nothing; admin.funnel carries tenants_synthetic_purged; contract dump shows the § Contract keys and contract --check fails when a constant moves.",
-      "test": "tests/tenp_ac06_dry_run_report_funnel_count_and_contract_keys.rs"
+      "description": "Given a `drained`, a `paused` and an `active` queue, When `host.queue.delete` runs on each, Then the first two vanish with their items and the third answers `queue_active` with the hint `pause or drain first`; Given `done` items past the retention window, Then the nightly prune removes them and keeps `pending` and `running` ones.",
+      "test": "tests/qprim_ac06_delete_and_prune.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the § Classes rows, When sweeps pass the window and grace, Then only the both-markers unclaimed row gains event, flag and deletion, the other eight none, even if a class flips between mark and delete; grace env off purges nothing, idle-days env off disables or purges nothing; a disabled subject's old tenant_key gets tenant_key_invalid and moves no due date, and a keyless new peer still mints, never a purged namespace.",
-      "test": "tests/tenp_ac07_class_matrix_off_switches_and_namespace_reservation.rs"
+      "description": "Given tenant B's queue name, When tenant A calls any `host.queue.*` with it, Then `queue_not_found`; Given a `consumer_tool` A never published, When `create` runs, Then `tool_not_found`; and the three new codes appear in `host.errors` (`error_registry`, `errors.json`).",
+      "test": "tests/qprim_ac07_isolation_and_error_codes.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this PRD's deploy, When the AC 8 command in § Live evidence commands runs from the build host with no credential, Then jq prints true on purge.grace_days 14, floor_rule idle_from_floor, zero_disables false and self_offboard among the purge reasons, and the last line is jq_rc=0 (Live; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)",
-      "test": "deferred: Live (prod; evidence: AC 8 command in § Live evidence commands showing true and jq_rc=0)"
+      "description": "Given prod after deploy, When `tests/qprim_ac08_live_prod_push_20_drains.rs` publishes the echo tool on a synthetic tenant, creates a queue, pushes 20 items and polls `stats` for up to 60 s, Then `done` is 20, `state` is `drained` and the tenant is offboarded (Live; evidence: `MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test qprim_ac08_live_prod_push_20_drains`)",
+      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test qprim_ac08_live_prod_push_20_drains)"
     }
   ],
   "scope": [
-    "src/db/synthetic_purge.rs (purge stage, report, dry run, relation registry); src/db.rs (prune_once_at, sweep lock, idle clock from the floor, delete_tenant_rows with NULLings, by-value deletes and namespace tombstones, reserved-namespace checks in the two tenants inserts, funnel count); src/retention.rs constants and bounded incremental_vacuum; src/auth.rs namespace draw loop; src/control.rs and src/invites.rs callers; src/errors.rs namespace_reserved; src/admin.rs and src/handler.rs admin.prune_now dry_run and admin.funnel tenants_synthetic_purged; src/api_contract.rs tenant_lifecycle; migrations/0140_synthetic_tenant_purge.sql; contracts/host-tools.v1.json and the SDKs rendered from it."
+    "migrations/0141_queues.sql (queues, queue_items); src/queues.rs (the eight host.queue.* verbs, the dispatcher tick); src/db/queues.rs (claim, reconcile, push, state moves); src/runs.rs (consumer_validator); src/run_enums.rs (RunTrigger::Queue); src/plans.rs (queues_max, queue_items_max, queue_concurrency_max, queue_item_bytes_max); src/retention.rs (queue_items policy row); src/handler.rs, src/handler/arms.rs, src/dispatch_table.rs, src/write_verbs.rs, src/paged.rs, src/host_args.rs (registration); generated contracts, docs, SDK errors and the osreach sweep seeds."
   ],
   "non_goals": [
-    "A full VACUUM; purging explicit synthetic sign-ups or any tenant outside the two-marker class; deleting or rewriting a text column that carries a namespace; blocking the keyless inflow; a fleet-dash field for the purge; the AC 8 prod read (operator-provisioned, deferred)."
+    "Retries, backoff and dead letters; result collection; outbound notification; priority lanes; emitting the queue.drained event; the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -73,45 +73,56 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "one_migration": "One migration at the next free number, CREATE INDEX IF NOT EXISTS and namespace_tombstones only; no table rebuild; foreign_keys stays as it is.",
-      "no_full_vacuum": "No VACUUM anywhere in the sweep; incremental_vacuum(PURGE_VACUUM_PAGES) per batch."
+      "one_migration": "One migration at the next free number (0141), two new tables, compat: previous; runs gains no column.",
+      "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
+      "claim_is_one_closure": "The item claim and the runs insert happen in one with_conn closure, never across two.",
+      "states_from_registry": "Queue state strings come from QueueState::as_str(), never literals."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the synthetic expiry policy leave 17,159 idle rows on prod?",
-      "a": "The policy floor is a selector term and no implicit synthetic tenant was minted after it."
+      "q": "Why does a batch of 100 items stay in the agent's session?",
+      "a": "The host has no container that owns N runs: runs::enqueue starts one run per call."
     },
     {
       "why": 2,
-      "q": "Why does nothing delete a synthetic tenant?",
-      "a": "The policy only disables; the delete path existed for the external policy alone."
+      "q": "Why is the one-run-per-call shape a problem for 100 items?",
+      "a": "The agent keeps 100 run ids in its own context and paces them itself under the tenant-wide jobs_concurrent."
     },
     {
       "why": 3,
-      "q": "Why not extend the external purge as is?",
-      "a": "Synthetic subjects have entangled rows in 23 tables, 26 foreign keys lack an index and one sweep cannot finish inside a request window."
+      "q": "Why does a python loop not fix it?",
+      "a": "It hits the plan's tool-latency ceiling or job_max_s, and a chain's for_each is bounded by chain_fanout_max and is not durable or pausable."
     },
     {
       "why": 4,
-      "q": "Why must the first sweep only report?",
-      "a": "A delete on this scale cannot be undone without a restore, so the numbers and cross-references are read before anything is removed."
+      "q": "Why was the batch shape never tried?",
+      "a": "No recipe asks for it and no host verb offers it."
+    },
+    {
+      "why": 5,
+      "q": "Why build a primitive rather than a recipe?",
+      "a": "A host-side queue with counts, pacing and pause makes the batch durable, which only the host can provide."
     }
   ],
-  "created_at": "2026-11-03T00:00:00Z",
+  "created_at": "2026-11-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Which test decides the R1 gate?",
-      "resolution": "json_type on $.synthetic_implicit_tenants.purge_due_unix, not LIKE, because the external block already carries pre_floor.purge_due_unix."
+      "question": "Does an item run under the consumer tool's budget or a queue-level override?",
+      "resolution": "The tool's own; the queue adds no override."
     },
     {
-      "question": "How does a namespace re-draw reach the callers without changing their signatures?",
-      "resolution": "auth::with_fresh_namespace re-runs the insert with a new draw on namespace_reserved or the UNIQUE conflict on tenants.namespace, at most NAMESPACE_DRAW_LIMIT draws."
+      "question": "Which verbs does the dispatcher deliver from?",
+      "resolution": "active and draining queues; paused and drained queues are skipped, and a paused queue still reconciles finished items."
     },
     {
-      "question": "Does dry_run return any key beyond the six numbers?",
-      "resolution": "No: admin.prune_now with dry_run returns only synthetic_implicit_tenants with would_expire, pre_floor, would_purge, purge_due_unix, cross_refs and held_entangled."
+      "question": "How are the claim and the run insert kept exactly-once?",
+      "resolution": "One transaction in one with_conn closure that updates the item (status pending, queue active or draining, both caps) and inserts the runs row, so a reconcile cannot see a running item without its run."
+    },
+    {
+      "question": "How does the osreach sweep reach verbs that need a tool and a queue?",
+      "resolution": "populate seeds a consumer tool and two queues; unreached count falls to 615 (cap lowered from 616)."
     }
   ]
 }

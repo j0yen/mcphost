@@ -23,6 +23,8 @@ mod oauthclient;
 mod promptkind;
 #[path = "support/pysdk.rs"]
 mod pysdk;
+#[path = "support/qprim.rs"]
+mod qprim;
 #[path = "support/serve.rs"]
 mod serve;
 
@@ -1008,6 +1010,20 @@ mod qdiag_ac07_description_annotation_offers_candidate;
 mod qdiag_ac08_footprint_columns_est_tokens;
 #[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
 mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
+#[path = "qprim_ac01_concurrency_cap_holds.rs"]
+mod qprim_ac01_concurrency_cap_holds;
+#[path = "qprim_ac02_bad_items_named_rest_in_order.rs"]
+mod qprim_ac02_bad_items_named_rest_in_order;
+#[path = "qprim_ac03_ceilings_name_themselves.rs"]
+mod qprim_ac03_ceilings_name_themselves;
+#[path = "qprim_ac04_claim_is_atomic_and_orphans_recover.rs"]
+mod qprim_ac04_claim_is_atomic_and_orphans_recover;
+#[path = "qprim_ac05_pause_resume_drain.rs"]
+mod qprim_ac05_pause_resume_drain;
+#[path = "qprim_ac06_delete_and_prune.rs"]
+mod qprim_ac06_delete_and_prune;
+#[path = "qprim_ac07_isolation_and_error_codes.rs"]
+mod qprim_ac07_isolation_and_error_codes;
 #[path = "qsbc_ac01_detection_keys_on_known_names.rs"]
 mod qsbc_ac01_detection_keys_on_known_names;
 #[path = "qsbc_ac02_quickstart_client_cursor.rs"]
@@ -1022,15 +1038,3 @@ mod qsbc_ac05_quickstart_client_chatgpt;
 mod qsbc_ac06_connect_go_json_matches_quickstart;
 #[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
 mod qsbc_ac07_quickstart_writes_client_name;
-#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
-mod refrow_ac01_args_invalid_writes_refused_row;
-#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
-mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
-#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
-mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
-#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
-mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
-#[path = "refrow_ac05_host_usage_reports_refused.rs"]
-mod refrow_ac05_host_usage_reports_refused;
-#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
-mod refrow_ac06_unwritable_db_refusal_still_returned;

@@ -664,6 +664,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.connect.providers", UNPAGED_REGISTRY),
     ("host.docs.search", UNPAGED_RANKED),
     ("host.docs.status", UNPAGED_ECHO),
+    ("host.queue.list", UNPAGED_BOUNDED),
     ("host.doctor", UNPAGED_WINDOW),
     ("host.schedule_receipts", UNPAGED_WINDOW),
     ("host.drift.reviews", UNPAGED_WINDOW),

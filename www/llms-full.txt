@@ -1026,6 +1026,10 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `perf_echo_p95_ms` | 150 | 100 |
 | `perf_http_p95_ms` | 800 | 500 |
 | `perf_python_cold_p95_ms` | 1500 | 800 |
+| `queue_concurrency_max` | 2 | 10 |
+| `queue_item_bytes_max` | 4096 | 65536 |
+| `queue_items_max` | 1000 | 50000 |
+| `queues_max` | 2 | 20 |
 | `receipts_retention_days` | 7 | 30 |
 | `recipients_per_msg_max` | 5 | 20 |
 | `resource_read_bytes_max` | 1048576 | 1048576 |
