@@ -6802,6 +6802,378 @@
     ],
     "type": "object"
   },
+  "host.queue.create": {
+    "properties": {
+      "concurrency": {
+        "type": "integer"
+      },
+      "consumer_tool": {
+        "type": "string"
+      },
+      "created_at_ms": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "state",
+      "consumer_tool",
+      "concurrency",
+      "created_at_ms"
+    ],
+    "type": "object"
+  },
+  "host.queue.delete": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "host.queue.drain": {
+    "properties": {
+      "attempts_total": {
+        "type": "integer"
+      },
+      "concurrency": {
+        "type": "integer"
+      },
+      "consumer_tool": {
+        "type": "string"
+      },
+      "created_at_ms": {
+        "type": "integer"
+      },
+      "done": {
+        "type": "integer"
+      },
+      "drained_at_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "failed": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "oldest_pending_age_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "pending": {
+        "type": "integer"
+      },
+      "running": {
+        "type": "integer"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "state",
+      "consumer_tool",
+      "concurrency",
+      "pending",
+      "running",
+      "done",
+      "failed",
+      "attempts_total",
+      "oldest_pending_age_ms",
+      "created_at_ms",
+      "drained_at_ms"
+    ],
+    "type": "object"
+  },
+  "host.queue.list": {
+    "properties": {
+      "queues": {
+        "items": {
+          "properties": {
+            "done": {
+              "type": "integer"
+            },
+            "failed": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pending": {
+              "type": "integer"
+            },
+            "running": {
+              "type": "integer"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "pending",
+            "running",
+            "done",
+            "failed"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "queues"
+    ],
+    "type": "object"
+  },
+  "host.queue.pause": {
+    "properties": {
+      "attempts_total": {
+        "type": "integer"
+      },
+      "concurrency": {
+        "type": "integer"
+      },
+      "consumer_tool": {
+        "type": "string"
+      },
+      "created_at_ms": {
+        "type": "integer"
+      },
+      "done": {
+        "type": "integer"
+      },
+      "drained_at_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "failed": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "oldest_pending_age_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "pending": {
+        "type": "integer"
+      },
+      "running": {
+        "type": "integer"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "state",
+      "consumer_tool",
+      "concurrency",
+      "pending",
+      "running",
+      "done",
+      "failed",
+      "attempts_total",
+      "oldest_pending_age_ms",
+      "created_at_ms",
+      "drained_at_ms"
+    ],
+    "type": "object"
+  },
+  "host.queue.push": {
+    "properties": {
+      "accepted": {
+        "type": "integer"
+      },
+      "first_idx": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "last_idx": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "rejected": {
+        "items": {
+          "properties": {
+            "index": {
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "index",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "accepted",
+      "rejected",
+      "first_idx",
+      "last_idx"
+    ],
+    "type": "object"
+  },
+  "host.queue.resume": {
+    "properties": {
+      "attempts_total": {
+        "type": "integer"
+      },
+      "concurrency": {
+        "type": "integer"
+      },
+      "consumer_tool": {
+        "type": "string"
+      },
+      "created_at_ms": {
+        "type": "integer"
+      },
+      "done": {
+        "type": "integer"
+      },
+      "drained_at_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "failed": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "oldest_pending_age_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "pending": {
+        "type": "integer"
+      },
+      "running": {
+        "type": "integer"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "state",
+      "consumer_tool",
+      "concurrency",
+      "pending",
+      "running",
+      "done",
+      "failed",
+      "attempts_total",
+      "oldest_pending_age_ms",
+      "created_at_ms",
+      "drained_at_ms"
+    ],
+    "type": "object"
+  },
+  "host.queue.stats": {
+    "properties": {
+      "attempts_total": {
+        "type": "integer"
+      },
+      "concurrency": {
+        "type": "integer"
+      },
+      "consumer_tool": {
+        "type": "string"
+      },
+      "created_at_ms": {
+        "type": "integer"
+      },
+      "done": {
+        "type": "integer"
+      },
+      "drained_at_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "failed": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "oldest_pending_age_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "pending": {
+        "type": "integer"
+      },
+      "running": {
+        "type": "integer"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "state",
+      "consumer_tool",
+      "concurrency",
+      "pending",
+      "running",
+      "done",
+      "failed",
+      "attempts_total",
+      "oldest_pending_age_ms",
+      "created_at_ms",
+      "drained_at_ms"
+    ],
+    "type": "object"
+  },
   "host.quickstart": {
     "properties": {
       "aliases": {

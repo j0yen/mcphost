@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use crate::errors::AppError;
 use crate::paged::{OrderEnum as _, Paged as _};
 
+pub mod queues;
 pub mod synthetic_purge;
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -371,6 +372,8 @@ const MIGRATION_0138: &str = include_str!("../migrations/0138_tool_test_verdict.
 /// PRD-mcphost-trusted-discovery-catalog-receipts AC6: the index, receipts cache and triggers behind `calls_30d`.
 const MIGRATION_0139: &str = include_str!("../migrations/0139_catalog_receipts.sql");
 const MIGRATION_0140: &str = include_str!("../migrations/0140_synthetic_tenant_purge.sql");
+/// PRD-mcphost-queue-primitive-v2 R1: the `queues` and `queue_items` tables.
+const MIGRATION_0141: &str = include_str!("../migrations/0141_queues.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3661,6 +3664,8 @@ impl Db {
         conn.execute_batch(MIGRATION_0139)?;
         // `IF NOT EXISTS` / `INSERT OR IGNORE` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0140)?;
+        // `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0141)?;
         Ok(())
     }
 

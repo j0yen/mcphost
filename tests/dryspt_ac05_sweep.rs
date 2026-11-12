@@ -71,6 +71,20 @@ fn trig() -> Vec<(&'static str, Value)> {
     vec![publish(), ("host.trigger.set", json!({"name": "tg1", "tool": "pinger", "schedule": "0 0 1 1 *"}))]
 }
 
+fn q_create_args() -> Value {
+    json!({"name": "q1", "consumer_tool": "pinger"})
+}
+fn q_seed() -> Vec<(&'static str, Value)> {
+    vec![publish(), ("host.queue.create", q_create_args())]
+}
+fn q_seed_items() -> Vec<(&'static str, Value)> {
+    let mut v = q_seed();
+    v.push(("host.queue.push", json!({"name": "q1", "items": [{"n": 1}, {"n": 2}]})));
+    v
+}
+fn q_reads() -> Vec<(&'static str, Value)> {
+    vec![("host.queue.list", json!({})), ("host.queue.stats", json!({"name": "q1"}))]
+}
 fn fixtures() -> Vec<Fx> {
     let d = |v: Value| {
         let mut v = v;
@@ -91,6 +105,12 @@ fn fixtures() -> Vec<Fx> {
         fx("host.state.table_drop", st_rows(), d(json!({"name": "st1"})), st_reads()),
         fx("host.docs.put", vec![], d(json!({"name": "d1", "content": "one"})), vec![("host.docs.list", json!({}))]),
         fx("host.docs.put_many", vec![], d(json!({"documents": [{"name": "d1", "content": "one"}, {"name": "d2", "content": "two"}]})), vec![("host.docs.list", json!({}))]),
+        fx("host.queue.create", vec![publish()], d(q_create_args()), vec![("host.queue.list", json!({}))]),
+        fx("host.queue.push", q_seed(), d(json!({"name": "q1", "items": [{"n": 1}]})), q_reads()),
+        fx("host.queue.pause", q_seed_items(), d(json!({"name": "q1"})), q_reads()),
+        fx("host.queue.resume", { let mut v = q_seed_items(); v.push(("host.queue.pause", json!({"name": "q1"}))); v }, d(json!({"name": "q1"})), q_reads()),
+        fx("host.queue.drain", q_seed_items(), d(json!({"name": "q1"})), q_reads()),
+        fx("host.queue.delete", { let mut v = q_seed_items(); v.push(("host.queue.pause", json!({"name": "q1"}))); v }, d(json!({"name": "q1"})), q_reads()),
         fx("host.docs.delete", vec![("host.docs.put", json!({"name": "d1", "content": "one"}))], d(json!({"name": "d1"})), vec![("host.docs.list", json!({})), ("host.docs.get", json!({"name": "d1"}))]),
         fx("host.docs.purge", docs2(), d(json!({"name": "d1", "older_than_versions": 1})), vec![("host.docs.list", json!({})), ("host.docs.get", json!({"name": "d1"}))]),
         fx("host.index.create", vec![], d(json!({"name": "ix1", "sources": [{"kind": "doc", "prefix": "d"}]})), vec![("host.index.list", json!({}))]),
@@ -131,13 +151,14 @@ fn fixtures() -> Vec<Fx> {
 /// in them with no state change, so the read-back compare masks them. Stored
 /// timestamps (`created_at`, `updated_at`, ...) are stable between reads and
 /// stay compared. Each key's defining file is in `CLOCK_DERIVED_KEY_SRC`.
-const CLOCK_DERIVED_READ_KEYS: &[&str] = &["lag_seconds"];
+const CLOCK_DERIVED_READ_KEYS: &[&str] = &["lag_seconds", "oldest_pending_age_ms"];
 
 /// key -> the `src/` file whose code emits it. `clock_derived_keys_are_current`
 /// reads each file, so a renamed or removed key fails here instead of leaving
 /// a dead entry in the mask.
 // lag_seconds: src/index.rs:579 (`host.index.list`, `now - created_at` while a source is pending)
-const CLOCK_DERIVED_KEY_SRC: &[(&str, &str)] = &[("lag_seconds", "src/index.rs")];
+// oldest_pending_age_ms: `host.queue.stats`/`host.queue.list`, `now - enqueued_at` of the oldest pending item
+const CLOCK_DERIVED_KEY_SRC: &[(&str, &str)] = &[("lag_seconds", "src/index.rs"), ("oldest_pending_age_ms", "src/queues.rs")];
 
 const CLOCK_MARKER: &str = "<clock>";
 

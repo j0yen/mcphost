@@ -21403,6 +21403,1108 @@
       "since": "0.60.19"
     },
     {
+      "description": "Create a named queue for a batch: the host works through the items you push, as ordinary runs of consumer_tool (trigger queue), after your session ends. At most concurrency of the queue's runs are queued or running at once, and never more than the plan's jobs_concurrent. consumer_tool must be one of your own published tools; a queue counts against the plan's queues_max and concurrency against queue_concurrency_max (host.quickstart limits.plan). Returns {name, state, consumer_tool, concurrency, created_at_ms}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "concurrency": {
+            "description": "How many items may run at once, 1 to the plan's queue_concurrency_max; default 1.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "consumer_tool": {
+            "description": "One of your own published tools; each pushed item is its arguments.",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name: lowercase letters, digits, - and _, 1 to 40 characters.",
+            "pattern": "^[a-z0-9_-]{1,40}$",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "consumer_tool"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.queue.create",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "name",
+              "state",
+              "consumer_tool",
+              "concurrency",
+              "created_at_ms"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "concurrency": {
+            "type": "integer"
+          },
+          "consumer_tool": {
+            "type": "string"
+          },
+          "created_at_ms": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.0"
+    },
+    {
+      "description": "Delete a drained or paused queue and all its items. An active or draining queue answers queue_active with the hint 'pause or drain first'. Runs already started stay in host.runs.list. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "The confirm token a dry_run: true call with the same arguments returned; required when the call affects at least the plan's confirm_rows_min rows.",
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.queue.delete",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "name",
+              "deleted"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.0"
+    },
+    {
+      "description": "Stop accepting items and finish what remains: an active or paused queue becomes draining, then drained (drained_at_ms set) once nothing is pending or running; an empty queue goes straight to drained. A push to it then answers queue_not_accepting. Returns the queue's stats.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.queue.drain",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "name",
+              "state",
+              "consumer_tool",
+              "concurrency",
+              "pending",
+              "running",
+              "done",
+              "failed",
+              "attempts_total",
+              "oldest_pending_age_ms",
+              "created_at_ms",
+              "drained_at_ms"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "attempts_total": {
+            "type": "integer"
+          },
+          "concurrency": {
+            "type": "integer"
+          },
+          "consumer_tool": {
+            "type": "string"
+          },
+          "created_at_ms": {
+            "type": "integer"
+          },
+          "done": {
+            "type": "integer"
+          },
+          "drained_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "oldest_pending_age_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "running": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.0"
+    },
+    {
+      "description": "List this tenant's queues: {queues: [{name, state, pending, running, done, failed}]}, name order. Bounded by the plan's queues_max, so it returns whole.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.queue.list",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "queues": {
+            "items": {
+              "properties": {
+                "done": {
+                  "type": "integer"
+                },
+                "failed": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pending": {
+                  "type": "integer"
+                },
+                "running": {
+                  "type": "integer"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "state",
+                "pending",
+                "running",
+                "done",
+                "failed"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "queues"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
+    },
+    {
+      "description": "Pause an active queue: no further item starts, the items already running finish. Pushes are still accepted and held. host.queue.resume starts delivery again. Returns the queue's stats.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.queue.pause",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "name",
+              "state",
+              "consumer_tool",
+              "concurrency",
+              "pending",
+              "running",
+              "done",
+              "failed",
+              "attempts_total",
+              "oldest_pending_age_ms",
+              "created_at_ms",
+              "drained_at_ms"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "attempts_total": {
+            "type": "integer"
+          },
+          "concurrency": {
+            "type": "integer"
+          },
+          "consumer_tool": {
+            "type": "string"
+          },
+          "created_at_ms": {
+            "type": "integer"
+          },
+          "done": {
+            "type": "integer"
+          },
+          "drained_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "oldest_pending_age_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "running": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.0"
+    },
+    {
+      "description": "Push up to 1000 items onto a queue in one call. Each item is the arguments of the queue's consumer_tool, checked against its input_schema now and held to the plan's queue_item_bytes_max; a bad item is reported, never fatal. Returns {accepted, rejected: [{index, reason}], first_idx, last_idx}. Items run in push order. A push to a paused queue is accepted and held; a draining or drained queue answers queue_not_accepting; a push that would pass the plan's queue_items_max (pending plus running) inserts nothing and answers quota_exceeded.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "items": {
+            "description": "1-1000 items, each the arguments of the consumer tool.",
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "items"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.queue.push",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "accepted",
+              "rejected",
+              "first_idx",
+              "last_idx"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "accepted": {
+            "type": "integer"
+          },
+          "first_idx": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "last_idx": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rejected": {
+            "items": {
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "index",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.0"
+    },
+    {
+      "description": "Resume a paused queue: delivery continues with the next pending item. Returns the queue's stats.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.queue.resume",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "name",
+              "state",
+              "consumer_tool",
+              "concurrency",
+              "pending",
+              "running",
+              "done",
+              "failed",
+              "attempts_total",
+              "oldest_pending_age_ms",
+              "created_at_ms",
+              "drained_at_ms"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "attempts_total": {
+            "type": "integer"
+          },
+          "concurrency": {
+            "type": "integer"
+          },
+          "consumer_tool": {
+            "type": "string"
+          },
+          "created_at_ms": {
+            "type": "integer"
+          },
+          "done": {
+            "type": "integer"
+          },
+          "drained_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "oldest_pending_age_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "running": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.0"
+    },
+    {
+      "description": "Read one queue: {state, consumer_tool, concurrency, pending, running, done, failed, attempts_total, oldest_pending_age_ms, created_at_ms, drained_at_ms}. The four counts come from one read and sum to the items the queue holds. State is active, paused, draining or drained.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.queue.stats",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "attempts_total": {
+            "type": "integer"
+          },
+          "concurrency": {
+            "type": "integer"
+          },
+          "consumer_tool": {
+            "type": "string"
+          },
+          "created_at_ms": {
+            "type": "integer"
+          },
+          "done": {
+            "type": "integer"
+          },
+          "drained_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "oldest_pending_age_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "running": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "state",
+          "consumer_tool",
+          "concurrency",
+          "pending",
+          "running",
+          "done",
+          "failed",
+          "attempts_total",
+          "oldest_pending_age_ms",
+          "created_at_ms",
+          "drained_at_ms"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.0"
+    },
+    {
       "description": "Return the shortest ordered sequence of calls to a working tool of `kind`, with your namespace and a filled-in example already substituted in, plus the current limits and a try_before_call table naming the one dry-run tool for each case. Read-only -- this call alone never creates a tenant. Call this before host.tool_publish if you're not sure what a spec should look like. Unauthenticated callers get a worked example with no tenant data; any other host.*/billing.* call creates a tenant on first use, no signup required.",
       "input_schema": {
         "additionalProperties": false,
@@ -24080,7 +25182,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled|rejected|skipped|in_flight|failed), trigger (call|job|schedule|event|message|webhook|composition|url), end_user_subject (the end user, if any, the run ran as), or verdict (ok|alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
+      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled|rejected|skipped|in_flight|failed), trigger (call|job|schedule|event|message|webhook|composition|url|queue), end_user_subject (the end user, if any, the run ran as), or verdict (ok|alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
       "fields_enum": [
         "run_id",
         "tool",
@@ -24206,7 +25308,7 @@
             "type": "string"
           },
           "trigger": {
-            "description": "Only runs of this trigger kind (call|job|schedule|event|message|webhook|composition|url).",
+            "description": "Only runs of this trigger kind (call|job|schedule|event|message|webhook|composition|url|queue).",
             "enum": [
               "call",
               "job",
@@ -24215,7 +25317,8 @@
               "message",
               "webhook",
               "composition",
-              "url"
+              "url",
+              "queue"
             ],
             "type": "string"
           },
@@ -46097,6 +47200,241 @@
       "since": "0.103.1"
     },
     {
+      "alias_of": "host.queue.create",
+      "description": "Create a named queue for a batch: the host works through the items you push, as ordinary runs of consumer_tool (trigger queue), after your session ends. At most concurrency of the queue's runs are queued or running at once, and never more than the plan's jobs_concurrent. consumer_tool must be one of your own published tools; a queue counts against the plan's queues_max and concurrency against queue_concurrency_max (host.quickstart limits.plan). Returns {name, state, consumer_tool, concurrency, created_at_ms}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "concurrency": {
+            "description": "How many items may run at once, 1 to the plan's queue_concurrency_max; default 1.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "consumer_tool": {
+            "description": "One of your own published tools; each pushed item is its arguments.",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name: lowercase letters, digits, - and _, 1 to 40 characters.",
+            "pattern": "^[a-z0-9_-]{1,40}$",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "consumer_tool"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_queue_create",
+      "since": "0.130.0"
+    },
+    {
+      "alias_of": "host.queue.delete",
+      "description": "Delete a drained or paused queue and all its items. An active or draining queue answers queue_active with the hint 'pause or drain first'. Runs already started stay in host.runs.list. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "The confirm token a dry_run: true call with the same arguments returned; required when the call affects at least the plan's confirm_rows_min rows.",
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_queue_delete",
+      "since": "0.130.0"
+    },
+    {
+      "alias_of": "host.queue.drain",
+      "description": "Stop accepting items and finish what remains: an active or paused queue becomes draining, then drained (drained_at_ms set) once nothing is pending or running; an empty queue goes straight to drained. A push to it then answers queue_not_accepting. Returns the queue's stats.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_queue_drain",
+      "since": "0.130.0"
+    },
+    {
+      "alias_of": "host.queue.list",
+      "description": "List this tenant's queues: {queues: [{name, state, pending, running, done, failed}]}, name order. Bounded by the plan's queues_max, so it returns whole.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_queue_list",
+      "since": "0.130.0"
+    },
+    {
+      "alias_of": "host.queue.pause",
+      "description": "Pause an active queue: no further item starts, the items already running finish. Pushes are still accepted and held. host.queue.resume starts delivery again. Returns the queue's stats.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_queue_pause",
+      "since": "0.130.0"
+    },
+    {
+      "alias_of": "host.queue.push",
+      "description": "Push up to 1000 items onto a queue in one call. Each item is the arguments of the queue's consumer_tool, checked against its input_schema now and held to the plan's queue_item_bytes_max; a bad item is reported, never fatal. Returns {accepted, rejected: [{index, reason}], first_idx, last_idx}. Items run in push order. A push to a paused queue is accepted and held; a draining or drained queue answers queue_not_accepting; a push that would pass the plan's queue_items_max (pending plus running) inserts nothing and answers quota_exceeded.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "items": {
+            "description": "1-1000 items, each the arguments of the consumer tool.",
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "items"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_queue_push",
+      "since": "0.130.0"
+    },
+    {
+      "alias_of": "host.queue.resume",
+      "description": "Resume a paused queue: delivery continues with the next pending item. Returns the queue's stats.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_queue_resume",
+      "since": "0.130.0"
+    },
+    {
+      "alias_of": "host.queue.stats",
+      "description": "Read one queue: {state, consumer_tool, concurrency, pending, running, done, failed, attempts_total, oldest_pending_age_ms, created_at_ms, drained_at_ms}. The four counts come from one read and sum to the items the queue holds. State is active, paused, draining or drained.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The queue's name (lowercase letters, digits, - and _, at most 40).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_queue_stats",
+      "since": "0.130.0"
+    },
+    {
       "alias_of": "host.quickstart",
       "description": "Return the shortest ordered sequence of calls to a working tool of `kind`, with your namespace and a filled-in example already substituted in, plus the current limits and a try_before_call table naming the one dry-run tool for each case. Read-only -- this call alone never creates a tenant. Call this before host.tool_publish if you're not sure what a spec should look like. Unauthenticated callers get a worked example with no tenant data; any other host.*/billing.* call creates a tenant on first use, no signup required.",
       "input_schema": {
@@ -46240,7 +47578,7 @@
     },
     {
       "alias_of": "host.runs.list",
-      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled|rejected|skipped|in_flight|failed), trigger (call|job|schedule|event|message|webhook|composition|url), end_user_subject (the end user, if any, the run ran as), or verdict (ok|alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
+      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled|rejected|skipped|in_flight|failed), trigger (call|job|schedule|event|message|webhook|composition|url|queue), end_user_subject (the end user, if any, the run ran as), or verdict (ok|alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -46340,7 +47678,7 @@
             "type": "string"
           },
           "trigger": {
-            "description": "Only runs of this trigger kind (call|job|schedule|event|message|webhook|composition|url).",
+            "description": "Only runs of this trigger kind (call|job|schedule|event|message|webhook|composition|url|queue).",
             "enum": [
               "call",
               "job",
@@ -46349,7 +47687,8 @@
               "message",
               "webhook",
               "composition",
-              "url"
+              "url",
+              "queue"
             ],
             "type": "string"
           },

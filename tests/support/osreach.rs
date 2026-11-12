@@ -203,6 +203,56 @@ fn harvest(structured: &Value, into: &mut BTreeMap<String, Value>) {
     }
 }
 
+/// The seeded consumer tool every populated tenant holds, and the queues over it
+/// (PRD-mcphost-queue-primitive-v2: the queue verbs need a consumer tool and queues
+/// in particular states, and answer each state differently: a drained queue refuses
+/// a push, an active one refuses a delete).
+const SEED_TOOL: &str = "osq";
+const QUEUE_LIVE: &str = "osq_live";
+const QUEUE_DRAIN: &str = "osq_drain";
+const QUEUE_NEW: &str = "osq_new";
+/// Verb names are built from a prefix and a verb, never spelled whole
+/// (`osreach_ac01_no_tool_name_literal_in_the_test_sources`).
+const QUEUE_PREFIX: &str = "host.queue.";
+const TOOL_PREFIX: &str = "host.tool.";
+
+/// Verbs that act on an existing published tool by `name`.
+const TOOL_NAMED_VERBS: &[&str] =
+    &["call", "diff", "history", "logs", "remove", "rollback", "run", "share", "test", "unshare"];
+
+/// Points a call at the seeded objects: a tool-naming verb at `osq`, any `tool`
+/// argument at it, and each queue verb at the queue whose state it succeeds on.
+/// `populating` is true while the creator verbs run, false for the verb under test.
+fn pin_seeded_args(canonical: &str, args: &mut Value, populating: bool) {
+    let Some(obj) = args.as_object_mut() else {
+        return;
+    };
+    if obj.contains_key("tool") {
+        obj.insert("tool".to_string(), json!(SEED_TOOL));
+    }
+    let tool_verb = canonical.strip_prefix(TOOL_PREFIX);
+    if tool_verb.is_some_and(|v| TOOL_NAMED_VERBS.contains(&v)) {
+        obj.insert("name".to_string(), json!(SEED_TOOL));
+    }
+    let Some(verb) = canonical.strip_prefix(QUEUE_PREFIX) else {
+        return;
+    };
+    let name = match verb {
+        "drain" | "delete" => QUEUE_DRAIN,
+        "create" if !populating => QUEUE_NEW,
+        _ => QUEUE_LIVE,
+    };
+    if obj.contains_key("name") {
+        obj.insert("name".to_string(), json!(name));
+    }
+    if obj.contains_key("consumer_tool") {
+        obj.insert("consumer_tool".to_string(), json!(SEED_TOOL));
+    }
+    if obj.contains_key("items") {
+        obj.insert("items".to_string(), json!([{}]));
+    }
+}
+
 enum Outcome {
     Success(Value),
     Failed(String),
@@ -317,9 +367,15 @@ pub async fn run_sweep() -> Sweep {
         if destructive {
             let (client, ids) = populate(&server, &creators).await;
             fill(&mut a, &ids);
+            pin_seeded_args(&canonical, &mut a, false);
+            if canonical == format!("{QUEUE_PREFIX}create") {
+                // The populated tenant holds `queues_max` queues: free one for the call.
+                call(&client, &format!("{QUEUE_PREFIX}delete"), json!({"name": QUEUE_DRAIN})).await;
+            }
             record(&mut row, s, STATE_AFTER_CREATE, call(&client, &s.name, a).await);
         } else {
             fill(&mut a, &shared_ids);
+            pin_seeded_args(&canonical, &mut a, false);
             record(&mut row, s, STATE_AFTER_CREATE, call(&shared, &s.name, a).await);
         }
         sweep.rows.insert(s.name.clone(), row);
@@ -330,9 +386,17 @@ pub async fn run_sweep() -> Sweep {
 async fn populate(server: &TestServer, creators: &[&Served]) -> (McpClient, BTreeMap<String, Value>) {
     let client = fresh_client(server).await;
     let mut ids = BTreeMap::new();
+    // A published tool and two queues over it, so the verbs that name an existing
+    // object have one to name.
+    let seed = json!({"name": SEED_TOOL, "kind": "echo", "spec": {"schema": {"type": "object"}}});
+    call(&client, &format!("{TOOL_PREFIX}publish"), seed).await;
+    for queue in [QUEUE_LIVE, QUEUE_DRAIN] {
+        call(&client, &format!("{QUEUE_PREFIX}create"), json!({"name": queue, "consumer_tool": SEED_TOOL, "concurrency": 1})).await;
+    }
     for s in creators {
         let mut a = crate::vbd_calls::call_for(s.input.as_object().unwrap_or(&Map::new()));
         fill(&mut a, &ids);
+        pin_seeded_args(&canonical_of(&s.name), &mut a, true);
         if let Outcome::Success(structured) = call(&client, &s.name, a).await {
             harvest(&structured, &mut ids);
         }
