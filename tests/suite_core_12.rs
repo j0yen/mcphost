@@ -32,6 +32,18 @@ mod tssdk;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
+mod refrow_ac01_args_invalid_writes_refused_row;
+#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
+mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
+#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
+mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
+#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
+mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
+#[path = "refrow_ac05_host_usage_reports_refused.rs"]
+mod refrow_ac05_host_usage_reports_refused;
+#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
+mod refrow_ac06_unwritable_db_refusal_still_returned;
 #[path = "refst_ac01_unimplemented_method_status_by_revision.rs"]
 mod refst_ac01_unimplemented_method_status_by_revision;
 #[path = "refst_ac03_refusal_status_rule_and_batch.rs"]

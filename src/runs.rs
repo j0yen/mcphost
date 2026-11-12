@@ -1304,6 +1304,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         .as_deref()
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_else(|| Value::Object(Default::default()));
+    crate::logsink::arm(&row.pii_args, &args);
 
     let Ok(secrets) = build_secret_resolver(state, tenant.id).await else {
         return JobOutcome::Error {
@@ -1558,6 +1559,12 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
 /// panics out of the executor's own spawn -- every fallible step inside
 /// `execute_job` degrades to a `JobOutcome::Error` instead.
 async fn run_one_job(state: AppState, run: RunRow) {
+    // PRD-mcphost-pii-tagging-and-log-redaction-v2 R2: `execute_job` arms the
+    // scope with the tool's tagged values; the finaliser below writes inside it.
+    crate::logsink::scoped(run_one_job_scoped(state, run)).await
+}
+
+async fn run_one_job_scoped(state: AppState, run: RunRow) {
     let run_id = run.id.clone();
     let tenant_id = run.tenant_id;
     let cancel_pid = state.runs.register(&run_id);

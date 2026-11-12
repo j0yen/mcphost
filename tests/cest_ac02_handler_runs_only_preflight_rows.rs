@@ -64,7 +64,7 @@ fn handler_has_no_direct_admission_call_outside_the_preflight_list() {
     let found = direct_admission_calls(handler, FILE_WIDE);
     assert!(found.is_empty(), "src/handler.rs calls an admission check directly:\n{}", found.join("\n"));
 
-    for name in ["host_tool_call", "call_published_tool", "dry_run_call"] {
+    for name in ["host_tool_call", "call_published_tool", "call_published_tool_scoped", "dry_run_call"] {
         let found = direct_admission_calls(fn_body(handler, name), ADMISSION_PRIMITIVES);
         assert!(found.is_empty(), "{name} runs an admission check outside PREFLIGHT_CHECKS:\n{}", found.join("\n"));
     }
@@ -80,7 +80,14 @@ fn the_scanner_flags_a_direct_call() {
 #[test]
 fn call_published_tool_reaches_admission_only_through_the_list() {
     let handler = include_str!("../src/handler.rs");
-    let body = fn_body(handler, "call_published_tool");
+    // `call_published_tool` wraps `call_published_tool_scoped` in the log-sink
+    // scope (PRD-mcphost-pii-tagging-and-log-redaction-v2); the admission
+    // path is the scoped body.
+    assert!(
+        fn_body(handler, "call_published_tool").contains("call_published_tool_scoped("),
+        "call_published_tool must delegate to call_published_tool_scoped"
+    );
+    let body = fn_body(handler, "call_published_tool_scoped");
     assert!(body.contains("preflight::resolve("), "call_published_tool must resolve through preflight");
     assert!(
         body.contains("preflight::run_stage(") && body.contains("Stage::Resolved"),

@@ -7,11 +7,15 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+#[path = "support/ctrace.rs"]
+mod ctrace;
 #[path = "support/elicit_session.rs"]
 mod elicit_session;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
+#[path = "support/piir.rs"]
+mod piir;
 #[path = "support/promptkind.rs"]
 mod promptkind;
 #[path = "support/sampling_session.rs"]
@@ -181,6 +185,10 @@ mod nmove_ac05_nomain_names_the_definitions;
 mod nmove_ac07_registry_and_driver;
 #[path = "pgm_ac05_skip_when_semaphore_nearly_full.rs"]
 mod pgm_ac05_skip_when_semaphore_nearly_full;
+#[path = "piir_ac01_untagged_value_persists_in_sinks.rs"]
+mod piir_ac01_untagged_value_persists_in_sinks;
+#[path = "piir_ac02_tagged_value_redacted_in_every_sink.rs"]
+mod piir_ac02_tagged_value_redacted_in_every_sink;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
 mod plainenv_ac01_env_reaches_process;
 #[path = "plainenv_ac02_invalid_names_refused.rs"]
