@@ -1,0 +1,14 @@
+     Running tests/suite_core_11.rs (target/debug/deps/suite_core_11-aaaa)
+
+running 3 tests
+test alpha::passes_first ... ok
+test outsch_ac01_oneof_budget_falsifier::the_corpus_covers ... thread 'outsch_ac01_oneof_budget_falsifier::the_corpus_covers' panicked at tests/outsch_ac01_oneof_budget_falsifier.rs:58:5:
+coverage 192/264 < 80 %: ["host.queue.create", "host.queue.delete"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test gamma::passes_last ... ok
+
+failures:
+    outsch_ac01_oneof_budget_falsifier::the_corpus_covers
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.50s

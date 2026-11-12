@@ -1,58 +1,71 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-response-size-budget-explicit-v2.md",
-  "intent_slug": "mcphost-response-size-budget-explicit-v2",
-  "root_motivation": "WHO: an agent reading host.table.query, host.runs.list or host.docs.list on a plan or client that cannot use a very large answer, and Joe, who sets the byte budget by editing one plan row. WHAT: nothing sizes a page of a paged verb and nothing tells an agent where a shorter page stopped, so a client that cuts the text on its side reasons over a partial result as if it were whole. WHY: a page over the plan's byte budget must be cut at a row boundary and name its size, the full size and the exact next call, and a cut must never happen without that marker.",
-  "user_persona": "An agent (or its operator) paging a host list verb or a SQL result who needs every page to fit a stated budget, end on a whole row, and carry a continue_with call it can make verbatim; and an operator who raises the pro budget by editing one plan row.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-outsch-ac01-coverage-diagnosable.md",
+  "intent_slug": "mcphost-outsch-ac01-coverage-diagnosable",
+  "root_motivation": "**Who:** the wm-build daemon and the coder it forces after a red CI; the human who reads a red PR to learn why. **What:** a red PR has to tell its coder which tools lack corpus rows, and the gate has to say the same thing on a shard as on a laptop. **Why not today** (read at `origin/main` 6c0de782): - `outsch_rows` (`tests/common/mod.rs:199-240`) unions `tests/fixtures/outsch` with `target/outsch`, which `outsch_capture` (`mod.rs:150-197`) fills while other tests run. Coverage therefore depends on which tests ran before this one in the same target dir: a full local suite fills it, a core shard (`ci-test-partition.sh core-shard N 5`, `CORE_SHARDS` at line 119) fills a slice. - Committed fixtures cover 192 of 256 registered tools on main (75.0 %, below the 80 % the test at `tests/outsch_ac01_oneof_budget_falsifier.rs:58` demands) and 192 of 264 at bf9e7cb3 (72.7 %). Main is green only because a CI shard captures the missing 13 or more (205 = \u23080.8 \u00d7 256\u2309 needed, 192 committed); th...",
+  "user_persona": "An agent with a batch and a tool that takes one item: it creates a queue over the tool, pushes up to 1 000 items per call, reads stats next session, and pauses, resumes, drains or deletes the queue; the host runs the items as ordinary trigger=queue runs within the queue's concurrency and the plan's jobs_concurrent.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 5
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a page cut for budget on a paged verb, When rszb_ac01_one_truncation_struct serializes _meta.mcphost.truncated, Then it has exactly the keys bytes, of and continue_with, and a response that was also clamped by limit holds both limit_clamped and truncated under _meta.mcphost.",
-      "test": "tests/rszb_ac01_one_truncation_struct.rs"
+      "description": "Given `coverage_report` over 10 registered tools with rows for 7, When it returns, Then it is `Err` naming the 3 uncovered tools and `7/10`; with rows for 8 and the other 2 in `GAPS.txt` it is `Ok`; Given a `--nocapture`-format log and a `---- <test> stdout ----` log, When `ci-shard-report.sh` runs, Then `FAILED <test>` is followed by the first panic message, also in `$GITHUB_STEP_SUMMARY`, cut to 2 000 bytes; with no panic text the FAILED line stands alone.",
+      "test": "tests/outcov_ac01a_coverage_report.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given each verb in PAGED_VERBS with enough rows to pass an 8 KiB plan budget, When it is read at its maximum limit and every continue_with is followed verbatim, Then each page is within 8 KiB or is one row, ends on a whole row, continue_with.args.limit equals the request's limit, and the walk visits every row once; Given host.channel.read {ack: true} cut, Then the stored position is the last row kept.",
-      "test": "tests/rszb_ac02_every_paged_verb_walks_within_budget.rs"
+      "description": "Given `target/outsch` empty, partial and full, When the coverage and branch-budget tests run, Then all three verdicts match and an invalid captured row fails the latter; 30 of 50 covered, the 20 in `GAPS.txt`, is `Err`; Given the repo, Then fixtures cover `ceil(0.8 \u00d7 registered)` tools, each `GAPS.txt` line has a reason, each `host.queue.*` tool has a captured fixture, and only the branch-budget test and `outcov_ac02_*.rs` call `outsch_rows(`. Depends-on: AC 1, AC 3-7",
+      "test": "tests/outcov_ac02_corpus_verdict_is_the_same_everywhere.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the free and pro plans, When host.quickstart runs, Then limits.plan.response_budget_bytes equals the plan struct's field, limits.output_bytes_max still reads the 1 MiB wall, and render_ceilings_table lists the field in docs/plans.md with the docs drift test green.",
-      "test": "tests/rszb_ac03_plan_field_in_quickstart_and_docs.rs"
+      "description": "Given a queue with `concurrency: 2` and 10 pushed items whose consumer sleeps 2 s, When `stats` is polled every 200 ms for 3 s, Then `running` reaches 2 and never exceeds it, the four counts sum to 10 at every poll, and `host.runs.list {trigger: \"queue\"}` never shows more than 2 runs `queued` or `running`; Given `jobs_concurrent: 1`, Then at most one is `running` at any poll.",
+      "test": "tests/outcov_ac03_concurrency_cap_holds.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a python tool that returns a 2 MiB line, When called synchronously, Then the existing tool_output_too_large answers with limit_bytes equal to limits.output_bytes_max and no truncated key; Given a non-paged verb under the wall, Then its response is whole.",
-      "test": "tests/rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs"
+      "description": "Given a paused queue and a push of 1 000 items where items 3 and 500 break the consumer's schema, When it returns, Then `accepted` is 998, `rejected` names indexes 3 and 500, and the 998 sit `pending` in push order; Given a free tenant with 2 queues, When a third `create` runs, Then `quota_exceeded` with `data.limit {name: \"queues_max\", value: 2}` matching `limits.plan.queues_max`, and a push past `queue_items_max` inserts nothing and names it. Depends-on: AC 3",
+      "test": "tests/outcov_ac04_bad_items_named_and_ceilings_name_themselves.rs"
     },
     {
       "id": "AC5",
-      "level": "SHOULD",
-      "description": "Given a 5 MiB table and a 32 KiB plan budget, When host.table.query {sql: \"SELECT * FROM t\", limit: 1000} runs and each continue_with is followed, Then every page is within the budget and ends on a whole row and the walk visits every row once; Given an empty table, Then rows: [] with no marker.",
-      "test": "tests/rszb_ac05_table_query_offset_walk.rs"
+      "level": "MUST",
+      "description": "Given two dispatcher ticks invoked concurrently over the same pending item, When both run, Then exactly one `runs` row exists for it and the item is `running` once; Given a `running` item whose run row is missing, Then the next tick returns it to `pending`. Depends-on: AC 3",
+      "test": "tests/outcov_ac05_claim_is_atomic_and_orphans_recover.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given prod after landing, When tests/rszb_ac06_live_prod_quickstart_budget.rs calls anonymous host.quickstart {}, Then limits.plan.response_budget_bytes is a positive integer (Live; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)",
-      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)"
+      "description": "Given 4 running items, When `pause` is called, Then none starts within 3 ticks and `resume` starts the next within 2 s; Given `drain` on an empty active queue, Then it is `drained` and a `push` answers `queue_not_accepting`; Given `delete` on a drained, a paused and an active queue, Then the first two vanish and the third answers `queue_active`; Given `done` items past retention, Then the prune removes them and keeps `pending` and `running` ones. Depends-on: AC 3",
+      "test": "tests/outcov_ac06_pause_drain_delete_and_prune.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given tenant B's queue name, When tenant A calls any `host.queue.*` verb that takes `name`, `create` excepted, with it, Then `queue_not_found`; Given a `consumer_tool` A never published, When `create` runs, Then `tool_not_found`; and the three new codes appear in `host.errors` (`error_registry`, `errors.json`). Depends-on: AC 3",
+      "test": "tests/outcov_ac07_isolation_and_error_codes.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after deploy, When `tests/qprim_ac08_live_prod_push_20_drains.rs` publishes the echo tool on a synthetic tenant, creates a queue, pushes 20 items, calls `drain`, and polls `stats` for up to 60 s, Then `done` is 20, `state` is `drained` and the tenant is offboarded; Depends-on: AC 3 (Live; evidence: `MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test qprim_ac08_live_prod_push_20_drains`) - iter_log: 2026-11-12 amended by /dream (joe:2026-11-05) \u2014 AC 2 shortened under...",
+      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test qprim_ac08_live_prod_push_20_drains)"
     }
   ],
   "scope": [
-    "src/response_budget.rs (Truncated, Call, cut_page, cut_values, budget_of); src/plans.rs (response_budget_bytes); src/paged.rs (project_rows); the byte-budget cut in src/runs.rs, src/docs.rs, src/calllog.rs, src/messaging.rs and src/channels.rs; src/tables.rs and src/handler/arms.rs (host.table.query offset and cut); src/handler.rs (_meta.mcphost.truncated, host.table.query descriptor); docs/plans.md, docs/tools.md, docs/openapi.json, contracts/host-tools.v1.json and the SDKs rendered from it."
+    "migrations/0141_queues.sql (queues, queue_items); src/queues.rs (the eight host.queue.* verbs, the dispatcher tick); src/db/queues.rs (claim, reconcile, push, state moves); src/runs.rs (consumer_validator); src/run_enums.rs (RunTrigger::Queue); src/plans.rs (queues_max, queue_items_max, queue_concurrency_max, queue_item_bytes_max); src/retention.rs (queue_items policy row); src/handler.rs, src/handler/arms.rs, src/dispatch_table.rs, src/write_verbs.rs, src/paged.rs, src/host_args.rs (registration); generated contracts, docs, SDK errors and the osreach sweep seeds.",
+    "tests/common/mod.rs (outsch_committed_rows, outsch_rows with directory parameters, coverage_report, branch_budget_verdict), tests/fixtures/outsch/ (captured fixtures, GAPS.txt register), tests/fixtures/ci-logs/, scripts/ci-shard-report.sh (first panic message after FAILED)."
   ],
   "non_goals": [
-    "A per-client budget axis; compression; streaming; cutting a non-paged response; paging host.tool.logs; the AC 6 prod read (operator-provisioned, deferred)."
+    "Retries, backoff and dead letters; result collection; outbound notification; priority lanes; emitting the queue.drained event; the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -61,50 +74,56 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
+      "one_migration": "One migration at the next free number (0141), two new tables, compat: previous; runs gains no column.",
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "one_marker": "A cut is reported only as _meta.mcphost.truncated {bytes, of, continue_with}; the kinds' 1 MiB wall still refuses and never cuts."
+      "claim_is_one_closure": "The item claim and the runs insert happen in one with_conn closure, never across two.",
+      "states_from_registry": "Queue state strings come from QueueState::as_str(), never literals."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent reason over a partial result as if it were whole?",
-      "a": "A page of a paged verb has no byte bound and nothing says where a shorter page stopped."
+      "q": "Why does a batch of 100 items stay in the agent's session?",
+      "a": "The host has no container that owns N runs: runs::enqueue starts one run per call."
     },
     {
       "why": 2,
-      "q": "Why is there no byte bound?",
-      "a": "limits.output_bytes_max is one global 1 MiB constant read only by the kinds; the plan catalog has no byte ceiling."
+      "q": "Why is the one-run-per-call shape a problem for 100 items?",
+      "a": "The agent keeps 100 run ids in its own context and paces them itself under the tenant-wide jobs_concurrent."
     },
     {
       "why": 3,
-      "q": "Why not cut at the wall?",
-      "a": "The wall refuses a synchronous kind call and chunks an async run; a cut is only well defined at a row boundary of a paged verb."
+      "q": "Why does a python loop not fix it?",
+      "a": "It hits the plan's tool-latency ceiling or job_max_s, and a chain's for_each is bounded by chain_fanout_max and is not durable or pausable."
     },
     {
       "why": 4,
-      "q": "Why must the cut carry a continue_with?",
-      "a": "A cut without the next call is worse than an error; the keyset cursor each verb already mints makes the call exact."
+      "q": "Why was the batch shape never tried?",
+      "a": "No recipe asks for it and no host verb offers it."
     },
     {
       "why": 5,
-      "q": "Why does host.table.query need an offset?",
-      "a": "It has limit but no continuation, so its cut page could not be resumed without the agent rewriting its own SQL."
+      "q": "Why build a primitive rather than a recipe?",
+      "a": "A host-side queue with counts, pacing and pause makes the batch durable, which only the host can provide."
     }
   ],
   "created_at": "2026-11-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Where is the size measured, before or after fields projection?",
-      "resolution": "After: the page is projected first and the serialized rows array is what is compared with the budget, so bytes and of equal what the client receives."
+      "question": "Does an item run under the consumer tool's budget or a queue-level override?",
+      "resolution": "The tool's own; the queue adds no override."
     },
     {
-      "question": "What does a row larger than the whole budget do?",
-      "resolution": "It is returned alone (a page always keeps at least one row), and the next continue_with resumes after it."
+      "question": "Which verbs does the dispatcher deliver from?",
+      "resolution": "active and draining queues; paused and drained queues are skipped, and a paused queue still reconciles finished items."
     },
     {
-      "question": "Offset or keyset for host.table.query?",
-      "resolution": "Offset, applied as LIMIT n OFFSET m over the caller's own SELECT, because arbitrary SELECTs, row-policy rewrites and CTEs do not guarantee a rowid order."
+      "question": "How are the claim and the run insert kept exactly-once?",
+      "resolution": "One transaction in one with_conn closure that updates the item (status pending, queue active or draining, both caps) and inserts the runs row, so a reconcile cannot see a running item without its run."
+    },
+    {
+      "question": "How does the osreach sweep reach verbs that need a tool and a queue?",
+      "resolution": "populate seeds a consumer tool and two queues; unreached count falls to 615 (cap lowered from 616)."
     }
   ]
 }

@@ -164,6 +164,18 @@ pub struct Plan {
     /// `free` plan's own default (7) when a hand-edited `plans.toml`
     /// predates this key.
     pub calls_retention_days: i64,
+    /// PRD-mcphost-queue-primitive-v2 R9: queues a tenant may hold
+    /// (`host.queue.create` refuses a further one with `quota_exceeded`
+    /// naming this). Defaults to the `free` plan's own default (2) when a
+    /// hand-edited `plans.toml` predates this key.
+    pub queues_max: i64,
+    /// R9: pending plus running items one tenant may hold across its queues
+    /// (`host.queue.push` inserts nothing past it). Free default 1 000.
+    pub queue_items_max: i64,
+    /// R9: the highest `concurrency` a queue may be created with. Free default 2.
+    pub queue_concurrency_max: i64,
+    /// R9: the largest one pushed item may be, in serialised bytes. Free default 4 096.
+    pub queue_item_bytes_max: i64,
     /// PRD-mcphost-key-delegate-child-keys R5: live delegated keys per
     /// tenant across all depths (`host.key.delegate` refuses a further one
     /// with `plan_required` naming this). Defaults to the `free` plan's own
@@ -690,6 +702,13 @@ impl PlanCatalog {
                     dead_letters_max: 100,
                     // PRD-mcphost-call-audit-export R4: "Free 7, Pro 90".
                     calls_retention_days: 7,
+                    // PRD-mcphost-queue-primitive-v2 R9: "free 2, pro 20" queues,
+                    // "free 1 000, pro 50 000" items, "free 2, pro 10" concurrency,
+                    // "free 4 096, pro 65 536" bytes per item.
+                    queues_max: 2,
+                    queue_items_max: 1_000,
+                    queue_concurrency_max: 2,
+                    queue_item_bytes_max: 4_096,
                     // PRD-mcphost-key-delegate-child-keys R5: "Free 10,
                     // Pro 200" keys; "Free 86400, Pro 2592000" seconds.
                     delegated_keys_max: 10,
@@ -820,6 +839,10 @@ impl PlanCatalog {
                     event_body_bytes_max: 256 * 1024,
                     dead_letters_max: 1_000,
                     calls_retention_days: 90,
+                    queues_max: 20,
+                    queue_items_max: 50_000,
+                    queue_concurrency_max: 10,
+                    queue_item_bytes_max: 65_536,
                     delegated_keys_max: 200,
                     delegated_ttl_max_s: 2_592_000,
                     // PRD-mcphost-agent-inbox: pro gets a higher hourly
@@ -1020,6 +1043,10 @@ impl PlanCatalog {
             ));
             out.push_str(&format!("dead_letters_max = {}\n", p.dead_letters_max));
             out.push_str(&format!("calls_retention_days = {}\n", p.calls_retention_days));
+            out.push_str(&format!("queues_max = {}\n", p.queues_max));
+            out.push_str(&format!("queue_items_max = {}\n", p.queue_items_max));
+            out.push_str(&format!("queue_concurrency_max = {}\n", p.queue_concurrency_max));
+            out.push_str(&format!("queue_item_bytes_max = {}\n", p.queue_item_bytes_max));
             out.push_str(&format!("delegated_keys_max = {}\n", p.delegated_keys_max));
             out.push_str(&format!("delegated_ttl_max_s = {}\n", p.delegated_ttl_max_s));
             out.push_str(&format!("msgs_per_hour = {}\n", p.msgs_per_hour));
@@ -1180,6 +1207,10 @@ impl PlanCatalog {
                 "event_body_bytes_max" => builder.event_body_bytes_max = Some(int_value()),
                 "dead_letters_max" => builder.dead_letters_max = Some(int_value()),
                 "calls_retention_days" => builder.calls_retention_days = Some(int_value()),
+                "queues_max" => builder.queues_max = Some(int_value()),
+                "queue_items_max" => builder.queue_items_max = Some(int_value()),
+                "queue_concurrency_max" => builder.queue_concurrency_max = Some(int_value()),
+                "queue_item_bytes_max" => builder.queue_item_bytes_max = Some(int_value()),
                 "delegated_keys_max" => builder.delegated_keys_max = Some(int_value()),
                 "delegated_ttl_max_s" => builder.delegated_ttl_max_s = Some(int_value()),
                 "msgs_per_hour" => builder.msgs_per_hour = Some(int_value()),
@@ -1300,6 +1331,10 @@ struct PlanBuilder {
     event_body_bytes_max: Option<i64>,
     dead_letters_max: Option<i64>,
     calls_retention_days: Option<i64>,
+    queues_max: Option<i64>,
+    queue_items_max: Option<i64>,
+    queue_concurrency_max: Option<i64>,
+    queue_item_bytes_max: Option<i64>,
     delegated_keys_max: Option<i64>,
     delegated_ttl_max_s: Option<i64>,
     msgs_per_hour: Option<i64>,
@@ -1405,6 +1440,10 @@ impl PlanBuilder {
             event_body_bytes_max: quota!(event_body_bytes_max),
             dead_letters_max: quota!(dead_letters_max),
             calls_retention_days: quota!(calls_retention_days),
+            queues_max: quota!(queues_max),
+            queue_items_max: quota!(queue_items_max),
+            queue_concurrency_max: quota!(queue_concurrency_max),
+            queue_item_bytes_max: quota!(queue_item_bytes_max),
             delegated_keys_max: quota!(delegated_keys_max),
             delegated_ttl_max_s: quota!(delegated_ttl_max_s),
             msgs_per_hour: quota!(msgs_per_hour),

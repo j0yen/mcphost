@@ -1,0 +1,2 @@
+{"receipts":[]}
+{"receipts":[{"attempts":1,"channel_id":"01m78enx19p351zcj8cekag201","created_unix":1794506421,"delivered_unix":1794506421,"kind":"webhook","notify_id":"01m78enx2dx96bkxq0x0wgs6rn","status":"delivered","upstream_status":200}]}

@@ -1,0 +1,2 @@
+{"attempts_total":0,"concurrency":1,"consumer_tool":"osq","created_at_ms":1794506594224,"done":0,"drained_at_ms":null,"failed":0,"name":"osq_live","oldest_pending_age_ms":4,"pending":1,"running":0,"state":"paused"}
+{"attempts_total":0,"concurrency":1,"consumer_tool":"typed","created_at_ms":1794505837100,"done":0,"drained_at_ms":null,"failed":0,"name":"bulk","oldest_pending_age_ms":null,"pending":0,"running":0,"state":"paused"}

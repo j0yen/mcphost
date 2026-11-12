@@ -2259,6 +2259,8 @@ async fn main() -> anyhow::Result<()> {
                 tracing::info!(reaped, "runs: reaped expired runs from before this restart");
             }
             mcphost::runs::spawn_executor((*state).clone());
+            // PRD-mcphost-queue-primitive-v2 R4: the queue dispatcher, beside the executor.
+            mcphost::queues::spawn_dispatcher((*state).clone());
             // PRD-mcphost-schedules P0 requirement 3: the scheduler tick,
             // started once here alongside the runs executor above.
             mcphost::triggers::spawn_scheduler((*state).clone());

@@ -196,31 +196,168 @@ pub fn outsch_capture(wire_name: &str, result: &Value) {
     }
 }
 
-/// Rows per tool: the committed corpus (`tests/fixtures/outsch/`, captured
-/// from this suite) plus whatever this run's harness already recorded under
-/// `target/outsch/`.
-pub fn outsch_rows() -> std::collections::BTreeMap<String, Vec<Value>> {
-    let mut out: std::collections::BTreeMap<String, Vec<Value>> = std::collections::BTreeMap::new();
-    for dir in ["tests/fixtures/outsch", "target/outsch"] {
-        let Ok(entries) = std::fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join(dir)) else { continue };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Some(tool) = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .and_then(|n| n.strip_suffix(".jsonl"))
-            else {
-                continue;
-            };
-            let text = std::fs::read_to_string(&path).expect("read rows");
-            for line in text.lines().filter(|l| !l.trim().is_empty()) {
-                out.entry(tool.to_string())
-                    .or_default()
-                    .push(serde_json::from_str(line).unwrap_or_else(|e| panic!("{}: {e}", path.display())));
+/// The committed corpus: `<repo>/tests/fixtures/outsch`.
+pub fn outsch_fixture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/outsch")
+}
+
+/// The rows this target dir's harness recorded: `<repo>/target/outsch`.
+pub fn outsch_capture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("target/outsch")
+}
+
+/// Appends the rows of every `*.jsonl` file in `dir` to `out`, keyed by the
+/// file stem. Any other file beside them (`GAPS.txt`) is never read as a row.
+fn read_outsch_dir(dir: &Path, out: &mut std::collections::BTreeMap<String, Vec<Value>>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(tool) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".jsonl")) else {
+            continue;
+        };
+        let text = std::fs::read_to_string(&path).expect("read rows");
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            out.entry(tool.to_string())
+                .or_default()
+                .push(serde_json::from_str(line).unwrap_or_else(|e| panic!("{}: {e}", path.display())));
+        }
+    }
+}
+
+/// Rows per tool from the committed corpus alone (`fixture_dir`). The verdict
+/// of a test that counts or ratios rows reads this: it is the same in every
+/// shard and locally, whatever `target/outsch` holds.
+pub fn outsch_committed_rows(fixture_dir: &Path) -> std::collections::BTreeMap<String, Vec<Value>> {
+    let mut out = std::collections::BTreeMap::new();
+    read_outsch_dir(fixture_dir, &mut out);
+    out
+}
+
+/// Rows per tool: the committed corpus plus whatever this target dir's harness
+/// recorded in `capture_dir`. For checking rows against their schema only: a
+/// count taken from it depends on which tests ran before it.
+pub fn outsch_rows(fixture_dir: &Path, capture_dir: &Path) -> std::collections::BTreeMap<String, Vec<Value>> {
+    let mut out = std::collections::BTreeMap::new();
+    read_outsch_dir(fixture_dir, &mut out);
+    read_outsch_dir(capture_dir, &mut out);
+    out
+}
+
+/// The `GAPS.txt` register: one `<tool> <reason>` per line, tool = first token,
+/// reason = the rest (possibly empty, which `coverage_report` refuses). Blank
+/// lines and `#` comment lines are skipped.
+pub fn outsch_gaps_parse(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| match l.split_once(char::is_whitespace) {
+            Some((tool, reason)) => (tool.to_string(), reason.trim().to_string()),
+            None => (l.to_string(), String::new()),
+        })
+        .collect()
+}
+
+/// `GAPS.txt` in `fixture_dir` (empty when the file is absent).
+pub fn outsch_gaps(fixture_dir: &Path) -> Vec<(String, String)> {
+    outsch_gaps_parse(&std::fs::read_to_string(fixture_dir.join("GAPS.txt")).unwrap_or_default())
+}
+
+/// The coverage verdict of the output-schema corpus: `Ok` when committed rows
+/// cover at least 80 % of `tools` (`covered * 10 >= registered * 8`, `gaps`
+/// never counted) and the register is exact -- every uncovered tool has one
+/// line with a reason, and no line names a covered or unregistered tool. The
+/// `Err` text starts with `covered/registered` and lists the uncovered tools
+/// sorted, so a truncated excerpt of a CI log still shows the counts and the
+/// first names.
+pub fn coverage_report(tools: &[&str], rows: &std::collections::BTreeMap<String, Vec<Value>>, gaps: &[(String, String)]) -> Result<(), String> {
+    let covered_by_rows = |t: &str| rows.get(t).is_some_and(|r| !r.is_empty());
+    let mut uncovered: Vec<&str> = tools.iter().copied().filter(|t| !covered_by_rows(t)).collect();
+    uncovered.sort_unstable();
+    let registered = tools.len();
+    let covered = registered - uncovered.len();
+    let registered_names: std::collections::BTreeSet<&str> = tools.iter().copied().collect();
+    let mut problems = Vec::new();
+    if covered * 10 < registered * 8 {
+        problems.push(format!("committed fixtures cover fewer than 80 % of registered tools (need {})", (registered * 8).div_ceil(10)));
+    }
+    let listed: std::collections::BTreeSet<&str> = gaps.iter().map(|(t, _)| t.as_str()).collect();
+    let unregistered_gaps: Vec<&str> = uncovered.iter().copied().filter(|t| !listed.contains(t)).collect();
+    if !unregistered_gaps.is_empty() {
+        problems.push(format!("uncovered and not in GAPS.txt (add a fixture or a `<tool> <reason>` line): {unregistered_gaps:?}"));
+    }
+    let mut stale: Vec<&str> = gaps.iter().map(|(t, _)| t.as_str()).filter(|t| covered_by_rows(t)).collect();
+    stale.sort_unstable();
+    if !stale.is_empty() {
+        problems.push(format!("GAPS.txt names tools that now have a fixture (delete the line): {stale:?}"));
+    }
+    let mut unknown: Vec<&str> = gaps.iter().map(|(t, _)| t.as_str()).filter(|t| !registered_names.contains(t)).collect();
+    unknown.sort_unstable();
+    if !unknown.is_empty() {
+        problems.push(format!("GAPS.txt names tools that are not registered: {unknown:?}"));
+    }
+    let mut no_reason: Vec<&str> = gaps.iter().filter(|(_, r)| r.is_empty()).map(|(t, _)| t.as_str()).collect();
+    no_reason.sort_unstable();
+    if !no_reason.is_empty() {
+        problems.push(format!("GAPS.txt lines without a reason: {no_reason:?}"));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut duplicated: Vec<&str> = gaps.iter().map(|(t, _)| t.as_str()).filter(|t| !seen.insert(*t)).collect();
+    duplicated.sort_unstable();
+    if !duplicated.is_empty() {
+        problems.push(format!("GAPS.txt names a tool twice: {duplicated:?}"));
+    }
+    if problems.is_empty() {
+        return Ok(());
+    }
+    Err(format!("{covered}/{registered} registered tools covered; uncovered: {uncovered:?}; {}", problems.join("; ")))
+}
+
+/// The branch-budget verdict of the output-schema corpus
+/// (PRD-mcphost-contract-output-schemas AC1): every row in `rows` must validate
+/// against its tool's declared schema (rows are checked here, never counted),
+/// at most 10 % of registered tools may need a `oneOf`/`anyOf` of more than 3
+/// branches, and the premise fails above 18. The verdict depends on the schemas
+/// and on whether a row is valid, never on how many valid rows `rows` holds.
+pub fn branch_budget_verdict(rows: &std::collections::BTreeMap<String, Vec<Value>>) -> Result<(), String> {
+    use mcphost::output_schemas::{max_union_branches, output_schema_for, registered_tools};
+    let tools = registered_tools();
+    if tools.is_empty() {
+        return Err("no output schemas registered".to_string());
+    }
+    let mut over_budget = Vec::new();
+    let mut failures = Vec::new();
+    for tool in &tools {
+        let schema = Value::Object((*output_schema_for(tool).expect("registered")).clone());
+        let branches = max_union_branches(&schema);
+        if branches > 3 {
+            over_budget.push(format!("{tool} ({branches} branches)"));
+        }
+        let validator = jsonschema::validator_for(&schema).unwrap_or_else(|e| panic!("{tool}: schema invalid: {e}"));
+        for row in rows.get(*tool).into_iter().flatten() {
+            if let Err(e) = validator.validate(row) {
+                failures.push(format!("{tool}: {e}"));
             }
         }
     }
-    out
+    println!("tools needing a oneOf of more than 3 branches ({}): {over_budget:?}", over_budget.len());
+    if !failures.is_empty() {
+        return Err(format!("captured rows rejected by their schema:\n{}", failures.join("\n")));
+    }
+    let allowed = tools.len() / 10;
+    if over_budget.len() > 18 {
+        return Err(format!(
+            "premise falsified: {} tools need a oneOf of more than 3 branches (limit 18): {over_budget:?}",
+            over_budget.len()
+        ));
+    }
+    if over_budget.len() > allowed {
+        return Err(format!(
+            "{} of {} tools exceed the 3-branch budget (10 % = {allowed}): {over_budget:?}",
+            over_budget.len(),
+            tools.len()
+        ));
+    }
+    Ok(())
 }
 
 pub const ADMIN_KEY: &str = "test-admin-key-not-for-production";

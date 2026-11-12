@@ -694,7 +694,7 @@
     "host.example.propose": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "proof_failed",
           "state": "after_create"
         },
         {
@@ -1463,6 +1463,97 @@
       ],
       "variants": []
     },
+    "host.queue.create": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.queue.delete": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.queue.drain": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.queue.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.queue.pause": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.queue.push": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.queue.resume": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.queue.stats": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
     "host.quickstart": {
       "unreached": [
         {
@@ -1625,7 +1716,7 @@
     "host.share.caller_limit": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "args_invalid",
           "state": "after_create"
         },
         {
@@ -2073,10 +2164,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2086,10 +2173,6 @@
     },
     "host.tool.diff": {
       "unreached": [
-        {
-          "code": "tool_not_found",
-          "state": "after_create"
-        },
         {
           "code": "tool_not_found",
           "state": "fresh"
@@ -2114,10 +2197,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2133,10 +2212,6 @@
     },
     "host.tool.logs": {
       "unreached": [
-        {
-          "code": "tool_not_found",
-          "state": "after_create"
-        },
         {
           "code": "tool_not_found",
           "state": "fresh"
@@ -2165,10 +2240,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "dry_run"
         },
         {
@@ -2182,10 +2253,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2194,7 +2261,7 @@
     "host.tool.run": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "tool_run_unsupported",
           "state": "after_create"
         },
         {
@@ -2208,10 +2275,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2220,7 +2283,7 @@
     "host.tool.spec_shared": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "args_invalid",
           "state": "after_create"
         },
         {
@@ -2234,10 +2297,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2245,10 +2304,6 @@
     },
     "host.tool.unshare": {
       "unreached": [
-        {
-          "code": "tool_not_found",
-          "state": "after_create"
-        },
         {
           "code": "tool_not_found",
           "state": "fresh"
@@ -2260,10 +2315,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2273,10 +2324,6 @@
     },
     "host.tool_diff": {
       "unreached": [
-        {
-          "code": "tool_not_found",
-          "state": "after_create"
-        },
         {
           "code": "tool_not_found",
           "state": "fresh"
@@ -2301,10 +2348,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2320,10 +2363,6 @@
     },
     "host.tool_logs": {
       "unreached": [
-        {
-          "code": "tool_not_found",
-          "state": "after_create"
-        },
         {
           "code": "tool_not_found",
           "state": "fresh"
@@ -2352,10 +2391,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "dry_run"
         },
         {
@@ -2369,10 +2404,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2381,7 +2412,7 @@
     "host.tool_run": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "tool_run_unsupported",
           "state": "after_create"
         },
         {
@@ -2395,10 +2426,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2407,7 +2434,7 @@
     "host.tool_spec_shared": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "args_invalid",
           "state": "after_create"
         },
         {
@@ -2421,10 +2448,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2432,10 +2455,6 @@
     },
     "host.tool_unshare": {
       "unreached": [
-        {
-          "code": "tool_not_found",
-          "state": "after_create"
-        },
         {
           "code": "tool_not_found",
           "state": "fresh"
@@ -2544,7 +2563,7 @@
     "host.trigger.set": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "args_invalid",
           "state": "after_create"
         },
         {
@@ -3286,7 +3305,7 @@
     "host_example_propose": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "proof_failed",
           "state": "after_create"
         },
         {
@@ -4038,6 +4057,97 @@
       ],
       "variants": []
     },
+    "host_queue_create": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_queue_delete": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_queue_drain": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_queue_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_queue_pause": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_queue_push": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_queue_resume": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_queue_stats": {
+      "unreached": [
+        {
+          "code": "queue_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
     "host_quickstart": {
       "unreached": [
         {
@@ -4173,7 +4283,7 @@
     "host_share_caller_limit": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "args_invalid",
           "state": "after_create"
         },
         {
@@ -4608,10 +4718,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -4621,10 +4727,6 @@
     },
     "host_tool_diff": {
       "unreached": [
-        {
-          "code": "tool_not_found",
-          "state": "after_create"
-        },
         {
           "code": "tool_not_found",
           "state": "fresh"
@@ -4649,10 +4751,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -4668,10 +4766,6 @@
     },
     "host_tool_logs": {
       "unreached": [
-        {
-          "code": "tool_not_found",
-          "state": "after_create"
-        },
         {
           "code": "tool_not_found",
           "state": "fresh"
@@ -4700,10 +4794,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "dry_run"
         },
         {
@@ -4717,10 +4807,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -4729,7 +4815,7 @@
     "host_tool_run": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "tool_run_unsupported",
           "state": "after_create"
         },
         {
@@ -4743,10 +4829,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -4755,7 +4837,7 @@
     "host_tool_spec_shared": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "args_invalid",
           "state": "after_create"
         },
         {
@@ -4769,10 +4851,6 @@
       "unreached": [
         {
           "code": "tool_not_found",
-          "state": "after_create"
-        },
-        {
-          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -4780,10 +4858,6 @@
     },
     "host_tool_unshare": {
       "unreached": [
-        {
-          "code": "tool_not_found",
-          "state": "after_create"
-        },
         {
           "code": "tool_not_found",
           "state": "fresh"
@@ -4892,7 +4966,7 @@
     "host_trigger_set": {
       "unreached": [
         {
-          "code": "tool_not_found",
+          "code": "args_invalid",
           "state": "after_create"
         },
         {
@@ -4996,5 +5070,5 @@
       "variants": []
     }
   },
-  "unreached_cap": 616
+  "unreached_cap": 615
 }

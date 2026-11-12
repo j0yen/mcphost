@@ -28,6 +28,12 @@
 # (emitted as a `::error::` annotation too, which survives a cut job log)
 # (names come from libtest's `failures:` list and `---- <test> stdout ----`
 # headers; none parsed -> one `<partition> shard N/M ERROR ...` line).
+# PRD-mcphost-outsch-ac01-coverage-diagnosable R12: the FAILED line is followed
+# by the test's first panic message (the text after `panicked at <loc>:`, at
+# most 2000 bytes, indented four spaces), in the log and in the step summary,
+# from either libtest form: the inline `thread '<test>' panicked at` line a
+# `-- --nocapture` run prints, or the first `panicked at` of the test's
+# `---- <test> stdout ----` block. A test with no panic text gets no extra line.
 # Exit: the tests' own status when non-zero, else 1 iff run wall > FAIL_ABOVE.
 set -uo pipefail
 
@@ -108,6 +114,32 @@ fi
 # annotation is, so the weights can still be refreshed from a red run.
 echo "::notice title=$label readout::build ${build_s}s; run ${run_s}s; $(printf '%s' "$suite_lines" | tr '\n' ';')"
 
+# First panic message of test $1 from the plain log, cut to 2000 bytes.
+panic_message() {
+  plain_log | awk -v t="$1" '
+    function stop(l) {
+      return l ~ /^note: / || l == "FAILED" || l ~ /^test .* \.\.\. / || l ~ /^failures:/ \
+        || l ~ /^---- / || l ~ /^stack backtrace:/ || l ~ /^running [0-9]+ test/ \
+        || l ~ /^[[:space:]]*Running / || l ~ /^test result:/
+    }
+    function start(l,   rest) {
+      rest = substr(l, index(l, "panicked at ") + 12)
+      sub(/^[^ ]*:[0-9]+:[0-9]+:?[[:space:]]*/, "", rest)
+      if (rest != "") print rest
+    }
+    {
+      if (collecting) {
+        if (stop($0)) { exit }
+        print; next
+      }
+      if (index($0, "thread \047" t "\047 panicked at ")) { collecting = 1; start($0); next }
+      if ($0 == "---- " t " stdout ----") { inblock = 1; next }
+      if (inblock && index($0, "panicked at ")) { collecting = 1; start($0); next }
+      if (inblock && $0 ~ /^---- /) inblock = 0
+    }' | awk '{ lines[NR] = $0 } END { n = NR; while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--; for (i = 1; i <= n; i++) print lines[i] }' \
+    | head -c 2000 | sed 's/^/    /'
+}
+
 if [ "$status" -ne 0 ]; then
   failed="$(plain_log | awk '
     /^---- .* stdout ----$/ {
@@ -130,6 +162,11 @@ if [ "$status" -ne 0 ]; then
       [ -n "$t" ] || continue
       echo "::error::$label FAILED $t"
       if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then echo "$label FAILED $t" >> "$GITHUB_STEP_SUMMARY"; fi
+      msg="$(panic_message "$t")"
+      if [ -n "$msg" ]; then
+        echo "$msg"
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then echo "$msg" >> "$GITHUB_STEP_SUMMARY"; fi
+      fi
     done <<<"$failed"
   else
     echo "::error::$label ERROR no failed test parsed from the log (test status $status; a compile error or a killed run leaves none)"

@@ -1,0 +1,2 @@
+{"bytes_delta":0,"data":{"quota":{"state_bytes_max":{"limit":5242880,"remaining":5242880,"used":0},"state_ops_per_call_max":{"limit":200,"remaining":null,"used":null},"state_rows_max":{"limit":10000,"remaining":10000,"used":0}}},"dropped":false,"name":"x"}
+{"_meta":{"dry_run":true},"data":{"quota":{"state_bytes_max":{"limit":5242880,"remaining":5242880,"used":0},"state_ops_per_call_max":{"limit":200,"remaining":null,"used":null},"state_rows_max":{"limit":10000,"remaining":10000,"used":0}}},"would":{"state":[{"action":"drop","key":"host.state.table_drop:x"}]}}

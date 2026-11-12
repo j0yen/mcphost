@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 #[test]
 fn every_captured_row_still_validates_against_the_widened_registry() {
-    let rows = common::outsch_rows();
+    let rows = common::outsch_committed_rows(&common::outsch_fixture_dir());
     assert!(!rows.is_empty(), "no captured rows under tests/fixtures/outsch");
     let mut problems = Vec::new();
     for (tool, rows) in &rows {
