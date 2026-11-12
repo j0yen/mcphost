@@ -1,58 +1,70 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-response-size-budget-explicit-v2.md",
-  "intent_slug": "mcphost-response-size-budget-explicit-v2",
-  "root_motivation": "WHO: an agent reading host.table.query, host.runs.list or host.docs.list on a plan or client that cannot use a very large answer, and Joe, who sets the byte budget by editing one plan row. WHAT: nothing sizes a page of a paged verb and nothing tells an agent where a shorter page stopped, so a client that cuts the text on its side reasons over a partial result as if it were whole. WHY: a page over the plan's byte budget must be cut at a row boundary and name its size, the full size and the exact next call, and a cut must never happen without that marker.",
-  "user_persona": "An agent (or its operator) paging a host list verb or a SQL result who needs every page to fit a stated budget, end on a whole row, and carry a continue_with call it can make verbatim; and an operator who raises the pro budget by editing one plan row.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-slo-targets-on-status.md",
+  "intent_slug": "mcphost-slo-targets-on-status",
+  "root_motivation": "WHO: an agent reading /status.json before it publishes a tool here, the stranger opening /status.html from the Show HN thread, and Joe deciding whether launch-day numbers are presentable. WHAT: every number on the status page sits next to the target it is supposed to beat, and the three numbers a listing quotes (availability, latency, error rate) come from real tenant calls, not only the host's own self-probe. WHY: a stated target beside a measured number turns a status page from decoration into a decision input; today /status.json shows uptime and nothing a reader can judge it against.",
+  "user_persona": "An autonomous coding agent that GETs /status.json and decides 'publish here or on the fallback host' from slo.error_rate_24h.met, a human who reads one line of measured-vs-target on /status.html, and an operator who changes a target in exactly one Rust const.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 5
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a page cut for budget on a paged verb, When rszb_ac01_one_truncation_struct serializes _meta.mcphost.truncated, Then it has exactly the keys bytes, of and continue_with, and a response that was also clamped by limit holds both limit_clamped and truncated under _meta.mcphost.",
-      "test": "tests/rszb_ac01_one_truncation_struct.rs"
+      "description": "Given 120 finished calls rows in 24 h (100 ok with known durations, 3 with a HostFault code from ERROR_CODES, 17 tool_exception), When /status.json is fetched, Then slo.tool_call_p95_ms_24h.measured is the nearest-rank p95 of the 100 durations and met is true, and slo.error_rate_24h.measured is 2.5 with met false against target 0.5.",
+      "test": "tests/slopg_ac01_slo_block_measured_against_target.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given each verb in PAGED_VERBS with enough rows to pass an 8 KiB plan budget, When it is read at its maximum limit and every continue_with is followed verbatim, Then each page is within 8 KiB or is one row, ends on a whole row, continue_with.args.limit equals the request's limit, and the walk visits every row once; Given host.channel.read {ack: true} cut, Then the stored position is the last row kept.",
-      "test": "tests/rszb_ac02_every_paged_verb_walks_within_budget.rs"
+      "description": "Given fewer than 20 rows in the window, When /status.json is fetched, Then that key's measured and met are null and sample_n is the row count.",
+      "test": "tests/slopg_ac02_under_twenty_samples_is_null.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the free and pro plans, When host.quickstart runs, Then limits.plan.response_budget_bytes equals the plan struct's field, limits.output_bytes_max still reads the 1 MiB wall, and render_ceilings_table lists the field in docs/plans.md with the docs drift test green.",
-      "test": "tests/rszb_ac03_plan_field_in_quickstart_and_docs.rs"
+      "description": "Given 30 days of status_daily rows for 4 components with one component down for a whole day, When /status.json is fetched, Then slo.availability_30d.measured equals ok/total over all 120 component-days and met is false against target 99.5.",
+      "test": "tests/slopg_ac03_availability_from_status_daily.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a python tool that returns a 2 MiB line, When called synchronously, Then the existing tool_output_too_large answers with limit_bytes equal to limits.output_bytes_max and no truncated key; Given a non-paged verb under the wall, Then its response is whole.",
-      "test": "tests/rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs"
+      "description": "Given SLO_TARGETS, When the drift test runs, Then every key appears in www/status.html and www/llms.txt and no other slo. key appears in either file.",
+      "test": "tests/slopg_ac04_slo_keys_drift_status_html_and_llms_txt.rs"
     },
     {
       "id": "AC5",
-      "level": "SHOULD",
-      "description": "Given a 5 MiB table and a 32 KiB plan budget, When host.table.query {sql: \"SELECT * FROM t\", limit: 1000} runs and each continue_with is followed, Then every page is within the budget and ends on a whole row and the walk visits every row once; Given an empty table, Then rows: [] with no marker.",
-      "test": "tests/rszb_ac05_table_query_offset_walk.rs"
+      "level": "MUST",
+      "description": "Given calls rows with a HostFault registry code and rows with a tenant-fault code, When the error rate is computed, Then host-fault rows count in numerator and denominator, tenant-fault rows in the denominator only, and the host-fault set derived from ERROR_CODES is non-empty.",
+      "test": "tests/slopg_ac05_error_rate_counts_host_faults_only.rs"
     },
     {
       "id": "AC6",
+      "level": "SHOULD",
+      "description": "Given ?slo=error_rate_24h&days=7, When fetched, Then 7 or fewer slo_daily rows are returned, newest last, each with day, measured, sample_n.",
+      "test": "tests/slopg_ac06_slo_daily_rows_by_key.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given a planted DB with 100 000 calls rows, When the slo block is computed, Then it completes in 50 ms or less wall time in the test.",
+      "test": "tests/slopg_ac07_slo_block_under_50ms_at_100k_calls.rs"
+    },
+    {
+      "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after landing, When tests/rszb_ac06_live_prod_quickstart_budget.rs calls anonymous host.quickstart {}, Then limits.plan.response_budget_bytes is a positive integer (Live; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)",
-      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)"
+      "description": "Given prod after the deploy, When the chain's next preflight runs, Then /status.json carries the block (Live; evidence: curl -s https://mcphost.dev/status.json | jq -e '.slo.availability_30d.target, .slo.tool_call_p95_ms_24h.window_secs, (.slo.error_rate_24h | keys)')",
+      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/status.json | jq -e '.slo.availability_30d.target, .slo.tool_call_p95_ms_24h.window_secs, (.slo.error_rate_24h | keys)')"
     }
   ],
   "scope": [
-    "src/response_budget.rs (Truncated, Call, cut_page, cut_values, budget_of); src/plans.rs (response_budget_bytes); src/paged.rs (project_rows); the byte-budget cut in src/runs.rs, src/docs.rs, src/calllog.rs, src/messaging.rs and src/channels.rs; src/tables.rs and src/handler/arms.rs (host.table.query offset and cut); src/handler.rs (_meta.mcphost.truncated, host.table.query descriptor); docs/plans.md, docs/tools.md, docs/openapi.json, contracts/host-tools.v1.json and the SDKs rendered from it."
+    "src/statusfeed.rs (SLO_TARGETS, host_fault_codes, slo_block, rollup_slo_day, slo_daily_rows, daily_tick_once); src/db.rs (slo_calls_window, status_daily_sum_all_since/_on, slo_daily upsert/recent, migration 0141 wiring); migrations/0141_slo_targets.sql (slo_daily, idx_calls_started_unix); src/http.rs and src/http/routes.rs (?slo=&days=), docs/openapi.json; www/status.html and www/llms.txt (slo line and key names)."
   ],
   "non_goals": [
-    "A per-client budget axis; compression; streaming; cutting a non-paged response; paging host.tool.logs; the AC 6 prod read (operator-provisioned, deferred)."
+    "A third-party status provider; alerting changes; changing what the self-probe samples; per-tenant SLOs; the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -62,49 +74,50 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "one_marker": "A cut is reported only as _meta.mcphost.truncated {bytes, of, continue_with}; the kinds' 1 MiB wall still refuses and never cuts."
+      "one_target_table": "SLO_TARGETS is the only place a target number or key is spelled; the HTML, llms.txt and slo_daily read it, and a drift test fails on any other slo. key.",
+      "host_fault_set_derived": "The host-fault set is derived from ERROR_CODES class == HostFault, never hand-written, because calls.error_class stores the wire code."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent reason over a partial result as if it were whole?",
-      "a": "A page of a paged verb has no byte bound and nothing says where a shorter page stopped."
+      "q": "Why can an agent not decide 'build here' from /status.json?",
+      "a": "It reports uptime per self-probed component and no target, tenant-call latency or error rate to judge it against."
     },
     {
       "why": 2,
-      "q": "Why is there no byte bound?",
-      "a": "limits.output_bytes_max is one global 1 MiB constant read only by the kinds; the plan catalog has no byte ceiling."
+      "q": "Why is there no tenant-call latency or error rate?",
+      "a": "Nothing aggregates the calls table over tenant traffic; p95_latency_ms exists only in the self-probe's per-component rollup."
     },
     {
       "why": 3,
-      "q": "Why not cut at the wall?",
-      "a": "The wall refuses a synchronous kind call and chunks an async run; a cut is only well defined at a row boundary of a paged verb."
+      "q": "Why does a target beside a measured number matter?",
+      "a": "A bare 99.93 cannot be told from an accident or a promise; a stated target makes it a decision input."
     },
     {
       "why": 4,
-      "q": "Why must the cut carry a continue_with?",
-      "a": "A cut without the next call is worse than an error; the keyset cursor each verb already mints makes the call exact."
+      "q": "Why must the targets live in one const?",
+      "a": "Three renderers (JSON, HTML, llms.txt) would otherwise each spell their own number and drift."
     },
     {
       "why": 5,
-      "q": "Why does host.table.query need an offset?",
-      "a": "It has limit but no continuation, so its cut page could not be resumed without the agent rewriting its own SQL."
+      "q": "Why count only host-fault codes in the error rate?",
+      "a": "A tenant's own tool_exception or args_invalid is not the host failing; counting it would make the host's error rate a measure of its users."
     }
   ],
   "created_at": "2026-11-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Where is the size measured, before or after fields projection?",
-      "resolution": "After: the page is projected first and the serialized rows array is what is compared with the budget, so bytes and of equal what the client receives."
+      "question": "Which sample count does a key report in sample_n?",
+      "resolution": "The rows its number is computed over: finished non-probe rows for error_rate_24h, ok rows for tool_call_p95_ms_24h, summed status_daily samples for availability_30d; below 20 measured and met are null."
     },
     {
-      "question": "What does a row larger than the whole budget do?",
-      "resolution": "It is returned alone (a page always keeps at least one row), and the next continue_with resumes after it."
+      "question": "Which calls rows are in the 24 h windows?",
+      "resolution": "Every finished row except origin = probe and outcome = test (nothing ran for real, the same skip the health error rate makes); fleet and human rows count."
     },
     {
-      "question": "Offset or keyset for host.table.query?",
-      "resolution": "Offset, applied as LIMIT n OFFSET m over the caller's own SELECT, because arbitrary SELECTs, row-policy rewrites and CTEs do not guarantee a rowid order."
+      "question": "How does the 100 000-row budget hold?",
+      "resolution": "One covering partial-index range scan over started_unix (idx_calls_started_unix with the window's own origin/outcome predicate), read as one packed integer per row, so the cost follows the 24 h window, not the table."
     }
   ]
 }
