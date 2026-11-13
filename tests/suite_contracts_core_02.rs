@@ -10,6 +10,8 @@ mod common;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "statusfeed_ac11_deferral_is_justified.rs"]
+mod statusfeed_ac11_deferral_is_justified;
 #[path = "suite_ac2_check_catches_unregistered_file.rs"]
 mod suite_ac2_check_catches_unregistered_file;
 #[path = "suite_ac4_archived_prd_pointers_resolve.rs"]

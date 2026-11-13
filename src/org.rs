@@ -316,6 +316,120 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-org-shared-tools-namespace-v2 R4: whether `a` and `b` are
+    /// live members of the same org (`org_members.tenant_id` is UNIQUE, so a
+    /// tenant has at most one live row). Read per call; nothing is cached.
+    pub async fn same_live_org(&self, a: i64, b: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT 1 FROM org_members x JOIN org_members y ON y.org_id = x.org_id \
+                 WHERE x.tenant_id = ?1 AND y.tenant_id = ?2 \
+                 AND x.removed_unix IS NULL AND y.removed_unix IS NULL",
+                params![a, b],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|r| r.is_some())
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// The tenant id owning the tool `name` that `org.<name>` names for
+    /// `caller_id`: a tool of another live member of the caller's org with
+    /// `visibility = 'org'`, else (so the shipped `share_revoked` window can
+    /// answer) one that member has since unshared.
+    pub async fn org_tool_owner(&self, caller_id: i64, name: String) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT t.tenant_id FROM tools t \
+                 JOIN org_members mo ON mo.tenant_id = t.tenant_id AND mo.removed_unix IS NULL \
+                 JOIN org_members mc ON mc.org_id = mo.org_id AND mc.tenant_id = ?1 \
+                 AND mc.removed_unix IS NULL \
+                 WHERE t.name = ?2 AND t.tenant_id != ?1 \
+                 AND (t.visibility = 'org' OR (t.visibility = 'private' AND t.unshared_unix IS NOT NULL)) \
+                 ORDER BY (t.visibility = 'org') DESC, t.tenant_id LIMIT 1",
+                params![caller_id, name],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Every live `visibility = 'org'` tool of the other live members of
+    /// `caller_id`'s org, as `(owner namespace, tool name)`.
+    pub async fn org_tools_for_caller(&self, caller_id: i64) -> Result<Vec<(String, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT te.namespace, t.name FROM tools t \
+                 JOIN org_members mo ON mo.tenant_id = t.tenant_id AND mo.removed_unix IS NULL \
+                 JOIN org_members mc ON mc.org_id = mo.org_id AND mc.tenant_id = ?1 \
+                 AND mc.removed_unix IS NULL \
+                 JOIN tenants te ON te.id = t.tenant_id \
+                 WHERE t.visibility = 'org' AND t.tenant_id != ?1 \
+                 ORDER BY t.name, te.namespace",
+            )?;
+            let rows = stmt
+                .query_map(params![caller_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-org-shared-tools-namespace-v2 R7 (AC7): `visibility = 'org'`
+    /// for `tenant_id`'s tool `name`, refused with `org_tool_name_taken
+    /// {publisher}` when another live member of the same org already shares an
+    /// org tool of that name. The collision check and the write run in one
+    /// `BEGIN IMMEDIATE` transaction, so concurrent shares of one fresh name
+    /// leave exactly one org tool. Returns `false` when `name` is not one of
+    /// the tenant's tools.
+    pub async fn share_org_tool(
+        &self,
+        tenant_id: i64,
+        name: String,
+        description: Option<String>,
+        expose_spec: bool,
+    ) -> Result<bool, AppError> {
+        let shared_unix = now_unix();
+        let spec_exposed_unix = expose_spec.then_some(shared_unix);
+        self.with_conn(move |conn| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                let Some((org_id, ..)) = membership_sync(conn, tenant_id)? else {
+                    return Err(org_required_error_for("host.tool_share with visibility 'org' needs an org"));
+                };
+                let publisher: Option<String> = conn
+                    .query_row(
+                        "SELECT te.namespace FROM tools t \
+                         JOIN org_members m ON m.tenant_id = t.tenant_id AND m.org_id = ?1 \
+                         AND m.removed_unix IS NULL \
+                         JOIN tenants te ON te.id = t.tenant_id \
+                         WHERE t.name = ?2 AND t.visibility = 'org' AND t.tenant_id != ?3 LIMIT 1",
+                        params![org_id, name, tenant_id],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                if let Some(publisher) = publisher {
+                    return Err(AppError::Structured {
+                        code: ORG_TOOL_NAME_TAKEN,
+                        message: format!("org.{name} is already shared by {publisher}"),
+                        data: json!({"publisher": publisher, "tool": name}),
+                    });
+                }
+                let n = conn.execute(
+                    "UPDATE tools SET visibility = 'org', shared_group = NULL, share_description = ?1, \
+                     shared_unix = ?2, unshared_by = NULL, expose_spec = ?3, spec_exposed_unix = ?4, \
+                     spec_reads = 0 WHERE tenant_id = ?5 AND name = ?6",
+                    params![description, shared_unix, expose_spec as i64, spec_exposed_unix, tenant_id, name],
+                )?;
+                Ok(n > 0)
+            })
+        })
+        .await
+    }
+
     /// `host.org.remove`: end `member_ns`'s live membership in the org
     /// `owner_tenant_id` owns. Only `removed_unix` is written; the removed
     /// tenant keeps its key, tools and URL.
@@ -497,9 +611,15 @@ pub async fn join(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 /// `org_required`: an org verb that reads org figures, called by a tenant in
 /// no org; `data.next_call` is the verb that creates one.
 pub(crate) fn org_required_error() -> AppError {
+    org_required_error_for("host.org.usage reads an org's figures")
+}
+
+/// [`org_required_error`] with the reason clause naming the verb or call that
+/// needed the org; the code and `data` are the same.
+pub(crate) fn org_required_error_for(reason: &str) -> AppError {
     AppError::Structured {
         code: ORG_REQUIRED,
-        message: "this tenant belongs to no org; host.org.usage reads an org's figures".to_string(),
+        message: format!("this tenant belongs to no org; {reason}"),
         data: json!({"next_call": "host.org.create", "hint": "Call host.org.create {name} to start an org, or host.org.join {code} to join one."}),
     }
 }
@@ -550,12 +670,18 @@ pub async fn members(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
 pub async fn remove(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let member = arg_str(args, "member")?;
     state.db.remove_org_member(tenant.id, member.clone()).await?;
+    // PRD-mcphost-org-shared-tools-namespace-v2 R5: the removed member's next
+    // `tools/list` carries `ttlMs: 0`, so no client keeps `org.<tool>` cached.
+    if let Some(gone) = state.db.find_tenant_by_namespace(member.clone()).await? {
+        state.db.touch_tool_change_for(vec![gone.id]).await?;
+    }
     Ok(json!({"removed": member}))
 }
 
 /// `host.org.leave`: a member ends its own membership.
 pub async fn leave(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
     let org = state.db.leave_org(tenant.id, tenant.namespace.clone()).await?;
+    state.db.touch_tool_change_for(vec![tenant.id]).await?;
     Ok(json!({"left": org}))
 }
 
@@ -614,6 +740,12 @@ crate::err_code! {
     remedy: "The owner cannot be removed from its own org; remove other members or delete the org instead.",
 }
 
+
+crate::err_code! {
+    pub ORG_TOOL_NAME_TAKEN,
+    code: "org_tool_name_taken", family: Share, class: AgentFault, retryable: false,
+    remedy: "Another org member already shares a tool under this name as org.<name>; rename yours or ask data.publisher to unshare theirs.",
+}
 
 crate::err_code! {
     pub ORG_REQUIRED,

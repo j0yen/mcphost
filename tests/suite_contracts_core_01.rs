@@ -187,6 +187,8 @@ mod ntfy_ac01_no_tenant_settable_alert_sink;
 mod ntfy_ac02_enums_generated_into_every_surface;
 #[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
+#[path = "orgs_ac02_visibility_org_in_the_one_shareable_enum.rs"]
+mod orgs_ac02_visibility_org_in_the_one_shareable_enum;
 #[path = "orgx_ac02_disabled_reasons_one_source.rs"]
 mod orgx_ac02_disabled_reasons_one_source;
 #[path = "osmatch_ac01_dry_run_branch.rs"]
@@ -281,7 +283,5 @@ mod spmsg_ac06_driver_compiles_plans_and_fails_closed;
 mod spmsg_ac07_driver_passes_on_test_server;
 #[path = "sreg_ac01_registry_single_source.rs"]
 mod sreg_ac01_registry_single_source;
-#[path = "statusfeed_ac11_deferral_is_justified.rs"]
-mod statusfeed_ac11_deferral_is_justified;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;
