@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-plugin-skill-generated-from-registry.md (test_prefix: skgn)",
+  "ac_test_map_prd": "PRD-mcphost-tenant-templates.md (test_prefix: ttpl)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/skgn_ac01_verbs_one_line_per_family.rs",
-    "AC2": "tests/skgn_ac02_check_names_hand_edited_line.rs",
-    "AC3": "tests/skgn_ac03_drift_test_fails_on_new_verb.rs",
-    "AC4": "tests/skgn_ac04_errors_from_registry_and_remedy_verbs.rs",
-    "AC5": "tests/skgn_ac05_limits_equal_plan_ceilings.rs",
-    "AC6": "tests/skgn_ac06_devloop_omits_absent_verbs.rs",
-    "AC7": "tests/skgn_ac07_url_renders_from_tools_list.rs",
-    "AC8": "deferred: Live (prod; evidence: that command's exit code and empty stdout)"
+    "AC1": "tests/ttpl_ac01_scheduled_job_two_calls.rs",
+    "AC2": "tests/ttpl_ac02_drift.rs",
+    "AC3": "tests/ttpl_ac03_plan_ceiling_refused_before_any_create.rs",
+    "AC4": "tests/ttpl_ac04_failed_create_rolls_back_every_object.rs",
+    "AC5": "tests/ttpl_ac05_reapply_updates_in_place_and_applies_serialize.rs",
+    "AC6": "tests/ttpl_ac06_list_verb_and_templates_json_agree.rs",
+    "AC7": "tests/ttpl_ac07_remove_keeps_what_the_user_changed.rs",
+    "AC8": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/templates.json | python3 -c 'import json,sys;n=len(json.load(sys.stdin)[\"templates\"]);print(n);sys.exit(0 if n>=5 else 1)')"
   },
   "ac_test_map_by_prefix": {
     "mcphost-resource-listing-shape-in-contract": {
@@ -2751,6 +2751,17 @@
       "AC6": "tests/orgs_ac06_org_share_counts_against_shared_tools_max.rs",
       "AC7": "tests/orgs_ac07_org_tool_name_taken.rs",
       "AC8": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/llms.txt | grep -cE 'host\\.org\\.tools|visibility=\"org\"' >= 2); operator-provisioned, and host.org.tools (R6) is not built by this attempt"
+    },
+    "ttpl": {
+      "_prd": "PRD-mcphost-tenant-templates.md (test_prefix: ttpl)",
+      "AC1": "tests/ttpl_ac01_scheduled_job_two_calls.rs",
+      "AC2": "tests/ttpl_ac02_drift.rs",
+      "AC3": "tests/ttpl_ac03_plan_ceiling_refused_before_any_create.rs",
+      "AC4": "tests/ttpl_ac04_failed_create_rolls_back_every_object.rs",
+      "AC5": "tests/ttpl_ac05_reapply_updates_in_place_and_applies_serialize.rs",
+      "AC6": "tests/ttpl_ac06_list_verb_and_templates_json_agree.rs",
+      "AC7": "tests/ttpl_ac07_remove_keeps_what_the_user_changed.rs",
+      "AC8": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/templates.json | python3 -c 'import json,sys;n=len(json.load(sys.stdin)[\"templates\"]);print(n);sys.exit(0 if n>=5 else 1)')"
     }
   }
 }

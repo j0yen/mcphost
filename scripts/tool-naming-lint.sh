@@ -54,6 +54,9 @@ EXCEPTIONS = [
     ("host.resume", "singleton noun: no sibling verb under 'resume' (the name PRD-mcphost-resume-tool gives agents)"),
     ("host.doctor", "singleton noun: no sibling verb under 'doctor' (the name PRD-mcphost-host-doctor-tool gives agents)"),
     ("host.schedule_receipts", "the name PRD-mcphost-scheduled-job-receipts gives agents: a read of a trigger's receipts, no sibling verb under 'schedule_receipts'"),
+    ("host.template_apply", "the name PRD-mcphost-tenant-templates gives agents: provisions a whole job from a template; no sibling under 'template_apply'"),
+    ("host.template_remove", "the name PRD-mcphost-tenant-templates gives agents: undoes a host.template_apply; no sibling under 'template_remove'"),
+    ("host.template_list", "the name PRD-mcphost-tenant-templates gives agents: lists what host.template_apply provisions; no sibling under 'template_list'"),
     ("host.tool_from_description", "the name PRD-mcphost-first-tool-from-description gives agents; a drafting verb on the tool family, listed only while a draft model is configured"),
 ]
 EXCEPTION_NAMES = {name for name, _ in EXCEPTIONS}

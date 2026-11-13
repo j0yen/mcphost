@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-plugin-skill-generated-from-registry.md",
-  "intent_slug": "mcphost-plugin-skill-generated-from-registry",
-  "root_motivation": "WHO: the coding agent in Claude Code reading the plugin skill first, and the maintainer who ships a verb and forgets the skill. WHAT: a skill whose verbs, plan ceilings, error remedies and local-loop commands are rendered from the host's own registries. WHY: the skill is hand-written, names six of 535 tool entries, states no ceiling and no error code, so an agent sends a call the host refuses.",
-  "user_persona": "A coding agent that reads plugin/skills/mcphost/SKILL.md, finds the family a verb lives in, reads the free ceilings before it calls, and looks up the remedy for an error code it hit; and the maintainer whose cargo test fails until `mcphost skill-gen --write` is run.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-templates.md",
+  "intent_slug": "mcphost-tenant-templates",
+  "root_motivation": "WHO: an agent that knows the job (a scheduled job, a webhook inbox, uptime probes, a table, docs Q&A) and its user. WHAT: host.template_apply(name) provisions the whole job -- tools, tables, triggers -- in one all-or-nothing call and returns the demo call that shows the first result. WHY: the unit an agent wants is the job, not the tool; assembling a scheduled job from primitives takes three calls (publish, trigger set, call) and the 10-09 recipe sessions took 7 to 13.",
+  "user_persona": "An agent on a fresh free tenant that calls host.template_list or GET /templates.json to pick a template, host.template_apply(name=\"scheduled-job\"), runs the returned demo.call and shows its user the job's first result in two calls; and later host.template_remove to undo it without losing what the user changed.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,57 +14,57 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the registry, When `mcphost skill-gen --section verbs` renders, Then every dotted family has exactly one line with its count and verb names, the 11 anonymous starter verbs are named, no per-verb description appears, and the section is at most 60 lines.",
-      "test": "tests/skgn_ac01_verbs_one_line_per_family.rs"
+      "description": "Given a fresh free tenant and a test call log, When host.template_apply(name=\"scheduled-job\") runs and then the returned demo.call runs, Then a result equal to demo.expect is in the second call's result and the log holds exactly 2 calls; a third required call fails the test (premise falsified).",
+      "test": "tests/ttpl_ac01_scheduled_job_two_calls.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the checked-in files, When `mcphost skill-gen` runs without `--write`, Then it exits 0; Given one line edited by hand inside a marked section, Then it exits 1 and names the line.",
-      "test": "tests/skgn_ac02_check_names_hand_edited_line.rs"
+      "description": "Given templates/*.toml, When cargo test ttpl_drift runs, Then every kind, spec field, demo tool and next verb resolves against the registry and host_tools, and a fixture template with kind = \"webhook\" fails naming the file and field.",
+      "test": "tests/ttpl_ac02_drift.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a new `Tool::new(\"host.example\")` added to `host_tools`, When `cargo test` runs, Then the drift test fails until `skill-gen --write` regenerates and the new verb appears under its family.",
-      "test": "tests/skgn_ac03_drift_test_fails_on_new_verb.rs"
+      "description": "Given a free tenant already holding 3 event triggers, When webhook-inbox is applied, Then the error is plan_limit with data.ceiling == \"event_triggers_max\" and the tenant's tool, table and trigger counts are unchanged.",
+      "test": "tests/ttpl_ac03_plan_ceiling_refused_before_any_create.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `ERROR_CODES` gains an entry, When `cargo test` runs, Then the drift test fails until the skill is regenerated, and a remedy that names a verb absent from `host_tools` fails the remedy test naming the code.",
-      "test": "tests/skgn_ac04_errors_from_registry_and_remedy_verbs.rs"
+      "description": "Given a tool create that fails midway (planted invalid spec in a test template), When apply runs, Then the response is the create's error and no object tagged with that template remains.",
+      "test": "tests/ttpl_ac04_failed_create_rolls_back_every_object.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the `limits` section, When rendered, Then every key of `plan.ceilings_json()` for `free` appears with its value and no number in the section is typed outside the generator (test: the section's numbers equal the JSON's).",
-      "test": "tests/skgn_ac05_limits_equal_plan_ceilings.rs"
+      "description": "Given an applied template, When applied again with the same name, Then no duplicate tool, table or trigger exists, updated lists the objects, and the tool's version advanced by one; Given two concurrent applies, Then one succeeds and one returns conflict with data.retry_after_s.",
+      "test": "tests/ttpl_ac05_reapply_updates_in_place_and_applies_serialize.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a binary built without the `dev` or `push` subcommands, When `skill-gen` renders `devloop`, Then the section says `no local verbs in this build` for the absent verbs and names none of them.",
-      "test": "tests/skgn_ac06_devloop_omits_absent_verbs.rs"
+      "description": "Given anonymous and keyed host.template_list and GET /templates.json, When called, Then all three return the same five names with one_line, creates counts and plan_fit, and keyed host.quickstart without kind carries templates.",
+      "test": "tests/ttpl_ac06_list_verb_and_templates_json_agree.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given `--url <the mcp url of a running host> --section verbs` against a local test host, When rendered, Then the output is derived from that host's `tools/list` and differs from the registry render only by verbs not yet deployed.",
-      "test": "tests/skgn_ac07_url_renders_from_tools_list.rs"
+      "level": "SHOULD",
+      "description": "Given an applied template whose tool the user republished, When host.template_remove runs, Then the trigger and table are removed, the tool is kept and named under kept.",
+      "test": "tests/ttpl_ac07_remove_keeps_what_the_user_changed.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod, When `diff <(curl -s https://mcphost.dev/skill.md | sed -n '/mcphost-verbs:start/,/mcphost-verbs:end/p') <(mcphost skill-gen --section verbs --url https://mcphost.dev/mcp | sed -n '/mcphost-verbs:start/,/mcphost-verbs:end/p')` runs, Then it prints nothing and exits 0 (Live; evidence: that command's exit code and empty stdout)",
-      "test": "deferred: Live (prod; evidence: that command's exit code and empty stdout)"
+      "description": "Given prod after this lands, When the public listing is fetched, Then it names at least five templates (Live; evidence: curl -s https://mcphost.dev/templates.json | python3 -c 'import json,sys;n=len(json.load(sys.stdin)[\"templates\"]);print(n);sys.exit(0 if n>=5 else 1)')",
+      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/templates.json | python3 -c 'import json,sys;n=len(json.load(sys.stdin)[\"templates\"]);print(n);sys.exit(0 if n>=5 else 1)')"
     }
   ],
   "scope": [
-    "src/skill_gen.rs (renderers for verbs, limits, errors, devloop; splice, check, tools/list fetch); src/main.rs (SkillGen subcommand); src/handler.rs (starter_tool_names); plugin/skills/mcphost/SKILL.md and www/skill.md (four marked sections); scripts/skill-gen-check.sh; remedy texts in src/org.rs, src/errors.rs, src/subkeys.rs, src/notify.rs, src/email_send.rs, src/drift/review.rs that named a verb the host does not serve."
+    "src/templates.rs (templates, apply, remove, list, drift check, per-tenant lock); templates/*.toml (five templates); migrations/0143_template_objects.sql (template_objects tags); src/db.rs (tag methods); src/webhook_inbox.rs and src/uptime.rs reused in process; descriptors, dispatch arms, write_verbs rows, output schemas, GET /templates.json, quickstart.templates and the generated contracts, docs, SDKs and llms.txt."
   ],
   "non_goals": [
-    "Rewriting the hand-written narrative; generating README.md or llms.txt; per-client skills; a second remedy table; the plugin.json version bump (R8, P1, wm-build land bumps); the Recipes section (R9, P2); the AC 8 prod diff (operator-provisioned, deferred)."
+    "User-authored templates (host.template_apply source=, P2); templates that need secrets the host cannot ask for (the response names secrets_required and stops); changing host.webhook_inbox.create, host.uptime.create or host.example.fork; generating templates from recipes/*.toml (hand-written here); the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -74,45 +74,54 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "one_render_path": "Every section is rendered by src/skill_gen.rs; no number, verb or code is typed in the skill outside a marked block."
+      "wrap_not_replace": "webhook-inbox and uptime-probes call host.webhook_inbox.create and host.uptime.create in process; they do not replace them.",
+      "all_or_nothing": "A failed create removes every object the call made; plan ceilings are checked before any create."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does an agent send calls the host refuses?",
-      "a": "The skill it reads first states no ceiling, no error code and names six verbs."
+      "q": "Why does an agent need several calls to show a job's first result?",
+      "a": "host.tool_publish creates one tool; the trigger and the demo call are separate steps."
     },
     {
       "why": 2,
-      "q": "Why does the skill omit them?",
-      "a": "It is hand-written; only two blocks are generated."
+      "q": "Why are those separate steps?",
+      "a": "The host exposes primitives; nothing composes tools, tables and triggers into a job."
     },
     {
       "why": 3,
-      "q": "Why were the other facts never generated?",
-      "a": "No generator reads the verb, plan and error registries into the skill."
+      "q": "Why can a template compose them in one call?",
+      "a": "The host already knows every piece: the kind registry, the plan ceilings and the in-process handlers behind publish, table create and trigger set."
     },
     {
       "why": 4,
-      "q": "Why does that stay unfixed?",
-      "a": "Nothing fails when a verb ships and the skill is not updated."
+      "q": "Why data files and a drift test?",
+      "a": "Templates are reviewable data; a PR that names a kind or verb the registry lacks must fail CI, not an agent's call."
     },
     {
       "why": 5,
-      "q": "Why does nothing fail?",
-      "a": "There was no drift test over the skill; skill-gen plus the skgn drift test add one."
+      "q": "Why tag every object and lock per tenant?",
+      "a": "Rollback, re-apply and remove must act on exactly what a template made, and two applies on one tenant must not race."
     }
   ],
   "created_at": "2026-11-13T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "The PRD says 11 anonymous starter verbs; which set is named?",
-      "resolution": "The registry's own anonymous starter listing (starter_tools: signup plus 17 host.*/billing.* names), read through handler::starter_tool_names; the count in the PRD is the stale comment above STARTER_TOOL_NAMES."
+      "question": "Does a template that needs a secret stop before create or create and mark needs_secret?",
+      "resolution": "It stops before any create and names secrets_required; the five shipped templates need none today."
     },
     {
-      "question": "Does --url need a key?",
-      "resolution": "An anonymous tools/list is only the starter set, so --url takes --key or MCPHOST_TENANT_KEY and refuses an anonymous starter-only listing."
+      "question": "Should scheduled-job take the tool source as a param or wrap an existing tool?",
+      "resolution": "It ships its own jq tool in tools[], so apply works on a fresh tenant."
+    },
+    {
+      "question": "Which tool kind does scheduled-job use?",
+      "resolution": "jq: it runs in process with no sandbox, so the demo call returns demo.expect deterministically."
+    },
+    {
+      "question": "What does unmodified since apply mean for remove?",
+      "resolution": "A tool whose active version still equals the one tagged, a table whose row count still equals the count tagged, and a trigger still firing the tagged tool; anything else is kept."
     }
   ]
 }

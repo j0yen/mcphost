@@ -536,6 +536,23 @@
         ],
         "type": "object"
       },
+      "TemplateCatalog": {
+        "properties": {
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "templates": {
+            "items": true,
+            "type": "array"
+          }
+        },
+        "required": [
+          "templates",
+          "count"
+        ],
+        "type": "object"
+      },
       "ToolArgs": {
         "description": "Arguments to pass, validated against the tool's own args_schema.",
         "type": "object",
@@ -553,7 +570,7 @@
     "description": "Every non-MCP HTTP route mcphost serves, generated from the router's own route table.",
     "title": "mcphost HTTP API",
     "version": "0.130.14",
-    "x-contract-version": "1.6e4b44bae3e0"
+    "x-contract-version": "1.f3e9a8a5cf6e"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -2296,6 +2313,28 @@
           }
         },
         "summary": "Status feed; component and days select one component's daily rollup, slo and days one slo key's",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/templates.json": {
+      "get": {
+        "operationId": "get_templates_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateCatalog"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Job templates host.template_apply provisions (the same list as host.template_list)",
         "tags": [
           "status"
         ],
