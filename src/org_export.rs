@@ -132,7 +132,7 @@ async fn assemble(job: &Job<'_>, limit: i64, spool: &std::path::Path) -> Result<
         let Some(row) = state.db.find_tenant_by_id(member.tenant_id).await? else {
             continue;
         };
-        let archive = crate::export::build_tenant_archive(state, &row, None).await?;
+        let archive = crate::export::build_tenant_archive(state, &row, None, None, false).await?;
         total += archive.bytes.len();
         if total as i64 > limit {
             return Err(crate::export::export_too_large_error(total, limit));

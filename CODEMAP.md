@@ -306,6 +306,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `EXAMPLE_USE_CASES` in `src/examples.rs`
 - `NON_RECIPE_DIRS` in `src/examples.rs`
 - `RUNNERS` in `src/examples.rs`
+- `EXPORT_EXCLUSIONS` in `src/export.rs`
 - `CODE_TO_KIND` in `src/feedback.rs`
 - `KIND_LEVEL_CODES` in `src/feedback.rs`
 - `FORM_INPUTS` in `src/form_page.rs`
