@@ -33999,6 +33999,460 @@
       "since": "0.107.89"
     },
     {
+      "description": "Provision a whole job from a template in one call: creates its tools, tables and triggers (tagged `template: <name>`) and returns {template, created: {tools, tables, triggers}, demo: {call, expect}, next}. Run demo.call yourself and show the user its result, which holds demo.expect. Nothing is created if a plan ceiling would be exceeded (plan_limit, data.ceiling names it) and a failed create removes what was already created. Applying again updates the objects in place.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Template name, from host.template_list.",
+            "enum": [
+              "scheduled-job",
+              "webhook-inbox",
+              "uptime-probes",
+              "database-in-a-minute",
+              "docs-qa"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "description": "The template's params (name, type and default are in host.template_list); omit for the defaults.",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.template_apply",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "created": {
+            "properties": {
+              "tables": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "tools": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "triggers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "demo": {
+            "properties": {
+              "call": {
+                "type": "object"
+              },
+              "expect": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "call",
+              "expect"
+            ],
+            "type": "object"
+          },
+          "next": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "template": {
+            "type": "string"
+          },
+          "updated": {
+            "properties": {
+              "tables": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "tools": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "triggers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "created",
+          "demo",
+          "next",
+          "template"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.9"
+    },
+    {
+      "description": "List the job templates host.template_apply provisions: each with its name, one_line, the counts of tools, tables and triggers it creates, the plan it fits (plan_fit) and its params. Public, the same list as GET /templates.json; no tenant data.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.template_list",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "templates": {
+            "items": {
+              "properties": {
+                "creates": {
+                  "properties": {
+                    "tables": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "tools": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "triggers": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "one_line": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "params": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "plan_fit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "secrets_required": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "templates"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.9",
+      "unpaged_reason": "static registry returned whole in one response, bounded by the code table, so no page cursor applies"
+    },
+    {
+      "description": "Remove what host.template_apply created for a template: its triggers, tables and tools that are still tagged and unmodified since the apply. An object the user changed since (a tool republished, a table with rows added or removed, a trigger pointed at another tool) is kept and named under kept. Returns {template, removed: {tools, tables, triggers}, kept: {tools, tables, triggers}}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The template name given to host.template_apply.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.template_remove",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "kept": {
+            "properties": {
+              "tables": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "tools": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "triggers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "removed": {
+            "properties": {
+              "tables": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "tools": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "triggers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "template": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kept",
+          "removed",
+          "template"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.9"
+    },
+    {
       "description": "Invoke a tool this tenant has already published, by its local name -- the same real, metered call as calling it directly by its namespaced name (<namespace>.<name>), for a session that has no way to see its own namespaced tool name yet. Unlike host.tool_test, this counts toward host.usage and appears in host.tool_logs. Pass async: true for a tool that needs more than the call deadline: returns {run_id, status: \"queued\"} immediately instead of running inline -- see host.runs.get/wait. Pass version to pin the call to one of host.tool_history's versions instead of whichever is current.",
       "input_schema": {
         "additionalProperties": false,
@@ -48467,6 +48921,84 @@
       },
       "name": "host_task_post",
       "since": "0.107.89"
+    },
+    {
+      "alias_of": "host.template_apply",
+      "description": "Provision a whole job from a template in one call: creates its tools, tables and triggers (tagged `template: <name>`) and returns {template, created: {tools, tables, triggers}, demo: {call, expect}, next}. Run demo.call yourself and show the user its result, which holds demo.expect. Nothing is created if a plan ceiling would be exceeded (plan_limit, data.ceiling names it) and a failed create removes what was already created. Applying again updates the objects in place.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Template name, from host.template_list.",
+            "enum": [
+              "scheduled-job",
+              "webhook-inbox",
+              "uptime-probes",
+              "database-in-a-minute",
+              "docs-qa"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "description": "The template's params (name, type and default are in host.template_list); omit for the defaults.",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_template_apply",
+      "since": "0.130.9"
+    },
+    {
+      "alias_of": "host.template_list",
+      "description": "List the job templates host.template_apply provisions: each with its name, one_line, the counts of tools, tables and triggers it creates, the plan it fits (plan_fit) and its params. Public, the same list as GET /templates.json; no tenant data.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_template_list",
+      "since": "0.130.9"
+    },
+    {
+      "alias_of": "host.template_remove",
+      "description": "Remove what host.template_apply created for a template: its triggers, tables and tools that are still tagged and unmodified since the apply. An object the user changed since (a tool republished, a table with rows added or removed, a trigger pointed at another tool) is kept and named under kept. Returns {template, removed: {tools, tables, triggers}, kept: {tools, tables, triggers}}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The template name given to host.template_apply.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_template_remove",
+      "since": "0.130.9"
     },
     {
       "alias_of": "host.tool.call",

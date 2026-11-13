@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-org-export-and-offboard-v2.md",
-  "intent_slug": "mcphost-org-export-and-offboard-v2",
-  "root_motivation": "WHO: the owner closing a team's account or moving hosts, and the member who wants their tools back. WHAT: one signed download of the whole team, one confirmed switch-off of every member key, one undo, and nothing deleted. WHY: export and offboard are per tenant and per key today, so a leaving team needs N humans to each run two tools and a mistaken offboard needs an operator.",
-  "user_persona": "An org owner's agent that calls host.org.export, polls host.runs.get for the download_url, then calls host.org.offboard with the org name, and later host.org.restore if the owner changes their mind; and a member whose key answers tenant_disabled with org_offboard.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-templates.md",
+  "intent_slug": "mcphost-tenant-templates",
+  "root_motivation": "WHO: an agent that knows the job (a scheduled job, a webhook inbox, uptime probes, a table, docs Q&A) and its user. WHAT: host.template_apply(name) provisions the whole job -- tools, tables, triggers -- in one all-or-nothing call and returns the demo call that shows the first result. WHY: the unit an agent wants is the job, not the tool; assembling a scheduled job from primitives takes three calls (publish, trigger set, call) and the 10-09 recipe sessions took 7 to 13.",
+  "user_persona": "An agent on a fresh free tenant that calls host.template_list or GET /templates.json to pick a template, host.template_apply(name=\"scheduled-job\"), runs the returned demo.call and shows its user the job's first result in two calls; and later host.template_remove to undo it without losing what the user changed.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,57 +14,57 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an org of 3 members with 2 tools each, whose member keys the test rotated and discarded, When the owner runs host.org.export and the job completes, Then one signed download_url serves a tar.gz whose members/<ns>.tar.gz parts list each member's own tools as host.export does, org_manifest.members has 3 rows with matching sha256, and grep -c key_hash src/org_export.rs prints 0.",
-      "test": "tests/orgx_ac01_one_bundle_holds_every_members_own_archive.rs"
+      "description": "Given a fresh free tenant and a test call log, When host.template_apply(name=\"scheduled-job\") runs and then the returned demo.call runs, Then a result equal to demo.expect is in the second call's result and the log holds exactly 2 calls; a third required call fails the test (premise falsified).",
+      "test": "tests/ttpl_ac01_scheduled_job_two_calls.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given DISABLED_REASONS in src/auth_shape.rs, When the drift test scans src/ for disabled_reason writes and calls admin.tenants with each value and with bogus, Then no write spells a literal outside the const, each value filters its tenants, bogus is args_invalid, and SYNTHETIC_PURGE_REASONS still equals [idle_expired, self_offboard].",
-      "test": "tests/orgx_ac02_disabled_reasons_one_source.rs"
+      "description": "Given templates/*.toml, When cargo test ttpl_drift runs, Then every kind, spec field, demo tool and next verb resolves against the registry and host_tools, and a fixture template with kind = \"webhook\" fails naming the file and field.",
+      "test": "tests/ttpl_ac02_drift.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a member caller, When it calls host.org.export, host.org.offboard or host.org.restore, Then it gets not_owner and nothing is written.",
-      "test": "tests/orgx_ac03_member_gets_not_owner_and_nothing_is_written.rs"
+      "description": "Given a free tenant already holding 3 event triggers, When webhook-inbox is applied, Then the error is plan_limit with data.ceiling == \"event_triggers_max\" and the tenant's tool, table and trigger counts are unchanged.",
+      "test": "tests/ttpl_ac03_plan_ceiling_refused_before_any_create.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the owner, When it calls host.org.offboard {confirm: wrong}, Then confirm_mismatch and every member stays enabled; with confirm equal to the org name, Then every live member, the owner included, is disabled = 1, disabled_reason = org_offboard, each member's next call answers tenant_disabled with that reason, and a repeat call answers already_offboarded.",
-      "test": "tests/orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key.rs"
+      "description": "Given a tool create that fails midway (planted invalid spec in a test template), When apply runs, Then the response is the create's error and no object tagged with that template remains.",
+      "test": "tests/ttpl_ac04_failed_create_rolls_back_every_object.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an org offboarded at any age, When the synthetic and external expire and purge stages run and the owner then calls host.org.restore, Then no tenant, tool or state row was deleted, every member disabled by that offboard is enabled with a NULL reason and their tools answer, and one tenant_audit row org.restore exists per member.",
-      "test": "tests/orgx_ac05_restore_undoes_an_offboard_at_any_age.rs"
+      "description": "Given an applied template, When applied again with the same name, Then no duplicate tool, table or trigger exists, updated lists the objects, and the tool's version advanced by one; Given two concurrent applies, Then one succeeds and one returns conflict with data.retry_after_s.",
+      "test": "tests/ttpl_ac05_reapply_updates_in_place_and_applies_serialize.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a fixture org, When every tool in each member part's manifest.json is re-published into a fresh org with host.tool_publish and the fresh org is exported, Then the two org_manifest.json files agree on member count and, member by member, on tools[].name, kind and spec_sha256.",
-      "test": "tests/orgx_ac06_exported_tools_republish_to_the_same_hashes.rs"
+      "description": "Given anonymous and keyed host.template_list and GET /templates.json, When called, Then all three return the same five names with one_line, creates counts and plan_fit, and keyed host.quickstart without kind carries templates.",
+      "test": "tests/ttpl_ac06_list_verb_and_templates_json_agree.rs"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given an org export already running, When the owner calls host.org.export again, Then the answer is, field for field, what host.export answers for its own duplicate on the same tree, and names the running run_id.",
-      "test": "tests/orgx_ac07_duplicate_org_export_answers_like_host_export.rs"
+      "description": "Given an applied template whose tool the user republished, When host.template_remove runs, Then the trigger and table are removed, the tool is kept and named under kept.",
+      "test": "tests/ttpl_ac07_remove_keeps_what_the_user_changed.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this lands, When llms.txt is fetched, Then it documents host.org.export, host.org.offboard and host.org.restore (Live; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)",
-      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)"
+      "description": "Given prod after this lands, When the public listing is fetched, Then it names at least five templates (Live; evidence: curl -s https://mcphost.dev/templates.json | python3 -c 'import json,sys;n=len(json.load(sys.stdin)[\"templates\"]);print(n);sys.exit(0 if n>=5 else 1)')",
+      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/templates.json | python3 -c 'import json,sys;n=len(json.load(sys.stdin)[\"templates\"]);print(n);sys.exit(0 if n>=5 else 1)')"
     }
   ],
   "scope": [
-    "src/org_export.rs (host.org.export job, org_manifest.json); src/org_offboard.rs (host.org.offboard, host.org.restore, their Db methods); src/export.rs (build_tenant_archive, store_and_sign, ORG_EXPORT_TOOL_NAME in the download route); src/auth_shape.rs (DISABLED_REASONS, DISABLED_PASSES); src/org.rs (TOOLS, owned_org, org_live_members); migrations/0142_org_offboard.sql (orgs.offboarded_unix); descriptors, dispatch arms, write_verbs rows, output schemas and the generated contracts, docs, SDKs and llms.txt."
+    "src/templates.rs (templates, apply, remove, list, drift check, per-tenant lock); templates/*.toml (five templates); migrations/0143_template_objects.sql (template_objects tags); src/db.rs (tag methods); src/webhook_inbox.rs and src/uptime.rs reused in process; descriptors, dispatch arms, write_verbs rows, output schemas, GET /templates.json, quickstart.templates and the generated contracts, docs, SDKs and llms.txt."
   ],
   "non_goals": [
-    "Deleting any data or any prune or retention stage for offboarded orgs; importing an org bundle into another host; exporting secret values; re-creating a cancelled subscription; an approvals list in the bundle; changing the behaviour of host.export or host.self.offboard; the AC 8 prod read (operator-provisioned, deferred)."
+    "User-authored templates (host.template_apply source=, P2); templates that need secrets the host cannot ask for (the response names secrets_required and stops); changing host.webhook_inbox.create, host.uptime.create or host.example.fork; generating templates from recipes/*.toml (hand-written here); the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -74,55 +74,54 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "no_member_credentials": "src/org_export.rs never reads a Tenant credential field; the member archive is built from the Tenant row by id and the owner's row signs the URL.",
-      "one_reason_list": "DISABLED_REASONS in src/auth_shape.rs is the only list of tenants.disabled_reason values; writers use its constants.",
-      "nothing_deleted": "org_offboard tenants are never purged and no stage deletes a tenant, tool or state row of an offboarded org."
+      "wrap_not_replace": "webhook-inbox and uptime-probes call host.webhook_inbox.create and host.uptime.create in process; they do not replace them.",
+      "all_or_nothing": "A failed create removes every object the call made; plan ceilings are checked before any create."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a team not leave in one step today?",
-      "a": "host.export and host.self.offboard act on one tenant with its own key."
+      "q": "Why does an agent need several calls to show a job's first result?",
+      "a": "host.tool_publish creates one tool; the trigger and the demo call are separate steps."
     },
     {
       "why": 2,
-      "q": "Why is that per key?",
-      "a": "The archive builder and the disable flip were written for the tenant itself, not for an owner acting over members."
+      "q": "Why are those separate steps?",
+      "a": "The host exposes primitives; nothing composes tools, tables and triggers into a job."
     },
     {
       "why": 3,
-      "q": "Why can an owner-side job run the builder without a member key?",
-      "a": "The builder takes a Tenant row and reads by tenant id; no key is part of what it reads."
+      "q": "Why can a template compose them in one call?",
+      "a": "The host already knows every piece: the kind registry, the plan ceilings and the in-process handlers behind publish, table create and trigger set."
     },
     {
       "why": 4,
-      "q": "Why a new disabled reason and a restore verb?",
-      "a": "org_offboard must be distinguishable from self_offboard so it is restorable and never purged; deleting nothing keeps the undo free."
+      "q": "Why data files and a drift test?",
+      "a": "Templates are reviewable data; a PR that names a kind or verb the registry lacks must fail CI, not an agent's call."
     },
     {
       "why": 5,
-      "q": "Why one generated reason list?",
-      "a": "tenants.disabled_reason is plain TEXT, so writers, the admin filter and the purge list drift unless one const names them all."
+      "q": "Why tag every object and lock per tenant?",
+      "a": "Rollback, re-apply and remove must act on exactly what a template made, and two applies on one tenant must not race."
     }
   ],
-  "created_at": "2026-11-12T00:00:00Z",
+  "created_at": "2026-11-13T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a member keep host.export alone while org-offboarded?",
-      "resolution": "No: every member key is dark until host.org.restore; only the org verbs pass the disabled-tenant refusal, per (verb, reason)."
+      "question": "Does a template that needs a secret stop before create or create and mark needs_secret?",
+      "resolution": "It stops before any create and names secrets_required; the five shipped templates need none today."
     },
     {
-      "question": "Which members get an org.offboard or org.restore audit row?",
-      "resolution": "Those the call changed: members already disabled for another reason are neither flipped nor restored and get no row."
+      "question": "Should scheduled-job take the tool source as a param or wrap an existing tool?",
+      "resolution": "It ships its own jq tool in tools[], so apply works on a fresh tenant."
     },
     {
-      "question": "Does restore reset last_seen_unix?",
-      "resolution": "Yes, to the restore time, so no expiry sweep reads the offboarded interval as idleness."
+      "question": "Which tool kind does scheduled-job use?",
+      "resolution": "jq: it runs in process with no sandbox, so the demo call returns demo.expect deterministically."
     },
     {
-      "question": "What bounds the bundle size?",
-      "resolution": "The owner's plan export_bytes_max, checked on the running sum of member parts and on the finished bundle (export_too_large)."
+      "question": "What does unmodified since apply mean for remove?",
+      "resolution": "A tool whose active version still equals the one tagged, a table whose row count still equals the count tagged, and a trigger still firing the tagged tool; anything else is kept."
     }
   ]
 }
