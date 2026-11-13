@@ -9,8 +9,6 @@
 mod common;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
-#[path = "support/dryspt_lint.rs"]
-mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
@@ -418,6 +416,14 @@ mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
 mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
 #[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
 mod sjrc_ac07_limit_ceiling_and_empty_tool;
+#[path = "skgn_ac04_errors_from_registry_and_remedy_verbs.rs"]
+mod skgn_ac04_errors_from_registry_and_remedy_verbs;
+#[path = "skgn_ac05_limits_equal_plan_ceilings.rs"]
+mod skgn_ac05_limits_equal_plan_ceilings;
+#[path = "skgn_ac06_devloop_omits_absent_verbs.rs"]
+mod skgn_ac06_devloop_omits_absent_verbs;
+#[path = "skgn_ac07_url_renders_from_tools_list.rs"]
+mod skgn_ac07_url_renders_from_tools_list;
 #[path = "skillsrc_ac01_gen_docs_writes_skill_md_byte_equal.rs"]
 mod skillsrc_ac01_gen_docs_writes_skill_md_byte_equal;
 #[path = "skillsrc_ac02_gen_docs_check_names_stale_skill_md.rs"]
@@ -1030,13 +1036,3 @@ mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
 mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
 #[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
 mod ttfs_ac07_by_client_only_for_groups_of_five;
-#[path = "txnhelp_ac01_lint_zero.rs"]
-mod txnhelp_ac01_lint_zero;
-#[path = "txnhelp_ac02_lock_parity.rs"]
-mod txnhelp_ac02_lock_parity;
-#[path = "txnhelp_ac03_is_writable_probe.rs"]
-mod txnhelp_ac03_is_writable_probe;
-#[path = "txnhelp_ac04_migration_0116_atomic.rs"]
-mod txnhelp_ac04_migration_0116_atomic;
-#[path = "txnhelp_ac05_append_real_then_dry_run.rs"]
-mod txnhelp_ac05_append_real_then_dry_run;

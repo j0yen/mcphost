@@ -504,7 +504,7 @@ pub async fn sends(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 crate::err_code! {
     pub EMAIL_OWNER_UNVERIFIED,
     code: "email_owner_unverified", family: Auth, class: HostRefusal, retryable: false,
-    remedy: "Verify the owner email first (data.next_call is host.claim); until then mail goes only to the owner's own address.",
+    remedy: "Verify the owner email first with host.claim.start; until then mail goes only to the owner's own address.",
 }
 
 crate::err_code! {

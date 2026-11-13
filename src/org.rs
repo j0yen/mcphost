@@ -701,25 +701,25 @@ pub async fn whoami_org(state: &AppState, tenant_id: i64) -> Result<Value, AppEr
 crate::err_code! {
     pub NOT_A_MEMBER,
     code: "not_a_member", family: Share, class: AgentFault, retryable: false,
-    remedy: "Call host.org_members for the live member list; this namespace is not one of them.",
+    remedy: "Call host.org.members for the live member list; this namespace is not one of them.",
 }
 
 crate::err_code! {
     pub NOT_IN_ORG,
     code: "not_in_org", family: Share, class: AgentFault, retryable: false,
-    remedy: "Call host.org_create or host.org_join first; this tenant belongs to no org.",
+    remedy: "Call host.org.create or host.org.join first; this tenant belongs to no org.",
 }
 
 crate::err_code! {
     pub NOT_OWNER,
     code: "not_owner", family: Share, class: HostRefusal, retryable: false,
-    remedy: "Only the org owner can do this; ask the owner listed by host.org_members.",
+    remedy: "Only the org owner can do this; ask the owner listed by host.org.members.",
 }
 
 crate::err_code! {
     pub ORG_MEMBER_ALREADY,
     code: "org_member_already", family: Share, class: AgentFault, retryable: false,
-    remedy: "This tenant is already in an org; call host.org_members to see it.",
+    remedy: "This tenant is already in an org; call host.org.members to see it.",
 }
 
 crate::err_code! {
