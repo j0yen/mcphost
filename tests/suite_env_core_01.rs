@@ -44,6 +44,8 @@ mod heal_ac02_dry_run_writes_would_run;
 mod kih_ac06_journal_contract_and_instructions_state_the_rule;
 #[path = "ntfyb_ac03_webhook_retries_to_delivered_or_failed.rs"]
 mod ntfyb_ac03_webhook_retries_to_delivered_or_failed;
+#[path = "orgx_ac05_restore_undoes_an_offboard_at_any_age.rs"]
+mod orgx_ac05_restore_undoes_an_offboard_at_any_age;
 #[path = "support_ac05_support_url_rendered_or_not_configured.rs"]
 mod support_ac05_support_url_rendered_or_not_configured;
 #[path = "tenp_ac01_batched_purge_under_load_exactly_once.rs"]

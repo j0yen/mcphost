@@ -17,10 +17,14 @@ use crate::state::{AppState, now_unix};
 /// test (tests/orgm_ac03) fails when they separate.
 pub const ROLES: &[&str] = &["owner", "member"];
 
+/// The verb that starts an org; the reach sweep (tests/support/osreach.rs)
+/// calls it to put its populated tenant in an org without spelling the name.
+pub const CREATE_TOOL: &str = "host.org.create";
+
 /// The `host.org.*` tool names, shared by the dispatcher, the descriptors
 /// and the drift test.
 pub const TOOLS: &[&str] = &[
-    "host.org.create",
+    CREATE_TOOL,
     "host.org.join",
     "host.org.members",
     "host.org.remove",
@@ -28,6 +32,9 @@ pub const TOOLS: &[&str] = &[
     "host.org.usage",
     "host.org.digest.set",
     "host.org.digest.send",
+    "host.org.export",
+    "host.org.offboard",
+    "host.org.restore",
 ];
 
 /// `ROLES` as a SQL `IN (...)` list body: `'owner', 'member'`.
@@ -152,6 +159,15 @@ pub(crate) fn insert_member_sync(
     Ok(())
 }
 
+/// One live member as an owner-side job reads it: the tenant id the job
+/// passes to the per-tenant builders, plus what the org manifest records.
+pub struct LiveMember {
+    pub tenant_id: i64,
+    pub namespace: String,
+    pub role: String,
+    pub joined_unix: i64,
+}
+
 /// One row of `host.org.members`.
 pub struct MemberRow {
     pub namespace: String,
@@ -267,6 +283,31 @@ impl Db {
                         joined_unix: r.get(2)?,
                         last_seen_unix: r.get(3)?,
                         tools: r.get(4)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Live members of `org_id` (`removed_unix IS NULL`) with their tenant
+    /// ids, oldest first.
+    pub async fn org_live_members(&self, org_id: i64) -> Result<Vec<LiveMember>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.id, t.namespace, m.role, m.joined_unix \
+                 FROM org_members m JOIN tenants t ON t.id = m.tenant_id \
+                 WHERE m.org_id = ?1 AND m.removed_unix IS NULL \
+                 ORDER BY m.joined_unix, t.id",
+            )?;
+            let rows = stmt
+                .query_map(params![org_id], |r| {
+                    Ok(LiveMember {
+                        tenant_id: r.get(0)?,
+                        namespace: r.get(1)?,
+                        role: r.get(2)?,
+                        joined_unix: r.get(3)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -396,6 +437,18 @@ pub(crate) fn not_owner_error() -> AppError {
         message: "only the org owner can do this".to_string(),
         data: json!({}),
     }
+}
+
+/// The caller's org when it owns one: `(org_id, org name)`. `not_in_org` /
+/// `not_owner` otherwise.
+pub(crate) async fn owned_org(state: &AppState, tenant: &Tenant) -> Result<(i64, String), AppError> {
+    let Some((org_id, name, role, _)) = state.db.org_membership(tenant.id).await? else {
+        return Err(not_in_org_error());
+    };
+    if role != "owner" {
+        return Err(not_owner_error());
+    }
+    Ok((org_id, name))
 }
 
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {

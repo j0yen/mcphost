@@ -372,6 +372,8 @@ const MIGRATION_0138: &str = include_str!("../migrations/0138_tool_test_verdict.
 const MIGRATION_0139: &str = include_str!("../migrations/0139_catalog_receipts.sql");
 const MIGRATION_0140: &str = include_str!("../migrations/0140_synthetic_tenant_purge.sql");
 const MIGRATION_0141: &str = include_str!("../migrations/0141_slo_targets.sql");
+/// PRD-mcphost-org-export-and-offboard-v2 R4/R5: `orgs.offboarded_unix`.
+const MIGRATION_0142: &str = include_str!("../migrations/0142_org_offboard.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3664,6 +3666,19 @@ impl Db {
         conn.execute_batch(MIGRATION_0140)?;
         // `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0141)?;
+        Self::migrate_0142_org_offboard(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-org-export-and-offboard-v2: gated on `orgs.offboarded_unix`
+    /// (the batch is an `ALTER`, so a rerun must skip it).
+    fn migrate_0142_org_offboard(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('orgs') WHERE name = 'offboarded_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0142)?;
+        }
         Ok(())
     }
 
@@ -7200,7 +7215,7 @@ impl Db {
         disabled: bool,
     ) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
-            let reason: Option<&str> = if disabled { Some("admin_disable") } else { None };
+            let reason: Option<&str> = if disabled { Some(crate::auth_shape::ADMIN_DISABLE_REASON) } else { None };
             let n = conn.execute(
                 "UPDATE tenants SET disabled = ?1, disabled_reason = ?2 WHERE namespace = ?3",
                 params![disabled as i64, reason, namespace],
@@ -7229,9 +7244,9 @@ impl Db {
     pub async fn self_offboard_tenant(&self, tenant_id: i64) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
             let n = conn.execute(
-                "UPDATE tenants SET disabled = 1, disabled_reason = 'self_offboard' \
+                "UPDATE tenants SET disabled = 1, disabled_reason = ?2 \
                  WHERE id = ?1 AND disabled = 0",
-                params![tenant_id],
+                params![tenant_id, crate::auth_shape::SELF_OFFBOARD_REASON],
             )?;
             Ok(n > 0)
         })

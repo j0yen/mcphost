@@ -146,6 +146,8 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     nd("host.org.leave", Kind::Remove, "irreversible_by_design"),
     sv("host.org.digest.set", Kind::Write),
     nd("host.org.digest.send", Kind::Write, "external_effect"),
+    nd("host.org.offboard", Kind::Revoke, "external_effect"),
+    nd("host.org.restore", Kind::Write, "external_effect"),
     // `resume` is a read: the name matches the write pattern (host.trigger.resume), the verb writes nothing.
     nd("host.resume", Kind::Write, "read_only_shape"),
 ];

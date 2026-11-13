@@ -618,7 +618,7 @@ pub const ALWAYS_LISTED: &[&str] = &["host.whoami", "host.quickstart", "host.too
 
 /// Prefixes no sub-key reaches even without an allowlist.
 const ALWAYS_REFUSED: &[&str] =
-    &["host.key.", "host.secret.", "host.lockdown", "host.self.offboard", "host.export"];
+    &["host.key.", "host.secret.", "host.lockdown", "host.self.offboard", "host.export", "host.org.export", "host.org.offboard", "host.org.restore"];
 
 impl SubKey {
     /// Whether this sub-key may see/call the tool whose wire name is `name`
