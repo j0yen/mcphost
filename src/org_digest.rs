@@ -228,21 +228,9 @@ pub fn spawn_weekly(state: AppState) -> tokio::task::JoinHandle<()> {
     })
 }
 
-/// The caller's org when it owns one: `(org_id, org name)`. `not_in_org` /
-/// `not_owner` otherwise.
-async fn owned_org(state: &AppState, tenant: &Tenant) -> Result<(i64, String), AppError> {
-    let Some((org_id, name, role, _)) = state.db.org_membership(tenant.id).await? else {
-        return Err(crate::org::not_in_org_error());
-    };
-    if role != "owner" {
-        return Err(crate::org::not_owner_error());
-    }
-    Ok((org_id, name))
-}
-
 /// `host.org.digest.set {enabled}`: the owner opts the weekly digest in or out.
 pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let (_, org) = owned_org(state, tenant).await?;
+    let (_, org) = crate::org::owned_org(state, tenant).await?;
     let enabled = args
         .get("enabled")
         .and_then(Value::as_bool)
@@ -254,7 +242,7 @@ pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
 
 /// `host.org.digest.send`: the owner sends the 7d digest now (1 per hour).
 pub async fn send(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
-    owned_org(state, tenant).await?;
+    crate::org::owned_org(state, tenant).await?;
     // Read fresh: a claim completing between two calls must be seen.
     let fresh = state
         .db

@@ -96,6 +96,8 @@ pub mod install_links;
 pub mod invites;
 pub mod org;
 pub mod org_digest;
+pub mod org_export;
+pub mod org_offboard;
 pub mod org_usage;
 pub mod tenant_clients;
 pub mod kinds;

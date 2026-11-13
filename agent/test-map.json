@@ -2707,6 +2707,17 @@
       "AC4": "tests/rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs",
       "AC5": "tests/rszb_ac05_table_query_offset_walk.rs",
       "AC6": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)"
+    },
+    "orgx": {
+      "_prd": "PRD-mcphost-org-export-and-offboard-v2.md (test_prefix: orgx)",
+      "AC1": "tests/orgx_ac01_one_bundle_holds_every_members_own_archive.rs",
+      "AC2": "tests/orgx_ac02_disabled_reasons_one_source.rs",
+      "AC3": "tests/orgx_ac03_member_gets_not_owner_and_nothing_is_written.rs",
+      "AC4": "tests/orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key.rs",
+      "AC5": "tests/orgx_ac05_restore_undoes_an_offboard_at_any_age.rs",
+      "AC6": "tests/orgx_ac06_exported_tools_republish_to_the_same_hashes.rs",
+      "AC7": "tests/orgx_ac07_duplicate_org_export_answers_like_host_export.rs",
+      "AC8": "deferred -- operator-provisioned: live curl of prod llms.txt after deploy."
     }
   }
 }

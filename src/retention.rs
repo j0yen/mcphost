@@ -260,7 +260,8 @@ pub const PRE_FLOOR_SAMPLE_LIMIT: usize = 200;
 /// `admin_events.action` of a synthetic purge (survives the cascade).
 pub const SYNTHETIC_PURGE_ACTION: &str = "tenant_purge_synthetic";
 /// `disabled_reason` values the synthetic purge accepts.
-pub const SYNTHETIC_PURGE_REASONS: &[&str] = &["idle_expired", "self_offboard"];
+pub const SYNTHETIC_PURGE_REASONS: &[&str] =
+    &[crate::auth_shape::IDLE_EXPIRED_REASON, crate::auth_shape::SELF_OFFBOARD_REASON];
 /// Draws a mint makes before giving up on a free namespace.
 pub const NAMESPACE_DRAW_LIMIT: usize = 16;
 

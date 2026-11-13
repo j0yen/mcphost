@@ -93,6 +93,8 @@ Regenerate with `scripts/generated-docs-check.sh --write`.
 | `host.org.leave` | remove | refused | `irreversible_by_design` |
 | `host.org.digest.set` | write | supported | |
 | `host.org.digest.send` | write | refused | `external_effect` |
+| `host.org.offboard` | revoke | refused | `external_effect` |
+| `host.org.restore` | write | refused | `external_effect` |
 | `host.resume` | write | refused | `read_only_shape` |
 
 ### Confirm rule
