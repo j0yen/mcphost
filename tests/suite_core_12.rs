@@ -32,6 +32,20 @@ mod tssdk;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "qsbc_ac01_detection_keys_on_known_names.rs"]
+mod qsbc_ac01_detection_keys_on_known_names;
+#[path = "qsbc_ac02_quickstart_client_cursor.rs"]
+mod qsbc_ac02_quickstart_client_cursor;
+#[path = "qsbc_ac03_quickstart_client_user_agent.rs"]
+mod qsbc_ac03_quickstart_client_user_agent;
+#[path = "qsbc_ac04_quickstart_client_unknown.rs"]
+mod qsbc_ac04_quickstart_client_unknown;
+#[path = "qsbc_ac05_quickstart_client_chatgpt.rs"]
+mod qsbc_ac05_quickstart_client_chatgpt;
+#[path = "qsbc_ac06_connect_go_json_matches_quickstart.rs"]
+mod qsbc_ac06_connect_go_json_matches_quickstart;
+#[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
+mod qsbc_ac07_quickstart_writes_client_name;
 #[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
 mod refrow_ac01_args_invalid_writes_refused_row;
 #[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
@@ -1026,15 +1040,3 @@ mod txnhelp_ac03_is_writable_probe;
 mod txnhelp_ac04_migration_0116_atomic;
 #[path = "txnhelp_ac05_append_real_then_dry_run.rs"]
 mod txnhelp_ac05_append_real_then_dry_run;
-#[path = "umeta_ac01_meta_usage_matches_refusal_and_status.rs"]
-mod umeta_ac01_meta_usage_matches_refusal_and_status;
-#[path = "umeta_ac02_golden_echo_result_unchanged.rs"]
-mod umeta_ac02_golden_echo_result_unchanged;
-#[path = "umeta_ac03_host_usage_plan_block.rs"]
-mod umeta_ac03_host_usage_plan_block;
-#[path = "umeta_ac04_unlimited_plan_renders_null_limit.rs"]
-mod umeta_ac04_unlimited_plan_renders_null_limit;
-#[path = "umeta_ac05_no_extra_select_on_hot_path.rs"]
-mod umeta_ac05_no_extra_select_on_hot_path;
-#[path = "umeta_ac06_caller_limit_in_meta_usage.rs"]
-mod umeta_ac06_caller_limit_in_meta_usage;

@@ -123,25 +123,33 @@ pub enum Visibility {
     Private,
     Unlisted,
     Group,
+    Org,
     Public,
     Url,
 }
 
 impl Visibility {
-    pub const ALL: [Visibility; 5] =
-        [Visibility::Private, Visibility::Unlisted, Visibility::Group, Visibility::Public, Visibility::Url];
+    pub const ALL: [Visibility; 6] = [
+        Visibility::Private,
+        Visibility::Unlisted,
+        Visibility::Group,
+        Visibility::Org,
+        Visibility::Public,
+        Visibility::Url,
+    ];
     /// What `host.tool_publish` accepts.
     pub const PUBLISHABLE: [Visibility; 3] = [Visibility::Private, Visibility::Unlisted, Visibility::Public];
     /// What `host.tool_share` accepts (`host.tool_unshare` is the way back
     /// to `private`).
-    pub const SHAREABLE: [Visibility; 4] =
-        [Visibility::Unlisted, Visibility::Group, Visibility::Public, Visibility::Url];
+    pub const SHAREABLE: [Visibility; 5] =
+        [Visibility::Unlisted, Visibility::Group, Visibility::Org, Visibility::Public, Visibility::Url];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Visibility::Private => "private",
             Visibility::Unlisted => "unlisted",
             Visibility::Group => "group",
+            Visibility::Org => "org",
             Visibility::Public => "public",
             Visibility::Url => "url",
         }
@@ -373,6 +381,20 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         }
     }
 
+    // PRD-mcphost-org-shared-tools-namespace-v2 R2: org visibility needs a
+    // live org seat (owner or member).
+    let org_seat = if vis == Visibility::Org {
+        Some(
+            state
+                .db
+                .org_membership(tenant.id)
+                .await?
+                .ok_or_else(|| crate::org::org_required_error_for("host.tool_share with visibility 'org' needs an org"))?,
+        )
+    } else {
+        None
+    };
+
     // The tool must exist and already be this tenant's own.
     let row = state
         .db
@@ -430,17 +452,22 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         state.db.set_tool_tags(tenant.id, name.clone(), merged).await?;
     }
 
-    state
-        .db
-        .set_tool_share(
-            tenant.id,
-            name.clone(),
-            visibility.clone(),
-            group.clone(),
-            description.clone(),
-            expose_spec,
-        )
-        .await?;
+    if vis == Visibility::Org {
+        // R7: the name check and the write are one write transaction.
+        state.db.share_org_tool(tenant.id, name.clone(), description.clone(), expose_spec).await?;
+    } else {
+        state
+            .db
+            .set_tool_share(
+                tenant.id,
+                name.clone(),
+                visibility.clone(),
+                group.clone(),
+                description.clone(),
+                expose_spec,
+            )
+            .await?;
+    }
     state
         .db
         .set_share_scopes(tenant.id, name.clone(), scopes.clone(), rate_per_hour)
@@ -460,10 +487,27 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     if row.visibility == "group" && row.shared_group != group {
         touched.extend(group_grantee_ids(state, tenant, row.shared_group.as_deref()).await?);
     }
+    // R2/R3: the org's other live members, who now see `org.<name>`.
+    let org_members = match &org_seat {
+        Some((org_id, ..)) => state
+            .db
+            .org_live_members(*org_id)
+            .await?
+            .into_iter()
+            .filter(|m| m.tenant_id != tenant.id)
+            .collect::<Vec<_>>(),
+        None => Vec::new(),
+    };
+    touched.extend(org_members.iter().map(|m| m.tenant_id));
     state.db.touch_tool_change_for(touched).await?;
 
+    let shown_name = if vis == Visibility::Org {
+        format!("org.{name}")
+    } else {
+        format!("{}.{}", tenant.namespace, name)
+    };
     let mut result = json!({
-        "name": format!("{}.{}", tenant.namespace, name),
+        "name": shown_name,
         "visibility": visibility,
         "tags": after.tags,
         "tested_version": after.tested_version,
@@ -475,6 +519,15 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         "scopes": scopes,
         "rate_per_hour_per_caller": rate_per_hour,
     });
+    if vis == Visibility::Org
+        && let Some(obj) = result.as_object_mut()
+    {
+        obj.insert("members_reached".to_string(), json!(org_members.len()));
+        obj.insert(
+            "members".to_string(),
+            json!(org_members.iter().map(|m| m.namespace.clone()).collect::<Vec<_>>()),
+        );
+    }
     if let Some(token) = token
         && let Some(obj) = result.as_object_mut()
     {
@@ -503,6 +556,17 @@ pub async fn tool_unshare(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         Some(row) if row.visibility == "group" => {
             group_grantee_ids(state, tenant, row.shared_group.as_deref()).await?
         }
+        Some(row) if row.visibility == "org" => match state.db.org_membership(tenant.id).await? {
+            Some((org_id, ..)) => state
+                .db
+                .org_live_members(org_id)
+                .await?
+                .into_iter()
+                .map(|m| m.tenant_id)
+                .filter(|id| *id != tenant.id)
+                .collect(),
+            None => Vec::new(),
+        },
         _ => Vec::new(),
     };
     let removed = state.db.unshare_tool(tenant.id, name.clone()).await?;
@@ -658,6 +722,9 @@ pub async fn shared_visibility(
             }
             _ => None,
         },
+        // PRD-mcphost-org-shared-tools-namespace-v2 R4: caller and owner are
+        // live members of one org, read from `org_members` on every call.
+        "org" if caller.id != owner.id && state.db.same_live_org(owner.id, caller.id).await? => Some("org"),
         _ => None,
     })
 }
@@ -688,6 +755,29 @@ pub async fn visible_shared_tools(
     Ok(out)
 }
 
+/// PRD-mcphost-org-shared-tools-namespace-v2 R3: every live org tool of the
+/// caller's org, excluding the caller's own, each confirmed by
+/// [`shared_visibility`] -- the list side of `org.<tool>`. Rendered as
+/// [`org_tool_name`], never `<owner ns>.<tool>`. A single query reads the live
+/// `org_members` rows each time; nothing outlives the request.
+pub async fn visible_org_tools(state: &AppState, caller: &Tenant) -> Result<Vec<(Tenant, ToolRow)>, AppError> {
+    let mut out = Vec::new();
+    for (owner_ns, name) in state.db.org_tools_for_caller(caller.id).await? {
+        let Some((owner, row)) = state.db.get_tool_by_owner_namespace(owner_ns, name).await? else {
+            continue;
+        };
+        if shared_visibility(state, caller, &owner, &row).await? == Some("org") {
+            out.push((owner, row));
+        }
+    }
+    Ok(out)
+}
+
+/// `org.<tool>`: how a member sees an org tool, whoever published it.
+pub fn org_tool_name(tool: &str) -> String {
+    format!("{ORG_NAMESPACE}.{tool}")
+}
+
 /// PRD-mcphost-shared-tools-in-grantee-list R3: `host.tool.list_shared
 /// {q?, limit?}` -- public shares plus the group shares `caller` can call,
 /// with the `_meta` fields `tools/list` uses for group entries.
@@ -715,6 +805,13 @@ pub async fn list_shared(state: &AppState, caller: &Tenant, args: &Value) -> Res
         .filter(|(o, r)| matches(&o.namespace, r))
         .map(|(o, r)| entry(&o.namespace, r, "group"))
         .collect();
+    for (owner, row) in visible_org_tools(state, caller).await? {
+        if matches(ORG_NAMESPACE, &row) {
+            let mut org_entry = entry(ORG_NAMESPACE, &row, "org");
+            org_entry["_meta"]["shared_by"] = json!(owner.namespace);
+            all.push(org_entry);
+        }
+    }
     let now = crate::state::now_unix();
     for hit in state.db.search_catalog(q.clone(), 1000, caller.is_synthetic_marked(), now).await?.hits {
         if hit.namespace != caller.namespace {
@@ -764,11 +861,24 @@ async fn resolve_visible(
     local_name: &str,
 ) -> Result<(Tenant, ToolRow), AppError> {
     let not_found = || AppError::shared_tool_not_found(owner_ns, local_name);
-    let (owner, row) = state
-        .db
-        .get_tool_by_owner_namespace(owner_ns.to_string(), local_name.to_string())
-        .await?
-        .ok_or_else(not_found)?;
+    let (owner, row) = if owner_ns == ORG_NAMESPACE {
+        // R4/R5: `org.<tool>` is matched before `<namespace>.<tool>`. A caller
+        // in no live org is told how to start one; a live member of another
+        // org (or one whose publisher left) gets the plain not-found.
+        if state.db.org_membership(caller.id).await?.is_none() {
+            return Err(crate::org::org_required_error_for("org.<tool> names a tool shared with your org"));
+        }
+        let owner_id = state.db.org_tool_owner(caller.id, local_name.to_string()).await?.ok_or_else(not_found)?;
+        let owner = state.db.find_tenant_by_id(owner_id).await?.ok_or_else(not_found)?;
+        let row = state.db.get_tool(owner.id, local_name.to_string()).await?.ok_or_else(not_found)?;
+        (owner, row)
+    } else {
+        state
+            .db
+            .get_tool_by_owner_namespace(owner_ns.to_string(), local_name.to_string())
+            .await?
+            .ok_or_else(not_found)?
+    };
 
     if shared_visibility(state, caller, &owner, &row).await?.is_none() {
         // R5: a caller that ran this tool in the last 7 days learns the share
@@ -798,6 +908,10 @@ async fn resolve_visible(
     }
     Ok((owner, row))
 }
+
+/// The reserved namespace literal `org.<tool>` resolves through; signup never
+/// issues it.
+pub const ORG_NAMESPACE: &str = "org";
 
 /// How long after an unshare a past caller still gets `share_revoked`.
 const REVOKED_WINDOW_SECS: i64 = 7 * 86_400;

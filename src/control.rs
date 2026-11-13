@@ -1720,6 +1720,15 @@ pub async fn whoami(
             })
         })
         .collect();
+    // PRD-mcphost-org-shared-tools-namespace-v2 R3: org tools, `via: "org"`.
+    let mut shared_tools = shared_tools;
+    for (owner, row) in crate::sharing::visible_org_tools(state, tenant).await? {
+        shared_tools.push(json!({
+            "name": crate::sharing::org_tool_name(&row.name),
+            "owner": owner.namespace,
+            "via": "org",
+        }));
+    }
     // PRD-mcphost-invite-links requirement 10 (AC9): `None` only for a
     // tenant that predates migration 0067/0068 and has never had one
     // lazily minted (out of this build's tested scope -- see

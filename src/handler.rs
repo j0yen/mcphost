@@ -7731,6 +7731,12 @@ impl McpHostHandler {
                     .await
                     .map(|v| v.into_iter().map(|(o, r)| format!("{}.{}", o.namespace, r.name)).collect())
                     .unwrap_or_default();
+                shared.extend(
+                    crate::sharing::visible_org_tools(&self.state, tenant)
+                        .await
+                        .map(|v| v.into_iter().map(|(_, r)| crate::sharing::org_tool_name(&r.name)).collect::<Vec<_>>())
+                        .unwrap_or_default(),
+                );
                 let local = requested.rsplit_once('.').map_or(requested, |(_, l)| l);
                 let catalog_matches = match self
                     .state
@@ -12879,10 +12885,30 @@ impl ServerHandler for McpHostHandler {
                 // per-caller hourly rate). Public shares are never injected. A
                 // sub-key's `permits` filter below applies to them like any
                 // other entry (R5).
-                let shared = crate::sharing::visible_shared_tools(&self.state, &tenant)
-                    .await
-                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
-                for (owner, row) in shared {
+                // PRD-mcphost-org-shared-tools-namespace-v2 R3: the caller's
+                // org tools follow, named `org.<tool>`, through the same
+                // membership rule the call path resolves with.
+                let mut shared: Vec<(Tenant, crate::db::ToolRow, String, &str)> =
+                    crate::sharing::visible_shared_tools(&self.state, &tenant)
+                        .await
+                        .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+                        .into_iter()
+                        .map(|(o, r)| {
+                            let name = format!("{}.{}", o.namespace, r.name);
+                            (o, r, name, "group")
+                        })
+                        .collect();
+                shared.extend(
+                    crate::sharing::visible_org_tools(&self.state, &tenant)
+                        .await
+                        .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+                        .into_iter()
+                        .map(|(o, r)| {
+                            let name = crate::sharing::org_tool_name(&r.name);
+                            (o, r, name, "org")
+                        }),
+                );
+                for (owner, row, listed_name, shared_vis) in shared {
                     if !crate::oauth::scope_satisfied(token_scope, &row.scopes) {
                         continue;
                     }
@@ -12899,7 +12925,7 @@ impl ServerHandler for McpHostHandler {
                     let mut meta = rmcp::model::MetaObject::new();
                     meta.0.insert("kind".to_string(), json!(row.kind));
                     meta.0.insert("shared_by".to_string(), json!(owner.namespace));
-                    meta.0.insert("shared_visibility".to_string(), json!("group"));
+                    meta.0.insert("shared_visibility".to_string(), json!(shared_vis));
                     meta.0.insert(
                         "share_scopes".to_string(),
                         json!(share.scopes.unwrap_or_else(crate::sharing::ShareScope::legacy_default)),
@@ -12908,7 +12934,7 @@ impl ServerHandler for McpHostHandler {
                         meta.0.insert("share_rate_per_hour".to_string(), json!(rate));
                     }
                     let mut shared_tool = Tool::new(
-                        format!("{}.{}", owner.namespace, row.name),
+                        listed_name,
                         descriptor.description,
                         value_to_json_object(descriptor.input_schema),
                     )

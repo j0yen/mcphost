@@ -4235,7 +4235,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tags`: array
 - `tenant_key`: string
 - `visibility`: string, required
-  - `visibility` enum: `unlisted`, `group`, `public`, `url`
+  - `visibility` enum: `unlisted`, `group`, `org`, `public`, `url`
 
 ### `host.tool.spec_shared`
 
