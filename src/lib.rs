@@ -157,6 +157,7 @@ pub mod secrets;
 pub mod session_bind;
 pub mod sharing;
 pub mod signed_url;
+pub mod pool_restart;
 pub mod state;
 pub mod signals;
 pub mod statusfeed;

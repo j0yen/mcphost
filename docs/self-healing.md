@@ -44,3 +44,40 @@ The table below is generated from `src/heal.rs` by
 | `db_maintenance` | 1 | no | Optimise, empty the write-ahead log and reclaim free pages once a day at the quietest hour. |
 | `log_rotate` | 1 | no | Sweep expired scratch and export files once a day and flag a journal vacuum. |
 <!-- mcphost-heal-actions:end -->
+
+## Sandbox pool restart
+
+When the `sandbox_pool` signal breaches (the ratio of wedged calls to pool
+children stays at or above `red` for `for_s`), the host restarts its python
+sandbox pool itself, inside the `sandbox_pool_restart` hourly limit above:
+
+1. the pool goes `draining`; a new call waits (at most `drain_budget_s` + 5 s,
+   then it answers `sandbox_unavailable` with `retry_after_s`);
+2. calls older than `wedge_factor` x their timeout are killed;
+3. healthy in-flight calls run for up to `drain_budget_s` (`heal.toml`,
+   `[signals.sandbox_pool]`, default 30);
+4. calls still running are cancelled;
+5. the warm pool is emptied and the state returns to `ready`.
+
+One `sandbox_pool_restart` row records it; `trigger` carries `signal`, `ratio`
+and `wedged`, `before` and `after` carry `wedged`, `pool_size` and
+`in_flight_count`. The wedged calls' `tenant/tool` keys and the killed
+children's stderr tails (`after.stderr_tails`, at most 2 KB each) are private:
+the admin-only incidents list returns them, `/incidents.json` omits them. With
+`MCPHOST_HEAL_DRY_RUN=1` the row reads `would_run` and nothing is killed. When
+the hourly limit is spent the row reads `rate_limited` and the host opens one
+incident naming `exec` that it does not auto-close.
+
+`/status.json.sandbox_pool` reads `{size, wedged, state: ready | draining,
+last_restart: {at, outcome, heal_action_id} | null}`.
+
+### `tool_timeout` after a restart
+
+A call the restart killed or cancelled answers `tool_timeout` (code
+unchanged) with three additive `data` keys:
+
+| key | meaning |
+|---|---|
+| `heal_action_id` | the id of the `sandbox_pool_restart` ledger row (`null` if the row was not written within 2 s) |
+| `retry_after_ms` | how long to wait before retrying |
+| `hint` | says the host restarted its sandbox pool |

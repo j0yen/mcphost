@@ -39,3 +39,6 @@ unit = "ratio"
 # A pool child is wedged once it is older than wedge_factor x the call's
 # wall-clock timeout with no result.
 wedge_factor = 3.0
+# A pool restart lets healthy in-flight calls run this long (seconds) before it
+# cancels them; a call that waits for the drain gives up at this plus 5 s.
+drain_budget_s = 30

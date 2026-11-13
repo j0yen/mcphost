@@ -11,6 +11,8 @@ mod common;
 mod dimp;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
+#[path = "support/spsr.rs"]
+mod spsr;
 
 #[path = "dimp_ac07_status_names_import_paths_and_recipe_uses_the_batch.rs"]
 mod dimp_ac07_status_names_import_paths_and_recipe_uses_the_batch;
@@ -30,3 +32,13 @@ mod mcphost_sandbox_egress_allowlist_ac06_downgrade_then_upgrade_republish_hint;
 mod mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters;
 #[path = "pubvis_ac01_starters_publish_public_tested.rs"]
 mod pubvis_ac01_starters_publish_public_tested;
+#[path = "spsr_ac02_breach_restarts_the_pool.rs"]
+mod spsr_ac02_breach_restarts_the_pool;
+#[path = "spsr_ac03_cancelled_healthy_call_carries_heal_action_id.rs"]
+mod spsr_ac03_cancelled_healthy_call_carries_heal_action_id;
+#[path = "spsr_ac04_hourly_limit_holds_and_leaves_an_incident.rs"]
+mod spsr_ac04_hourly_limit_holds_and_leaves_an_incident;
+#[path = "spsr_ac05_dry_run_records_and_kills_nothing.rs"]
+mod spsr_ac05_dry_run_records_and_kills_nothing;
+#[path = "spsr_ac07_killed_childs_stderr_tail_is_private.rs"]
+mod spsr_ac07_killed_childs_stderr_tail_is_private;

@@ -15,6 +15,8 @@ mod ctrace;
 mod oauth;
 #[path = "support/rgpt.rs"]
 mod rgpt;
+#[path = "support/spsr.rs"]
+mod spsr;
 #[path = "support/whin.rs"]
 mod whin;
 
@@ -106,6 +108,10 @@ mod sblibs_ac05_import_hints_name_preinstalled_libs;
 mod sblibs_ac06_requirements_beyond_base_build_own_env;
 #[path = "sblibs_ac07_probe_tool_via_spec_test.rs"]
 mod sblibs_ac07_probe_tool_via_spec_test;
+#[path = "spsr_ac01_wedged_flight_killed_through_its_slot.rs"]
+mod spsr_ac01_wedged_flight_killed_through_its_slot;
+#[path = "spsr_ac06_draining_pool_holds_new_calls.rs"]
+mod spsr_ac06_draining_pool_holds_new_calls;
 #[path = "srlp_ac03_publish_over_plan_refused.rs"]
 mod srlp_ac03_publish_over_plan_refused;
 #[path = "srlp_ac04_free_pids_ceiling_and_peak.rs"]
