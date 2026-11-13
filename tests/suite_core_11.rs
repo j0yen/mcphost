@@ -762,6 +762,18 @@ mod orgmb_ac01_owner_removes_member;
 mod orgmb_ac02_concurrent_create_one_winner;
 #[path = "orgmb_ac03_llms_txt_and_quickstart_name_org_verbs.rs"]
 mod orgmb_ac03_llms_txt_and_quickstart_name_org_verbs;
+#[path = "orgs_ac01_org_tool_runs_under_owner_caller_recorded.rs"]
+mod orgs_ac01_org_tool_runs_under_owner_caller_recorded;
+#[path = "orgs_ac03_member_tools_list_holds_org_names.rs"]
+mod orgs_ac03_member_tools_list_holds_org_names;
+#[path = "orgs_ac04_share_as_org_outside_any_org_needs_an_org.rs"]
+mod orgs_ac04_share_as_org_outside_any_org_needs_an_org;
+#[path = "orgs_ac05_removed_member_loses_org_tools_at_once.rs"]
+mod orgs_ac05_removed_member_loses_org_tools_at_once;
+#[path = "orgs_ac06_org_share_counts_against_shared_tools_max.rs"]
+mod orgs_ac06_org_share_counts_against_shared_tools_max;
+#[path = "orgs_ac07_org_tool_name_taken.rs"]
+mod orgs_ac07_org_tool_name_taken;
 #[path = "orgx_ac01_one_bundle_holds_every_members_own_archive.rs"]
 mod orgx_ac01_one_bundle_holds_every_members_own_archive;
 #[path = "orgx_ac03_member_gets_not_owner_and_nothing_is_written.rs"]
@@ -1018,17 +1030,3 @@ mod qdiag_ac07_description_annotation_offers_candidate;
 mod qdiag_ac08_footprint_columns_est_tokens;
 #[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
 mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
-#[path = "qsbc_ac01_detection_keys_on_known_names.rs"]
-mod qsbc_ac01_detection_keys_on_known_names;
-#[path = "qsbc_ac02_quickstart_client_cursor.rs"]
-mod qsbc_ac02_quickstart_client_cursor;
-#[path = "qsbc_ac03_quickstart_client_user_agent.rs"]
-mod qsbc_ac03_quickstart_client_user_agent;
-#[path = "qsbc_ac04_quickstart_client_unknown.rs"]
-mod qsbc_ac04_quickstart_client_unknown;
-#[path = "qsbc_ac05_quickstart_client_chatgpt.rs"]
-mod qsbc_ac05_quickstart_client_chatgpt;
-#[path = "qsbc_ac06_connect_go_json_matches_quickstart.rs"]
-mod qsbc_ac06_connect_go_json_matches_quickstart;
-#[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
-mod qsbc_ac07_quickstart_writes_client_name;
