@@ -2325,6 +2325,9 @@ async fn main() -> anyhow::Result<()> {
             // self-sampler and the daily rollup+prune tick, started once
             // here alongside the other background tasks.
             mcphost::statusfeed::spawn_tick((*state).clone());
+            // PRD-mcphost-sandbox-pool-self-restart-v2 R2: the one consumer
+            // of the signals breach events.
+            mcphost::pool_restart::spawn_subscriber((*state).clone());
             mcphost::statusfeed::spawn_daily_tick((*state).clone());
             mcphost::perf::set_self_url(format!("http://{bind}"));
             for plan in mcphost::perf::PLANS {

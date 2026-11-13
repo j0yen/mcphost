@@ -174,6 +174,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/peer_recent.rs` (<1k) PRD-mcphost-webhook-inbox-one-call R3: a short in-memory "this peer just redeemed" map.
 - `src/perf.rs` (<1k) PRD-mcphost-performance-guarantees-measured: per-plan p95 targets ([`crate::plans::Plan`]'s `perf_*_p95_ms`...
 - `src/plans.rs` (~1k) The plan catalog (`plans.toml`): per-plan price and quotas.
+- `src/pool_restart.rs` (<1k) PRD-mcphost-sandbox-pool-self-restart-v2: the executor behind `HealAction::SandboxPoolRestart`.
 - `src/precheck.rs` (<1k) PRD-mcphost-implicit-signup-mints-only-on-success R1: the one module that checks a call before it dispatches.
 - `src/preflight.rs` (<1k) PRD-mcphost-call-cost-estimate: the one list of admission checks a call passes before it dispatches.
 - `src/progress.rs` (<1k) PRD-mcphost-tools-call-progress-notifications: per-call progress bookkeeping (the `calls.progress_token` /...
