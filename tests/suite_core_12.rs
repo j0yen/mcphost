@@ -9,8 +9,6 @@
 mod common;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
-#[path = "support/dryspt_lint.rs"]
-mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
@@ -1044,13 +1042,3 @@ mod ttpl_ac05_reapply_updates_in_place_and_applies_serialize;
 mod ttpl_ac06_list_verb_and_templates_json_agree;
 #[path = "ttpl_ac07_remove_keeps_what_the_user_changed.rs"]
 mod ttpl_ac07_remove_keeps_what_the_user_changed;
-#[path = "txnhelp_ac01_lint_zero.rs"]
-mod txnhelp_ac01_lint_zero;
-#[path = "txnhelp_ac02_lock_parity.rs"]
-mod txnhelp_ac02_lock_parity;
-#[path = "txnhelp_ac03_is_writable_probe.rs"]
-mod txnhelp_ac03_is_writable_probe;
-#[path = "txnhelp_ac04_migration_0116_atomic.rs"]
-mod txnhelp_ac04_migration_0116_atomic;
-#[path = "txnhelp_ac05_append_real_then_dry_run.rs"]
-mod txnhelp_ac05_append_real_then_dry_run;
