@@ -1134,6 +1134,11 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 | `tool_building` | the tool's dependencies are still building |
 | `tool_not_found` | a named tool does not exist for this tenant |
 | `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+| `step_tool_not_allowed` | a step names a `host.*` verb that is not on `host_steps_allowed` |
+| `step_tool_not_found` | a step names a tool that does not exist for this tenant |
+| `fixture_shape_mismatch` | a dry-run fixture is not one of its step's declared outputs |
+| `fixture_step_ambiguous` | a dry-run fixture is keyed by a tool that several steps use |
+| `fixture_step_unknown` | a dry-run fixture is keyed by a step the chain does not have |
 <!-- kind-errors:end -->
 
 ## Canonical example
@@ -1174,6 +1179,7 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 |---|---|
 | family `compose` | compose_self_call, compose_depth_exceeded, compose_children_exceeded, compose_item_outside_for_each, compose_mapping_type, compose_mapping_missing, compose_fanout_exceeded, compose_fanout_item_failed, compose_input_missing |
 | family `tool_state` | tool_building, tool_not_found, tool_run_unsupported |
+| family `chain_spec` | step_tool_not_allowed, step_tool_not_found, fixture_shape_mismatch, fixture_step_ambiguous, fixture_step_unknown |
 | source_line | field `failed_step` |
 | bridges | none |
 | secret redaction | no |
@@ -1325,7 +1331,6 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 | `description` | string | no | human-readable text shown in `tools/list` |
 | `upstream` | string | unless `method`, `url` | name of a connected upstream provider to call instead of `method` + `url` |
 | `upstream_provider` | string | no | provider the `upstream` connection belongs to |
-| `description` | string | no | human-readable text shown in `tools/list` |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
@@ -1353,6 +1358,8 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 | `upstream_unreachable` | the upstream could not be reached |
 | `upstream_not_connected` | the named upstream provider is not connected for this tenant |
 | `host_not_allowed` | the target host is not on the allowed list or resolves to a private address |
+| `response_too_large` | the upstream's response was larger than the call's size cap |
+| `template_error` | a `{name}` placeholder or template in the spec could not be filled |
 <!-- kind-errors:end -->
 
 ## Canonical example
@@ -1373,6 +1380,7 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 |---|---|
 | budget `timeout_s` | 1-30 (default 10) |
 | family `upstream` | upstream_auth, upstream_rate_limited, upstream_client_error, upstream_error, upstream_timeout, upstream_unreachable, upstream_not_connected, host_not_allowed |
+| family `http_call` | response_too_large, template_error |
 | source_line | no |
 | bridges | none |
 | secret redaction | yes |
@@ -1427,8 +1435,6 @@ Optional fields: `args_schema` (a JSON Schema for the call arguments; defaults t
 | `args_schema` | object | no | JSON Schema for the call arguments (defaults to `{"type": "object"}`) |
 | `timeout_s` | integer | no | seconds the program may run (1-10, default 2) |
 | `max_output_bytes` | integer | no | bytes of output a call may return (1 KiB-1 MiB, default 256 KiB) |
-| `description` | string | no | text shown to callers in the tool listing |
-| `outputs` | array or object | no | fields a caller can rely on in `result.payload` |
 | `description` | string | no | text shown to callers in the tool listing |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload` |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
@@ -1557,8 +1563,6 @@ A js tool reaches this tenant's data through the global `mcphost` object. Its me
 | `env` | object | no | plain, non-secret environment variables (`process.env`) |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
 | `description` | string | no | human-readable text shown in `tools/list` |
-| `description` | string | no | human-readable text shown in `tools/list` |
-| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->
@@ -1603,6 +1607,7 @@ A js tool reaches this tenant's data through the global `mcphost` object. Its me
 | `tool_building` | the tool's dependencies are still building |
 | `tool_not_found` | a named tool does not exist for this tenant |
 | `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+| `typescript_not_supported` | the tool's source uses TypeScript syntax; js tools run plain JavaScript |
 <!-- kind-errors:end -->
 
 ## Canonical example
@@ -1627,6 +1632,7 @@ A js tool reaches this tenant's data through the global `mcphost` object. Its me
 | family `upstream` | upstream_auth, upstream_rate_limited, upstream_client_error, upstream_error, upstream_timeout, upstream_unreachable, upstream_not_connected, host_not_allowed |
 | family `compose` | compose_self_call, compose_depth_exceeded, compose_children_exceeded, compose_item_outside_for_each, compose_mapping_type, compose_mapping_missing, compose_fanout_exceeded, compose_fanout_item_failed, compose_input_missing |
 | family `tool_state` | tool_building, tool_not_found, tool_run_unsupported |
+| family `js_spec` | typescript_not_supported |
 | source_line | yes (`data.source_line`) |
 | bridges | state, table, docs, lineage, channel, msg |
 | secret redaction | yes |
@@ -1685,11 +1691,11 @@ A python tool's own code does `import mcphost` to reach this tenant's data witho
 - `mcphost.elicit` -- ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise
 <!-- mcphost-sandbox-api:end -->
 
-Generated by `scripts/sandbox-api-doc-check.sh --write` from
+Generated by `mcphost gen-docs kinds --write` from
 `src/kinds/python.rs`'s own `BRIDGE_MODULES` constant -- the same list
 `host.quickstart`'s `sandbox_api` field and `tools/list`'s
-`host.tool_publish` description read from; run `scripts/sandbox-api-doc-check.sh`
-(no args) to check this section hasn't drifted. `mcphost.call` and
+`host.tool_publish` description read from; run `mcphost gen-docs kinds --check`
+to check this section hasn't drifted. `mcphost.call` and
 `mcphost.progress` are plain functions on the `mcphost` module itself
 (not their own submodule) -- see `## mcphost.call` below.
 
@@ -1813,7 +1819,6 @@ The distinction is visible, not doctrinal: `host.tool_test` renders both in one 
 | `secrets` | array of string | no | `host.secret_set` names injected as `SECRET_<NAME>` environment variables |
 | `env` | object | no | plain, non-secret environment variables |
 | `description` | string | no | human-readable text shown in `tools/list` |
-| `description` | string | no | human-readable text shown in `tools/list` |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
@@ -1859,6 +1864,12 @@ The distinction is visible, not doctrinal: `host.tool_test` renders both in one 
 | `tool_building` | the tool's dependencies are still building |
 | `tool_not_found` | a named tool does not exist for this tenant |
 | `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+| `build_failed` | the tool's `requirements` failed to build |
+| `capacity` | the host is at its concurrent-call limit; retry after `retry_after_ms` |
+| `egress_unavailable` | network egress is not configured on this host |
+| `requirement_not_allowed` | a `requirements` entry is not allowed by the package policy |
+| `state_quota_exceeded` | the tool's state writes exceeded the plan's `state_bytes_max` |
+| `unknown_import` | the code imports a module the sandbox does not provide |
 <!-- kind-errors:end -->
 
 ## Canonical example
@@ -1883,6 +1894,7 @@ The distinction is visible, not doctrinal: `host.tool_test` renders both in one 
 | family `upstream` | upstream_auth, upstream_rate_limited, upstream_client_error, upstream_error, upstream_timeout, upstream_unreachable, upstream_not_connected, host_not_allowed |
 | family `compose` | compose_self_call, compose_depth_exceeded, compose_children_exceeded, compose_item_outside_for_each, compose_mapping_type, compose_mapping_missing, compose_fanout_exceeded, compose_fanout_item_failed, compose_input_missing |
 | family `tool_state` | tool_building, tool_not_found, tool_run_unsupported |
+| family `python_call` | build_failed, capacity, egress_unavailable, requirement_not_allowed, state_quota_exceeded, unknown_import |
 | source_line | yes (`data.source_line`) |
 | bridges | state, table, docs, lineage, channel, msg |
 | secret redaction | yes |

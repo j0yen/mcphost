@@ -365,6 +365,20 @@ pub const ERROR_WHEN: &[(&str, &str)] = &[
     (codes::COMPOSE_FANOUT_EXCEEDED, "a `for_each` array was longer than the plan's `chain_fanout_max`"),
     (codes::COMPOSE_FANOUT_ITEM_FAILED, "an item of a `for_each` step failed"),
     (codes::COMPOSE_INPUT_MISSING, "a `$.input.<name>` mapping named an argument the call did not carry"),
+    (super::http::RESPONSE_TOO_LARGE, "the upstream's response was larger than the call's size cap"),
+    (super::http::TEMPLATE_ERROR, "a `{name}` placeholder or template in the spec could not be filled"),
+    (super::chain::STEP_TOOL_NOT_ALLOWED, "a step names a `host.*` verb that is not on `host_steps_allowed`"),
+    (super::chain::STEP_TOOL_NOT_FOUND, "a step names a tool that does not exist for this tenant"),
+    (super::chain::FIXTURE_SHAPE_MISMATCH, "a dry-run fixture is not one of its step's declared outputs"),
+    (super::chain::FIXTURE_STEP_AMBIGUOUS, "a dry-run fixture is keyed by a tool that several steps use"),
+    (super::chain::FIXTURE_STEP_UNKNOWN, "a dry-run fixture is keyed by a step the chain does not have"),
+    (super::js::TYPESCRIPT_NOT_SUPPORTED, "the tool's source uses TypeScript syntax; js tools run plain JavaScript"),
+    (super::python::BUILD_FAILED, "the tool's `requirements` failed to build"),
+    (super::python::CAPACITY, "the host is at its concurrent-call limit; retry after `retry_after_ms`"),
+    (super::python::EGRESS_UNAVAILABLE, "network egress is not configured on this host"),
+    (super::python::REQUIREMENT_NOT_ALLOWED, "a `requirements` entry is not allowed by the package policy"),
+    (super::python::STATE_QUOTA_EXCEEDED, "the tool's state writes exceeded the plan's `state_bytes_max`"),
+    (super::python::UNKNOWN_IMPORT, "the code imports a module the sandbox does not provide"),
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -399,7 +413,8 @@ pub struct BridgeDoc {
 pub struct KindDoc {
     pub name: String,
     pub summary: String,
-    /// The kind's own `known_spec_fields()` followed by the universal ones.
+    /// The kind's own `known_spec_fields()` followed by the universal ones it
+    /// does not already name: each name once.
     pub spec_fields: Vec<SpecFieldDoc>,
     pub universal_fields: Vec<String>,
     pub ceilings: Vec<CeilingDoc>,
@@ -408,6 +423,20 @@ pub struct KindDoc {
     pub example: Value,
     /// One accepted shape each (`Kind::minimal_specs`).
     pub minimal_specs: Vec<Value>,
+}
+
+impl KindDoc {
+    /// The top-level keys of `example` that no entry of `spec_fields` names:
+    /// a page example may not advertise a field the parser does not read
+    /// (PRD-mcphost-kind-docs-from-registry-b-v2 R3).
+    pub fn example_keys_outside_spec_fields(&self) -> Vec<String> {
+        let Some(example) = self.example.as_object() else { return Vec::new() };
+        example
+            .keys()
+            .filter(|k| !self.spec_fields.iter().any(|f| &f.name == *k))
+            .cloned()
+            .collect()
+    }
 }
 
 /// Assembles one kind's [`KindDoc`]; `Kind::doc`'s default body.
@@ -426,7 +455,8 @@ pub fn assemble(
 ) -> KindDoc {
     let spec_fields = known
         .iter()
-        .chain(UNIVERSAL_SPEC_FIELDS.iter())
+        // A universal field the kind already names keeps the kind's own row.
+        .chain(UNIVERSAL_SPEC_FIELDS.iter().filter(|u| !known.contains(u)))
         .map(|field| {
             let doc = field_docs
                 .iter()

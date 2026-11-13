@@ -327,6 +327,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `USER_AGENT_NAMES` in `src/install_links.rs`
 - `KIND_ALIASES` in `src/kinds/aliases.rs`
 - `CONTEXT_ROOTS` in `src/kinds/chain.rs`
+- `KIND_PAGE_EXEMPT` in `src/kinds/contract.rs`
 - `UPSTREAM_REMEDIES` in `src/kinds/http.rs`
 - `EXCLUDED_BUILTINS` in `src/kinds/jq.rs`
 - `ERROR_WHEN` in `src/kinds/kinddoc.rs`
