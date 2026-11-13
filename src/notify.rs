@@ -774,6 +774,6 @@ crate::err_code! {
 crate::err_code! {
     pub OWNER_UNVERIFIED,
     code: "owner_unverified", family: Auth, class: HostRefusal, retryable: false,
-    remedy: "Verify the owner email first (data.next_call is host.claim), or add a webhook or slack channel instead.",
+    remedy: "Verify the owner email first with host.claim.start, or add a webhook or slack channel instead.",
 }
 

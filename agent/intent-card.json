@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-org-export-and-offboard-v2.md",
-  "intent_slug": "mcphost-org-export-and-offboard-v2",
-  "root_motivation": "WHO: the owner closing a team's account or moving hosts, and the member who wants their tools back. WHAT: one signed download of the whole team, one confirmed switch-off of every member key, one undo, and nothing deleted. WHY: export and offboard are per tenant and per key today, so a leaving team needs N humans to each run two tools and a mistaken offboard needs an operator.",
-  "user_persona": "An org owner's agent that calls host.org.export, polls host.runs.get for the download_url, then calls host.org.offboard with the org name, and later host.org.restore if the owner changes their mind; and a member whose key answers tenant_disabled with org_offboard.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-plugin-skill-generated-from-registry.md",
+  "intent_slug": "mcphost-plugin-skill-generated-from-registry",
+  "root_motivation": "WHO: the coding agent in Claude Code reading the plugin skill first, and the maintainer who ships a verb and forgets the skill. WHAT: a skill whose verbs, plan ceilings, error remedies and local-loop commands are rendered from the host's own registries. WHY: the skill is hand-written, names six of 535 tool entries, states no ceiling and no error code, so an agent sends a call the host refuses.",
+  "user_persona": "A coding agent that reads plugin/skills/mcphost/SKILL.md, finds the family a verb lives in, reads the free ceilings before it calls, and looks up the remedy for an error code it hit; and the maintainer whose cargo test fails until `mcphost skill-gen --write` is run.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,57 +14,57 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an org of 3 members with 2 tools each, whose member keys the test rotated and discarded, When the owner runs host.org.export and the job completes, Then one signed download_url serves a tar.gz whose members/<ns>.tar.gz parts list each member's own tools as host.export does, org_manifest.members has 3 rows with matching sha256, and grep -c key_hash src/org_export.rs prints 0.",
-      "test": "tests/orgx_ac01_one_bundle_holds_every_members_own_archive.rs"
+      "description": "Given the registry, When `mcphost skill-gen --section verbs` renders, Then every dotted family has exactly one line with its count and verb names, the 11 anonymous starter verbs are named, no per-verb description appears, and the section is at most 60 lines.",
+      "test": "tests/skgn_ac01_verbs_one_line_per_family.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given DISABLED_REASONS in src/auth_shape.rs, When the drift test scans src/ for disabled_reason writes and calls admin.tenants with each value and with bogus, Then no write spells a literal outside the const, each value filters its tenants, bogus is args_invalid, and SYNTHETIC_PURGE_REASONS still equals [idle_expired, self_offboard].",
-      "test": "tests/orgx_ac02_disabled_reasons_one_source.rs"
+      "description": "Given the checked-in files, When `mcphost skill-gen` runs without `--write`, Then it exits 0; Given one line edited by hand inside a marked section, Then it exits 1 and names the line.",
+      "test": "tests/skgn_ac02_check_names_hand_edited_line.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a member caller, When it calls host.org.export, host.org.offboard or host.org.restore, Then it gets not_owner and nothing is written.",
-      "test": "tests/orgx_ac03_member_gets_not_owner_and_nothing_is_written.rs"
+      "description": "Given a new `Tool::new(\"host.example\")` added to `host_tools`, When `cargo test` runs, Then the drift test fails until `skill-gen --write` regenerates and the new verb appears under its family.",
+      "test": "tests/skgn_ac03_drift_test_fails_on_new_verb.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the owner, When it calls host.org.offboard {confirm: wrong}, Then confirm_mismatch and every member stays enabled; with confirm equal to the org name, Then every live member, the owner included, is disabled = 1, disabled_reason = org_offboard, each member's next call answers tenant_disabled with that reason, and a repeat call answers already_offboarded.",
-      "test": "tests/orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key.rs"
+      "description": "Given `ERROR_CODES` gains an entry, When `cargo test` runs, Then the drift test fails until the skill is regenerated, and a remedy that names a verb absent from `host_tools` fails the remedy test naming the code.",
+      "test": "tests/skgn_ac04_errors_from_registry_and_remedy_verbs.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an org offboarded at any age, When the synthetic and external expire and purge stages run and the owner then calls host.org.restore, Then no tenant, tool or state row was deleted, every member disabled by that offboard is enabled with a NULL reason and their tools answer, and one tenant_audit row org.restore exists per member.",
-      "test": "tests/orgx_ac05_restore_undoes_an_offboard_at_any_age.rs"
+      "description": "Given the `limits` section, When rendered, Then every key of `plan.ceilings_json()` for `free` appears with its value and no number in the section is typed outside the generator (test: the section's numbers equal the JSON's).",
+      "test": "tests/skgn_ac05_limits_equal_plan_ceilings.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a fixture org, When every tool in each member part's manifest.json is re-published into a fresh org with host.tool_publish and the fresh org is exported, Then the two org_manifest.json files agree on member count and, member by member, on tools[].name, kind and spec_sha256.",
-      "test": "tests/orgx_ac06_exported_tools_republish_to_the_same_hashes.rs"
+      "description": "Given a binary built without the `dev` or `push` subcommands, When `skill-gen` renders `devloop`, Then the section says `no local verbs in this build` for the absent verbs and names none of them.",
+      "test": "tests/skgn_ac06_devloop_omits_absent_verbs.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given an org export already running, When the owner calls host.org.export again, Then the answer is, field for field, what host.export answers for its own duplicate on the same tree, and names the running run_id.",
-      "test": "tests/orgx_ac07_duplicate_org_export_answers_like_host_export.rs"
+      "level": "MUST",
+      "description": "Given `--url <the mcp url of a running host> --section verbs` against a local test host, When rendered, Then the output is derived from that host's `tools/list` and differs from the registry render only by verbs not yet deployed.",
+      "test": "tests/skgn_ac07_url_renders_from_tools_list.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this lands, When llms.txt is fetched, Then it documents host.org.export, host.org.offboard and host.org.restore (Live; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)",
-      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)"
+      "description": "Given prod, When `diff <(curl -s https://mcphost.dev/skill.md | sed -n '/mcphost-verbs:start/,/mcphost-verbs:end/p') <(mcphost skill-gen --section verbs --url https://mcphost.dev/mcp | sed -n '/mcphost-verbs:start/,/mcphost-verbs:end/p')` runs, Then it prints nothing and exits 0 (Live; evidence: that command's exit code and empty stdout)",
+      "test": "deferred: Live (prod; evidence: that command's exit code and empty stdout)"
     }
   ],
   "scope": [
-    "src/org_export.rs (host.org.export job, org_manifest.json); src/org_offboard.rs (host.org.offboard, host.org.restore, their Db methods); src/export.rs (build_tenant_archive, store_and_sign, ORG_EXPORT_TOOL_NAME in the download route); src/auth_shape.rs (DISABLED_REASONS, DISABLED_PASSES); src/org.rs (TOOLS, owned_org, org_live_members); migrations/0142_org_offboard.sql (orgs.offboarded_unix); descriptors, dispatch arms, write_verbs rows, output schemas and the generated contracts, docs, SDKs and llms.txt."
+    "src/skill_gen.rs (renderers for verbs, limits, errors, devloop; splice, check, tools/list fetch); src/main.rs (SkillGen subcommand); src/handler.rs (starter_tool_names); plugin/skills/mcphost/SKILL.md and www/skill.md (four marked sections); scripts/skill-gen-check.sh; remedy texts in src/org.rs, src/errors.rs, src/subkeys.rs, src/notify.rs, src/email_send.rs, src/drift/review.rs that named a verb the host does not serve."
   ],
   "non_goals": [
-    "Deleting any data or any prune or retention stage for offboarded orgs; importing an org bundle into another host; exporting secret values; re-creating a cancelled subscription; an approvals list in the bundle; changing the behaviour of host.export or host.self.offboard; the AC 8 prod read (operator-provisioned, deferred)."
+    "Rewriting the hand-written narrative; generating README.md or llms.txt; per-client skills; a second remedy table; the plugin.json version bump (R8, P1, wm-build land bumps); the Recipes section (R9, P2); the AC 8 prod diff (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -74,55 +74,45 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "no_member_credentials": "src/org_export.rs never reads a Tenant credential field; the member archive is built from the Tenant row by id and the owner's row signs the URL.",
-      "one_reason_list": "DISABLED_REASONS in src/auth_shape.rs is the only list of tenants.disabled_reason values; writers use its constants.",
-      "nothing_deleted": "org_offboard tenants are never purged and no stage deletes a tenant, tool or state row of an offboarded org."
+      "one_render_path": "Every section is rendered by src/skill_gen.rs; no number, verb or code is typed in the skill outside a marked block."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a team not leave in one step today?",
-      "a": "host.export and host.self.offboard act on one tenant with its own key."
+      "q": "Why does an agent send calls the host refuses?",
+      "a": "The skill it reads first states no ceiling, no error code and names six verbs."
     },
     {
       "why": 2,
-      "q": "Why is that per key?",
-      "a": "The archive builder and the disable flip were written for the tenant itself, not for an owner acting over members."
+      "q": "Why does the skill omit them?",
+      "a": "It is hand-written; only two blocks are generated."
     },
     {
       "why": 3,
-      "q": "Why can an owner-side job run the builder without a member key?",
-      "a": "The builder takes a Tenant row and reads by tenant id; no key is part of what it reads."
+      "q": "Why were the other facts never generated?",
+      "a": "No generator reads the verb, plan and error registries into the skill."
     },
     {
       "why": 4,
-      "q": "Why a new disabled reason and a restore verb?",
-      "a": "org_offboard must be distinguishable from self_offboard so it is restorable and never purged; deleting nothing keeps the undo free."
+      "q": "Why does that stay unfixed?",
+      "a": "Nothing fails when a verb ships and the skill is not updated."
     },
     {
       "why": 5,
-      "q": "Why one generated reason list?",
-      "a": "tenants.disabled_reason is plain TEXT, so writers, the admin filter and the purge list drift unless one const names them all."
+      "q": "Why does nothing fail?",
+      "a": "There was no drift test over the skill; skill-gen plus the skgn drift test add one."
     }
   ],
-  "created_at": "2026-11-12T00:00:00Z",
+  "created_at": "2026-11-13T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a member keep host.export alone while org-offboarded?",
-      "resolution": "No: every member key is dark until host.org.restore; only the org verbs pass the disabled-tenant refusal, per (verb, reason)."
+      "question": "The PRD says 11 anonymous starter verbs; which set is named?",
+      "resolution": "The registry's own anonymous starter listing (starter_tools: signup plus 17 host.*/billing.* names), read through handler::starter_tool_names; the count in the PRD is the stale comment above STARTER_TOOL_NAMES."
     },
     {
-      "question": "Which members get an org.offboard or org.restore audit row?",
-      "resolution": "Those the call changed: members already disabled for another reason are neither flipped nor restored and get no row."
-    },
-    {
-      "question": "Does restore reset last_seen_unix?",
-      "resolution": "Yes, to the restore time, so no expiry sweep reads the offboarded interval as idleness."
-    },
-    {
-      "question": "What bounds the bundle size?",
-      "resolution": "The owner's plan export_bytes_max, checked on the running sum of member parts and on the finished bundle (export_too_large)."
+      "question": "Does --url need a key?",
+      "resolution": "An anonymous tools/list is only the starter set, so --url takes --key or MCPHOST_TENANT_KEY and refuses an anonymous starter-only listing."
     }
   ]
 }

@@ -24,13 +24,14 @@ fn stray_hits(text: &str) -> Vec<(usize, String)> {
     let mut inside = false;
     let mut hits = Vec::new();
     for (i, line) in text.lines().enumerate() {
-        if line.contains(RECIPE_START) || line.contains(README_RECIPE_START) {
+        // The skill's `errors` section is rendered from ERROR_CODES by `mcphost skill-gen`.
+        if line.contains(RECIPE_START) || line.contains(README_RECIPE_START) || line.contains("<!-- mcphost-errors:start -->") {
             inside = true;
         }
         if !inside && (line.contains("scope_escalation") || line.contains("key_revoked")) {
             hits.push((i + 1, line.to_string()));
         }
-        if line.contains(RECIPE_END) || line.contains(README_RECIPE_END) {
+        if line.contains(RECIPE_END) || line.contains(README_RECIPE_END) || line.contains("<!-- mcphost-errors:end -->") {
             inside = false;
         }
     }

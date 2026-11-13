@@ -277,11 +277,11 @@ mod shp_ac05_blast_radius_change_kind_is_an_enum;
 mod shp_ac06_ask_options_are_unique_and_untrimmed;
 #[path = "shp_ac07_contract_carries_new_shape_keywords.rs"]
 mod shp_ac07_contract_carries_new_shape_keywords;
-#[path = "spmsg_ac06_driver_compiles_plans_and_fails_closed.rs"]
-mod spmsg_ac06_driver_compiles_plans_and_fails_closed;
-#[path = "spmsg_ac07_driver_passes_on_test_server.rs"]
-mod spmsg_ac07_driver_passes_on_test_server;
-#[path = "sreg_ac01_registry_single_source.rs"]
-mod sreg_ac01_registry_single_source;
+#[path = "skgn_ac01_verbs_one_line_per_family.rs"]
+mod skgn_ac01_verbs_one_line_per_family;
+#[path = "skgn_ac02_check_names_hand_edited_line.rs"]
+mod skgn_ac02_check_names_hand_edited_line;
+#[path = "skgn_ac03_drift_test_fails_on_new_verb.rs"]
+mod skgn_ac03_drift_test_fails_on_new_verb;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;
