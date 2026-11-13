@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-slo-targets-on-status.md (test_prefix: slopg)",
+  "ac_test_map_prd": "PRD-mcphost-export-data-class-completeness-v2.md (test_prefix: expc)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/slopg_ac01_slo_block_measured_against_target.rs",
-    "AC2": "tests/slopg_ac02_under_twenty_samples_is_null.rs",
-    "AC3": "tests/slopg_ac03_availability_from_status_daily.rs",
-    "AC4": "tests/slopg_ac04_slo_keys_drift_status_html_and_llms_txt.rs",
-    "AC5": "tests/slopg_ac05_error_rate_counts_host_faults_only.rs",
-    "AC6": "tests/slopg_ac06_slo_daily_rows_by_key.rs",
-    "AC7": "tests/slopg_ac07_slo_block_under_50ms_at_100k_calls.rs",
-    "AC8": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/status.json | jq -e '.slo.availability_30d.target, .slo.tool_call_p95_ms_24h.window_secs, (.slo.error_rate_24h | keys)')"
+    "AC1": "tests/expc_ac01_schema_walk_finds_uncovered.rs",
+    "AC2": "tests/expc_ac02_exclusions_complete_and_foo_fails.rs",
+    "AC3": "tests/expc_ac03_archive_carries_every_class_with_sha256.rs",
+    "AC4": "tests/expc_ac04_second_export_call_answers_in_progress.rs",
+    "AC5": "tests/expc_ac05_include_blobs_refused_over_export_bytes_max.rs",
+    "AC6": "tests/expc_ac06_calls_lines_use_the_call_row_fields.rs",
+    "AC7": "tests/expc_ac07_docs_layout_tables_equal_the_render.rs",
+    "AC8": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test expc_ac08_live_prod_manifest_classes)"
   },
   "ac_test_map_by_prefix": {
     "mcphost-resource-listing-shape-in-contract": {
@@ -2718,6 +2718,17 @@
       "AC6": "tests/orgx_ac06_exported_tools_republish_to_the_same_hashes.rs",
       "AC7": "tests/orgx_ac07_duplicate_org_export_answers_like_host_export.rs",
       "AC8": "deferred -- operator-provisioned: live curl of prod llms.txt after deploy."
+    },
+    "slopg": {
+      "AC1": "tests/slopg_ac01_slo_block_measured_against_target.rs",
+      "AC2": "tests/slopg_ac02_under_twenty_samples_is_null.rs",
+      "AC3": "tests/slopg_ac03_availability_from_status_daily.rs",
+      "AC4": "tests/slopg_ac04_slo_keys_drift_status_html_and_llms_txt.rs",
+      "AC5": "tests/slopg_ac05_error_rate_counts_host_faults_only.rs",
+      "AC6": "tests/slopg_ac06_slo_daily_rows_by_key.rs",
+      "AC7": "tests/slopg_ac07_slo_block_under_50ms_at_100k_calls.rs",
+      "AC8": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/status.json | jq -e '.slo.availability_30d.target, .slo.tool_call_p95_ms_24h.window_secs, (.slo.error_rate_24h | keys)')",
+      "_prd": "PRD-mcphost-slo-targets-on-status.md (test_prefix: slopg)"
     }
   }
 }

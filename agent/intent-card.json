@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-org-export-and-offboard-v2.md",
-  "intent_slug": "mcphost-org-export-and-offboard-v2",
-  "root_motivation": "WHO: the owner closing a team's account or moving hosts, and the member who wants their tools back. WHAT: one signed download of the whole team, one confirmed switch-off of every member key, one undo, and nothing deleted. WHY: export and offboard are per tenant and per key today, so a leaving team needs N humans to each run two tools and a mistaken offboard needs an operator.",
-  "user_persona": "An org owner's agent that calls host.org.export, polls host.runs.get for the download_url, then calls host.org.offboard with the org name, and later host.org.restore if the owner changes their mind; and a member whose key answers tenant_disabled with org_offboard.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-export-data-class-completeness-v2.md",
+  "intent_slug": "mcphost-export-data-class-completeness-v2",
+  "root_motivation": "WHO: the coding agent asked for a data-subject access request, the customer leaving, and Joe answering 'is the export complete?'. WHAT: an export whose completeness is a test, and a manifest a human can read as the record of what was and was not included. WHY: a DSAR answered from an archive that silently omits calls, audit rows and blobs is incomplete and nobody can tell; a schema walk that fails CI for any tenant-scoped table that is neither an archive class nor a documented exclusion makes completeness a checked fact.",
+  "user_persona": "An autonomous coding agent that runs host.export, reads manifest.json (data_classes with sha256, excluded with reasons) and tells its user exactly what the archive holds and omits, polls host.runs.get for entries_done/entries_total, and an operator who adds a table with tenant_id and is told by CI to archive it or exclude it with a reason.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,57 +14,57 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an org of 3 members with 2 tools each, whose member keys the test rotated and discarded, When the owner runs host.org.export and the job completes, Then one signed download_url serves a tar.gz whose members/<ns>.tar.gz parts list each member's own tools as host.export does, org_manifest.members has 3 rows with matching sha256, and grep -c key_hash src/org_export.rs prints 0.",
-      "test": "tests/orgx_ac01_one_bundle_holds_every_members_own_archive.rs"
+      "description": "Given a migrated db, When the schema walk runs with its covered set fixed to the source tables of the 14 ArchiveEntry variants shipped at 6c0de78 and an empty exclusions list, Then the uncovered list is non-empty and includes calls, tenant_audit and blobs.",
+      "test": "tests/expc_ac01_schema_walk_finds_uncovered.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given DISABLED_REASONS in src/auth_shape.rs, When the drift test scans src/ for disabled_reason writes and calls admin.tenants with each value and with bogus, Then no write spells a literal outside the const, each value filters its tenants, bogus is args_invalid, and SYNTHETIC_PURGE_REASONS still equals [idle_expired, self_offboard].",
-      "test": "tests/orgx_ac02_disabled_reasons_one_source.rs"
+      "description": "Given EXPORT_EXCLUSIONS as shipped and the covered set from ArchiveEntry::source_tables, When the same walk runs, Then the uncovered list is empty; Given a test copy that adds table foo(tenant_id), Then the check fails naming foo.",
+      "test": "tests/expc_ac02_exclusions_complete_and_foo_fails.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a member caller, When it calls host.org.export, host.org.offboard or host.org.restore, Then it gets not_owner and nothing is written.",
-      "test": "tests/orgx_ac03_member_gets_not_owner_and_nothing_is_written.rs"
+      "description": "Given a tenant with 2 threads of 3 messages, 4 calls, 1 secret and 2 blobs, When host.export completes, Then threads.jsonl holds 6 rows, secrets.txt the name, no entry holds the secret value, calls.jsonl has 4 lines, blobs/index.json lists 2 ids, and manifest.json.data_classes has one row per class with sha256 over that class's entries in path order.",
+      "test": "tests/expc_ac03_archive_carries_every_class_with_sha256.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the owner, When it calls host.org.offboard {confirm: wrong}, Then confirm_mismatch and every member stays enabled; with confirm equal to the org name, Then every live member, the owner included, is disabled = 1, disabled_reason = org_offboard, each member's next call answers tenant_disabled with that reason, and a repeat call answers already_offboarded.",
-      "test": "tests/orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key.rs"
+      "description": "Given an export running at 100/400 entries, When host.export is called again, Then export_in_progress {run_id, entries_done: 100, entries_total: 400} and no second run row exists; host.runs.get shows the same counters.",
+      "test": "tests/expc_ac04_second_export_call_answers_in_progress.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an org offboarded at any age, When the synthetic and external expire and purge stages run and the owner then calls host.org.restore, Then no tenant, tool or state row was deleted, every member disabled by that offboard is enabled with a NULL reason and their tools answer, and one tenant_audit row org.restore exists per member.",
-      "test": "tests/orgx_ac05_restore_undoes_an_offboard_at_any_age.rs"
+      "description": "Given a Free tenant whose blobs rows sum to 60 MB, When host.export is called with include_blobs: true, Then it is refused quota_exceeded {export_bytes_max} before a run row exists or any blob byte is read; with include_blobs absent the export carries blobs/index.json only.",
+      "test": "tests/expc_ac05_include_blobs_refused_over_export_bytes_max.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a fixture org, When every tool in each member part's manifest.json is re-published into a fresh org with host.tool_publish and the fresh org is exported, Then the two org_manifest.json files agree on member count and, member by member, on tools[].name, kind and spec_sha256.",
-      "test": "tests/orgx_ac06_exported_tools_republish_to_the_same_hashes.rs"
+      "description": "Given calllog::CallRow, When the keys of a calls.jsonl line are compared to CallRow::FIELDS and paged::CallsList::FIELDS, Then they are equal.",
+      "test": "tests/expc_ac06_calls_lines_use_the_call_row_fields.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given an org export already running, When the owner calls host.org.export again, Then the answer is, field for field, what host.export answers for its own duplicate on the same tree, and names the running run_id.",
-      "test": "tests/orgx_ac07_duplicate_org_export_answers_like_host_export.rs"
+      "level": "MUST",
+      "description": "Given docs/tools.md, When the layout render test runs, Then the committed Archive layout table and excluded-classes table equal the render of ArchiveEntry::layout() and EXPORT_EXCLUSIONS.",
+      "test": "tests/expc_ac07_docs_layout_tables_equal_the_render.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this lands, When llms.txt is fetched, Then it documents host.org.export, host.org.offboard and host.org.restore (Live; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)",
-      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)"
+      "description": "Given prod after deploy, When a synthetic tenant is exported and its manifest.json read, Then data_classes lists at least 12 classes and excluded names meter_events (Live; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test expc_ac08_live_prod_manifest_classes)",
+      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test expc_ac08_live_prod_manifest_classes)"
     }
   ],
   "scope": [
-    "src/org_export.rs (host.org.export job, org_manifest.json); src/org_offboard.rs (host.org.offboard, host.org.restore, their Db methods); src/export.rs (build_tenant_archive, store_and_sign, ORG_EXPORT_TOOL_NAME in the download route); src/auth_shape.rs (DISABLED_REASONS, DISABLED_PASSES); src/org.rs (TOOLS, owned_org, org_live_members); migrations/0142_org_offboard.sql (orgs.offboarded_unix); descriptors, dispatch arms, write_verbs rows, output schemas and the generated contracts, docs, SDKs and llms.txt."
+    "src/export.rs (Exclusion, EXPORT_EXCLUSIONS, tenant_scoped_tables/uncovered_tenant_tables, ArchiveEntry::source_tables/class_name and the calls, tenant_audit, audit_chain, oauth_audit, triggers, blob index and blob classes, manifest data_classes/excluded, export_in_progress, progress writes); src/db.rs (export_table_rows); src/import.rs (new classes read as history only; write_progress shared); src/runs.rs (host.runs.get progress for export runs); src/handler.rs (host.export include_blobs); src/gendocs.rs and docs/tools.md (layout and excluded-classes tables); generated contracts, SDKs, docs/errors.md and docs/openapi.json for the new argument and error code."
   ],
   "non_goals": [
-    "Deleting any data or any prune or retention stage for offboarded orgs; importing an org bundle into another host; exporting secret values; re-creating a cancelled subscription; an approvals list in the bundle; changing the behaviour of host.export or host.self.offboard; the AC 8 prod read (operator-provisioned, deferred)."
+    "Org export; import of the new classes (export only, skipped on import); secret values; the end-user archive and the handle CSV; archive classes for tables the walk lists as excluded 'not yet archived'; the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -74,55 +74,50 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "no_member_credentials": "src/org_export.rs never reads a Tenant credential field; the member archive is built from the Tenant row by id and the owner's row signs the URL.",
-      "one_reason_list": "DISABLED_REASONS in src/auth_shape.rs is the only list of tenants.disabled_reason values; writers use its constants.",
-      "nothing_deleted": "org_offboard tenants are never purged and no stage deletes a tenant, tool or state row of an offboarded org."
+      "walk_is_the_valid_set": "The schema walk decides what is uncovered; no document lists tables by hand and docs/tools.md tables are rendered from the enum and EXPORT_EXCLUSIONS.",
+      "secrets_never_exported": "secrets.txt carries names only and no archive entry holds a secret value."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a team not leave in one step today?",
-      "a": "host.export and host.self.offboard act on one tenant with its own key."
+      "q": "Why can an agent not say whether an export is everything the host holds?",
+      "a": "The archive is the ArchiveEntry set and nothing compares it to the schema."
     },
     {
       "why": 2,
-      "q": "Why is that per key?",
-      "a": "The archive builder and the disable flip were written for the tenant itself, not for an owner acting over members."
+      "q": "Why does nothing compare it?",
+      "a": "Tables were added over time with a tenant_id and no step asked whether the export carried them."
     },
     {
       "why": 3,
-      "q": "Why can an owner-side job run the builder without a member key?",
-      "a": "The builder takes a Tenant row and reads by tenant id; no key is part of what it reads."
+      "q": "Why does the manifest not say what is left out?",
+      "a": "It lists entries only; no class or exclusion is recorded in it."
     },
     {
       "why": 4,
-      "q": "Why a new disabled reason and a restore verb?",
-      "a": "org_offboard must be distinguishable from self_offboard so it is restorable and never purged; deleting nothing keeps the undo free."
+      "q": "Why must the valid set be the schema?",
+      "a": "A hand-kept list of tables drifts the first time a migration lands; the schema walk fails CI at that moment."
     },
     {
       "why": 5,
-      "q": "Why one generated reason list?",
-      "a": "tenants.disabled_reason is plain TEXT, so writers, the admin filter and the purge list drift unless one const names them all."
+      "q": "Why a typed in-progress error with counters?",
+      "a": "An agent that gets the same run id back cannot tell a stuck export from a slow one."
     }
   ],
   "created_at": "2026-11-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a member keep host.export alone while org-offboarded?",
-      "resolution": "No: every member key is dark until host.org.restore; only the org verbs pass the disabled-tenant refusal, per (verb, reason)."
+      "question": "Which tenant-scoped tables are archive classes and which are exclusions?",
+      "resolution": "The walk surfaced calls, tenant_audit, audit_chain, oauth_audit, triggers and blobs as classes; the other tables are exclusions with a reason, and tenant-held data no class carries yet is stated as 'not yet archived' in the manifest rather than left out silently."
     },
     {
-      "question": "Which members get an org.offboard or org.restore audit row?",
-      "resolution": "Those the call changed: members already disabled for another reason are neither flipped nor restored and get no row."
+      "question": "What does the class table column name?",
+      "resolution": "The class's source tables joined by a comma; empty for a class read from the tenant's own table file or computed."
     },
     {
-      "question": "Does restore reset last_seen_unix?",
-      "resolution": "Yes, to the restore time, so no expiry sweep reads the offboarded interval as idleness."
-    },
-    {
-      "question": "What bounds the bundle size?",
-      "resolution": "The owner's plan export_bytes_max, checked on the running sum of member parts and on the finished bundle (export_too_large)."
+      "question": "What counts as an entry in entries_total?",
+      "resolution": "Every archive entry except manifest.json, the same count host.import uses."
     }
   ]
 }

@@ -463,8 +463,9 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
     };
     let mut value = attach_result(state, tenant.id, &run, value).await?;
     // PRD-mcphost-export-tables-and-import-restore R2: a `host.import` run
-    // reports its progress by entry while it runs, and keeps the final count.
-    if run.tool_name == crate::import::IMPORT_TOOL_NAME
+    // reports its progress by entry while it runs, and keeps the final count;
+    // PRD-mcphost-export-data-class-completeness-v2 R4: so does a `host.export` run.
+    if (run.tool_name == crate::import::IMPORT_TOOL_NAME || run.tool_name == crate::export::EXPORT_TOOL_NAME)
         && let Some((progress_json, _)) = state
             .db
             .state_kv_get(tenant.id, crate::import::progress_key(&run.id), String::new())
