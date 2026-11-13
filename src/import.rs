@@ -314,7 +314,7 @@ pub async fn import(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
     Ok(json!({"run_id": run_id, "status": "running"}))
 }
 
-async fn write_progress(state: &AppState, tenant: &Tenant, run_id: &str, done: usize, total: usize) {
+pub(crate) async fn write_progress(state: &AppState, tenant: &Tenant, run_id: &str, done: usize, total: usize) {
     let value = json!({"entries_done": done, "entries_total": total}).to_string();
     let _ = state.db.state_kv_set(tenant.id, progress_key(run_id), String::new(), value).await;
 }
@@ -467,7 +467,14 @@ async fn restore(
                 | ArchiveEntry::Document { .. }
                 | ArchiveEntry::Runs
                 | ArchiveEntry::Threads
-                | ArchiveEntry::Usage,
+                | ArchiveEntry::Usage
+                | ArchiveEntry::Calls
+                | ArchiveEntry::TenantAudit
+                | ArchiveEntry::AuditChain
+                | ArchiveEntry::OauthAudit
+                | ArchiveEntry::Triggers
+                | ArchiveEntry::BlobIndex
+                | ArchiveEntry::Blob { .. },
             ) => {}
         }
         write_progress(state, tenant, run_id, done + 1, total).await;

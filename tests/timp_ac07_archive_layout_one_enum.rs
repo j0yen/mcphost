@@ -17,6 +17,8 @@ fn doc_layout(tools_md: &str) -> BTreeSet<String> {
         .split_once(mcphost::gendocs::ARCHIVE_LAYOUT_HEADING.trim_start())
         .expect("docs/tools.md has the archive-layout section")
         .1;
+    // The layout table only: the excluded-classes table follows under its own heading.
+    let section = section.split("\n### ").next().expect("layout section");
     section
         .lines()
         .filter(|l| l.starts_with("| `"))
@@ -53,8 +55,12 @@ async fn exporter_importer_and_docs_agree_on_the_entry_layout() {
     let documented = doc_layout(&tools_md);
 
     assert_eq!(rendered, documented, "docs/tools.md layout table differs from the enum");
-    // The tenant has no python tool, so no tools/<name>/v1/source in its archive.
+    // The tenant has no python tool, so no tools/<name>/v1/source in its archive,
+    // and no blob bytes without `include_blobs`.
     let mut expected_exported = rendered.clone();
     expected_exported.remove("tools/<name>/v1/source");
+    // `blobs/<id>` is written only for `host.export {include_blobs: true}`
+    // (PRD-mcphost-export-data-class-completeness-v2 R2).
+    expected_exported.remove("blobs/<id>");
     assert_eq!(exported, expected_exported, "exporter paths differ from the enum's layout");
 }

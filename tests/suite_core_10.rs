@@ -9,6 +9,8 @@
 mod common;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
+#[path = "support/expc.rs"]
+mod expc;
 #[path = "support/exprf.rs"]
 mod exprf;
 #[path = "support/exprp.rs"]
@@ -160,6 +162,20 @@ mod exmf_ac04_stale_index_fails_the_build;
 mod exmf_ac05_schema_matches_committed_file;
 #[path = "exmf_ac06_zero_manifests_exits_two.rs"]
 mod exmf_ac06_zero_manifests_exits_two;
+#[path = "expc_ac01_schema_walk_finds_uncovered.rs"]
+mod expc_ac01_schema_walk_finds_uncovered;
+#[path = "expc_ac02_exclusions_complete_and_foo_fails.rs"]
+mod expc_ac02_exclusions_complete_and_foo_fails;
+#[path = "expc_ac03_archive_carries_every_class_with_sha256.rs"]
+mod expc_ac03_archive_carries_every_class_with_sha256;
+#[path = "expc_ac04_second_export_call_answers_in_progress.rs"]
+mod expc_ac04_second_export_call_answers_in_progress;
+#[path = "expc_ac05_include_blobs_refused_over_export_bytes_max.rs"]
+mod expc_ac05_include_blobs_refused_over_export_bytes_max;
+#[path = "expc_ac06_calls_lines_use_the_call_row_fields.rs"]
+mod expc_ac06_calls_lines_use_the_call_row_fields;
+#[path = "expc_ac07_docs_layout_tables_equal_the_render.rs"]
+mod expc_ac07_docs_layout_tables_equal_the_render;
 #[path = "exprf_ac02_failing_proof_hides_the_example.rs"]
 mod exprf_ac02_failing_proof_hides_the_example;
 #[path = "exprf_ac03_green_report_unhides_and_resolves.rs"]

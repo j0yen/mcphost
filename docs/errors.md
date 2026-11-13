@@ -142,6 +142,7 @@ Generated from the error registry's `data_keys`; do not hand-edit. Keys a code's
 | code | data keys |
 |---|---|
 | `connection_missing` | `provider`, `hint` |
+| `export_in_progress` | `run_id`, `started_unix`, `entries_done`, `entries_total` |
 | `import_fetch_failed` | `host`, `status`, `hint` |
 | `import_parse_failed` | `line`, `column` |
 | `import_schema_mismatch` | `expected`, `unknown_columns`, `rows_skipped`, `skip_reasons` |
