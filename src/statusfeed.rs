@@ -320,6 +320,28 @@ async fn check_component_alert(state: &AppState, component: &str) -> Result<(), 
     Ok(())
 }
 
+/// Opens an incident naming `component` unless one is already open that does
+/// (the check `check_component_alert` makes), so one incident exists.
+/// Returns whether this call opened it.
+pub(crate) async fn open_incident_unless_named(
+    state: &AppState,
+    component: &str,
+    title: &str,
+    auto: bool,
+) -> Result<bool, AppError> {
+    let already_named = state
+        .db
+        .list_open_incidents()
+        .await?
+        .iter()
+        .any(|i| incident_names_component(i, component));
+    if already_named {
+        return Ok(false);
+    }
+    open_auto_incident_titled(state, component, title, auto).await?;
+    Ok(true)
+}
+
 fn incident_names_component(incident: &Incident, component: &str) -> bool {
     serde_json::from_str::<Vec<String>>(&incident.components_json)
         .map(|names| names.iter().any(|n| n == component))
@@ -328,19 +350,28 @@ fn incident_names_component(incident: &Incident, component: &str) -> bool {
 
 async fn open_auto_incident(state: &AppState, component: &str) -> Result<(), AppError> {
     let title = format!("{component} is failing self-checks");
-    open_auto_incident_titled(state, component, &title).await
+    open_auto_incident_titled(state, component, &title, true).await
 }
 
 /// The one auto-open path: the self-probe streak and the request-level
 /// error-rate trigger (`incident_banner::evaluate_error_rate`) both land here.
-pub(crate) async fn open_auto_incident_titled(state: &AppState, component: &str, title: &str) -> Result<(), AppError> {
+///
+/// `auto` is whether `check_component_alert` may auto-close the incident once
+/// the component's probe reads ok again; a limit breach that the probe cannot
+/// see passes `false` and is left to an operator.
+pub(crate) async fn open_auto_incident_titled(
+    state: &AppState,
+    component: &str,
+    title: &str,
+    auto: bool,
+) -> Result<(), AppError> {
     let now = now_unix();
     let title = title.to_string();
     let timeline = json!([{"ts": now, "type": "opened", "message": title}]).to_string();
     let components_json = json!([component]).to_string();
     let id = state
         .db
-        .insert_incident(title, "partial".to_string(), components_json, now, timeline, true)
+        .insert_incident(title, "partial".to_string(), components_json, now, timeline, auto)
         .await?;
     crate::alerts::raise(
         state,
@@ -675,6 +706,8 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         // PRD-mcphost-graceful-drain-contract R4: `last` is `null` on a host
         // that never restarted.
         "restart": restart_block(state).await?,
+        // PRD-mcphost-sandbox-pool-self-restart-v2 R5.
+        "sandbox_pool": crate::pool_restart::status_block(state).await?,
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.

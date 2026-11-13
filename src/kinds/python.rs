@@ -92,7 +92,7 @@
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
@@ -1864,6 +1864,22 @@ struct WarmEntry {
     last_used: Instant,
 }
 
+/// How long a caller whose call a pool restart cancelled waits before its retry.
+const HEAL_RETRY_AFTER_MS: u64 = 2000;
+
+/// The longest tail of a killed child's stderr a ledger row keeps (R7).
+fn clip_tail(tail: &str) -> String {
+    let max = crate::kinds::POOL_STDERR_TAIL_MAX;
+    if tail.len() <= max {
+        return tail.to_string();
+    }
+    let mut start = tail.len() - max;
+    while !tail.is_char_boundary(start) {
+        start += 1;
+    }
+    tail[start..].to_string()
+}
+
 /// Kills `entry`'s sandbox and removes its scratch directory -- every path
 /// that discards a [`WarmEntry`] (decline-to-pool, eviction, reap, an
 /// entry replaced by a newer `offer`) goes through this so the two always
@@ -1892,7 +1908,41 @@ struct WarmPool {
     /// here past a multiple of its timeout is wedged.
     inflight: Mutex<HashMap<u64, Flight>>,
     next_flight: AtomicU64,
+    /// PRD-mcphost-sandbox-pool-self-restart-v2 R3: [`DRAIN_READY`] or
+    /// [`DRAIN_DRAINING`], read once before `begin_flight`; `drain_tx` wakes
+    /// the calls waiting on it.
+    drain: AtomicU8,
+    drain_tx: tokio::sync::watch::Sender<bool>,
+    /// The drain budget of the restart in progress (or the default), in ms:
+    /// a waiting call gives up at this plus [`DRAIN_WAIT_SLACK`].
+    drain_budget_ms: AtomicU64,
+    /// Calls whose live child a restart killed and that have not yet
+    /// answered.
+    heal_pending: AtomicUsize,
+    /// The restart's ledger row id, once `execute_on` has written it.
+    heal_id: tokio::sync::watch::Sender<Option<i64>>,
+    /// A restart has run and its row id has not been published yet: only
+    /// then does a cancelled call wait for the id.
+    heal_id_expected: AtomicBool,
+    /// Stderr tails of the children the restart killed.
+    killed_tails: Mutex<Vec<String>>,
 }
+
+const DRAIN_READY: u8 = 0;
+const DRAIN_DRAINING: u8 = 1;
+
+/// How long past the drain budget a waiting call keeps waiting before it
+/// gives up with `sandbox_unavailable`.
+const DRAIN_WAIT_SLACK: Duration = Duration::from_secs(5);
+
+/// `heal.toml`'s default `drain_budget_s` for `[signals.sandbox_pool]`.
+pub const DEFAULT_DRAIN_BUDGET_S: u64 = 30;
+
+/// How long a call a restart cancelled waits for the ledger row id.
+const HEAL_ID_WAIT: Duration = Duration::from_secs(2);
+
+/// How long a restart waits for the calls it killed to answer.
+const HEAL_KILL_SETTLE: Duration = Duration::from_secs(5);
 
 /// One call in flight: when it started, its wall-clock timeout, and the
 /// `tenant/tool` key it runs.
@@ -1900,6 +1950,9 @@ struct Flight {
     started: Instant,
     timeout: Duration,
     key: String,
+    /// The call's own cancel slot (`ctx.cancel_pid`): the handle a pool
+    /// restart kills this flight's live child through.
+    slot: Arc<crate::runs::CancelSlot>,
 }
 
 /// How many cold-call durations [`WarmPool::cold_starts`] keeps.
@@ -1930,16 +1983,186 @@ impl WarmPool {
             cold_starts: Mutex::new(VecDeque::new()),
             inflight: Mutex::new(HashMap::new()),
             next_flight: AtomicU64::new(0),
+            drain: AtomicU8::new(DRAIN_READY),
+            drain_tx: tokio::sync::watch::channel(false).0,
+            drain_budget_ms: AtomicU64::new(DEFAULT_DRAIN_BUDGET_S * 1000),
+            heal_pending: AtomicUsize::new(0),
+            heal_id: tokio::sync::watch::channel(None).0,
+            heal_id_expected: AtomicBool::new(false),
+            killed_tails: Mutex::new(Vec::new()),
         }
     }
 
-    fn begin_flight(self: &Arc<Self>, key: String, wall_clock_timeout: Duration) -> FlightGuard {
+    fn is_draining(&self) -> bool {
+        self.drain.load(Ordering::Acquire) == DRAIN_DRAINING
+    }
+
+    /// Moves `ready` to `draining`; `false` when a drain is already running.
+    fn begin_drain(&self, budget: Duration) -> bool {
+        if self
+            .drain
+            .compare_exchange(DRAIN_READY, DRAIN_DRAINING, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return false;
+        }
+        self.drain_budget_ms.store(u64::try_from(budget.as_millis()).unwrap_or(u64::MAX), Ordering::Release);
+        self.drain_tx.send_replace(true);
+        true
+    }
+
+    fn end_drain(&self) {
+        self.drain.store(DRAIN_READY, Ordering::Release);
+        self.drain_tx.send_replace(false);
+    }
+
+    /// Waits while the pool is draining, at most the drain budget plus
+    /// [`DRAIN_WAIT_SLACK`]; `false` when the bound passed first.
+    async fn wait_until_ready(&self) -> bool {
+        if !self.is_draining() {
+            return true;
+        }
+        let mut rx = self.drain_tx.subscribe();
+        let bound = Duration::from_millis(self.drain_budget_ms.load(Ordering::Acquire)) + DRAIN_WAIT_SLACK;
+        tokio::time::timeout(bound, rx.wait_for(|draining| !*draining)).await.is_ok()
+    }
+
+    fn begin_flight(
+        self: &Arc<Self>,
+        key: String,
+        wall_clock_timeout: Duration,
+        slot: Arc<crate::runs::CancelSlot>,
+    ) -> FlightGuard {
         let id = self.next_flight.fetch_add(1, Ordering::Relaxed);
         self.inflight
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(id, Flight { started: Instant::now(), timeout: wall_clock_timeout, key });
+            .insert(id, Flight { started: Instant::now(), timeout: wall_clock_timeout, key, slot });
         FlightGuard { warm: self.clone(), id }
+    }
+
+    /// Kills every flight past `wedge_factor` x its timeout (the same test
+    /// [`Self::pool_signals`] names them by) through its call's cancel slot,
+    /// and removes it from `inflight` as it does. The group's death unblocks
+    /// the call's stuck stdin write or wait, so the call returns through its
+    /// normal path. Returns the killed flights' `tenant/tool` keys, sorted.
+    fn kill_wedged(&self, wedge_factor: f64) -> Vec<String> {
+        let wedged = |f: &Flight| f.started.elapsed().as_secs_f64() > wedge_factor * f.timeout.as_secs_f64();
+        self.kill_flights(wedged)
+    }
+
+    /// Cancels every flight still in `inflight`, whatever its age.
+    fn cancel_all_flights(&self) -> Vec<String> {
+        self.kill_flights(|_| true)
+    }
+
+    fn kill_flights(&self, pick: impl Fn(&Flight) -> bool) -> Vec<String> {
+        let victims: Vec<Flight> = {
+            let mut inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+            let ids: Vec<u64> = inflight.iter().filter(|(_, f)| pick(f)).map(|(id, _)| *id).collect();
+            ids.iter().filter_map(|id| inflight.remove(id)).collect()
+        };
+        let mut keys = Vec::with_capacity(victims.len());
+        for flight in victims {
+            // Counted before the kill so a call that answers at once cannot
+            // see the count below its own.
+            self.heal_pending.fetch_add(1, Ordering::AcqRel);
+            if !flight.slot.request_cancel_for(crate::runs::CancelReason::HealRestart) {
+                self.heal_pending.fetch_sub(1, Ordering::AcqRel);
+            }
+            keys.push(flight.key);
+        }
+        keys.sort();
+        keys
+    }
+
+    /// A call whose child the restart killed has answered: stderr tail (if
+    /// it has one) kept for the ledger row, and the restart's wait on it
+    /// released.
+    fn note_heal_kill_seen(&self, stderr_tail: Option<String>) {
+        if let Some(tail) = stderr_tail.filter(|t| !t.is_empty()) {
+            self.killed_tails.lock().unwrap_or_else(|e| e.into_inner()).push(clip_tail(&tail));
+        }
+        let _ = self.heal_pending.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1));
+    }
+
+    /// The restart's ledger row id, waited for at most [`HEAL_ID_WAIT`];
+    /// `None` when it never arrived.
+    async fn heal_action_id(&self) -> Option<i64> {
+        if !self.heal_id_expected.load(Ordering::Acquire) && self.heal_id.borrow().is_none() {
+            return None;
+        }
+        let mut rx = self.heal_id.subscribe();
+        let seen = tokio::time::timeout(HEAL_ID_WAIT, rx.wait_for(Option::is_some)).await;
+        seen.ok().and_then(|r| r.ok().and_then(|v| *v))
+    }
+
+    fn counts(&self, wedge_factor: f64) -> crate::kinds::PoolCounts {
+        let s = self.pool_signals(wedge_factor);
+        crate::kinds::PoolCounts { wedged: s.wedged, pool_size: s.pool_size, in_flight_count: s.in_flight_count }
+    }
+
+    /// R3: the restart itself. (1) `draining`; (2) kill the wedged flights;
+    /// (3) wait up to `drain_budget` for the healthy ones; (4) cancel the
+    /// rest; (5) `evict_all`, back to `ready`. Killed flights leave
+    /// `inflight` at their kill, so the wait and `after` count only live
+    /// healthy calls.
+    async fn restart(
+        &self,
+        wedge_factor: f64,
+        drain_budget: Duration,
+    ) -> Result<crate::kinds::PoolRestartEvidence, String> {
+        if !self.begin_drain(drain_budget) {
+            return Err("a pool restart is already running".to_string());
+        }
+        struct Ready<'a>(&'a WarmPool);
+        impl Drop for Ready<'_> {
+            fn drop(&mut self) {
+                self.0.end_drain();
+            }
+        }
+        let _ready = Ready(self);
+        self.heal_id.send_replace(None);
+        self.heal_id_expected.store(true, Ordering::Release);
+        self.killed_tails.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        let before = self.counts(wedge_factor);
+
+        self.kill_wedged(wedge_factor);
+
+        let deadline = Instant::now() + drain_budget;
+        while Instant::now() < deadline && !self.inflight.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        self.cancel_all_flights();
+
+        let settle = Instant::now() + HEAL_KILL_SETTLE;
+        while Instant::now() < settle && self.heal_pending.load(Ordering::Acquire) > 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let stuck = self.heal_pending.swap(0, Ordering::AcqRel);
+        self.evict_all().await;
+        if stuck > 0 {
+            return Err(format!("{stuck} killed call(s) still blocked after the kill"));
+        }
+        let after = self.counts(wedge_factor);
+        let stderr_tails = std::mem::take(&mut *self.killed_tails.lock().unwrap_or_else(|e| e.into_inner()));
+        Ok(crate::kinds::PoolRestartEvidence { before, after, stderr_tails })
+    }
+
+    /// R3: the `tool_timeout` a call answers when the host's own pool restart
+    /// killed its child: `heal_action_id` (the ledger row id, `null` if it
+    /// has not arrived within [`HEAL_ID_WAIT`]), `retry_after_ms`, `hint`.
+    async fn heal_restart_timeout(&self) -> KindError {
+        let heal_action_id = self.heal_action_id().await;
+        KindError::structured_with(
+            codes::TOOL_TIMEOUT,
+            "the call was cancelled because the host restarted its sandbox pool",
+            json!({
+                "heal_action_id": heal_action_id,
+                "retry_after_ms": HEAL_RETRY_AFTER_MS,
+                "hint": "the host restarted its sandbox pool; retry the call once after retry_after_ms",
+            }),
+        )
     }
 
     fn record_cold_start(&self, ms: u64) {
@@ -1968,6 +2191,8 @@ impl WarmPool {
             // Every child the pool tracks: idle warm entries plus the ones
             // out on a call (a call takes its entry out of `entries`).
             pool_size: self.pool_size() + children,
+            in_flight_count: children,
+            draining: self.is_draining(),
         }
     }
 
@@ -5529,11 +5754,37 @@ impl PythonKind {
     /// the returned guard drops. The only way a test can hold a wedged child
     /// without a real hung sandbox.
     pub fn hold_test_flight(&self, key: &str, timeout: Duration, age: Duration) -> Box<dyn std::any::Any + Send> {
-        let guard = self.warm.begin_flight(key.to_string(), timeout);
+        let guard = self.warm.begin_flight(key.to_string(), timeout, Arc::default());
         if let Some(entry) = self.warm.inflight.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&guard.id) {
             entry.started = Instant::now().checked_sub(age).unwrap_or(entry.started);
         }
         Box::new(guard)
+    }
+
+    /// PRD-mcphost-sandbox-pool-self-restart-v2 AC1: the process-group ids of
+    /// the idle warm children, for a test that stops one.
+    pub fn warm_child_pids_for_test(&self) -> Vec<i32> {
+        self.warm.entries.lock().unwrap_or_else(|e| e.into_inner()).values().map(|e| e.sandbox.pid()).collect()
+    }
+
+    /// PRD-mcphost-sandbox-pool-self-restart-v2 AC6: marks the pool draining
+    /// with `budget` as its drain budget until the returned guard drops, the
+    /// way a restart does, without killing anything.
+    pub fn hold_drain_for_test(&self, budget: Duration) -> Box<dyn std::any::Any + Send> {
+        struct Hold(Arc<WarmPool>);
+        impl Drop for Hold {
+            fn drop(&mut self) {
+                self.0.end_drain();
+            }
+        }
+        assert!(self.warm.begin_drain(budget), "pool already draining");
+        Box::new(Hold(self.warm.clone()))
+    }
+
+    /// PRD-mcphost-sandbox-pool-self-restart-v2 R1: kills every wedged
+    /// flight (see [`WarmPool::kill_wedged`]) and returns its key.
+    pub fn kill_wedged_flights(&self, wedge_factor: f64) -> Vec<String> {
+        self.warm.kill_wedged(wedge_factor)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -5989,6 +6240,16 @@ impl PythonKind {
         let outcome = entry.sandbox.call(&payload, timeout, &bridge).await;
         ctx.cancel_pid.clear();
         ctx.resources.record_pids(entry.sandbox.last_call_pids_peak());
+        // R1: the pool restart killed this child; answer its `tool_timeout`
+        // instead of falling through to the cold path. A response that won
+        // the race is still a response.
+        if ctx.cancel_pid.take_heal_killed() {
+            self.warm.note_heal_kill_seen(Some(entry.sandbox.stderr_tail()));
+            if !matches!(outcome, Ok(PersistentCallOutcome::Responded { .. })) {
+                kill_warm_entry(entry).await;
+                return Some(Err(self.warm.heal_restart_timeout().await));
+            }
+        }
         match outcome {
             Ok(PersistentCallOutcome::Responded {
                 line,
@@ -6608,10 +6869,29 @@ impl Kind for PythonKind {
             return Err(host_capacity_error(in_flight, self.max_concurrent, retry_after_ms));
         };
 
+        // PRD-mcphost-sandbox-pool-self-restart-v2 R3: a restart is draining
+        // the pool; wait for it (not counted as in flight, so the drain never
+        // waits for this call), at most the drain budget + 5 s.
+        if !self.warm.wait_until_ready().await {
+            let retry_after_s = self.queue_wait_estimate_s().unwrap_or(5).clamp(1, 30);
+            let status = self.selftest.read_status();
+            return Err(KindError::structured_with(
+                crate::errors::SANDBOX_UNAVAILABLE,
+                format!("the sandbox pool is restarting; retry in {retry_after_s}s"),
+                json!({
+                    "mechanism": status.mechanism.as_str(),
+                    "detail": status.detail,
+                    "retry_after_s": retry_after_s,
+                    "alternatives": ["http"],
+                }),
+            ));
+        }
+
         // PRD-mcphost-golden-signals-self-probe: counted as in flight until
         // this call returns, so the pool-health signal can see a wedge.
         let flight_key = format!("{}/{}", ctx.tenant_id, ctx.tool_name.as_deref().unwrap_or("<unnamed>"));
-        let _flight = self.warm.begin_flight(flight_key, Duration::from_secs(parsed.effective_timeout_s() + 2));
+        let _flight =
+            self.warm.begin_flight(flight_key, Duration::from_secs(parsed.effective_timeout_s() + 2), ctx.cancel_pid.clone());
 
         let secret_env = self.secret_env(&parsed, ctx);
         let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
@@ -6767,6 +7047,19 @@ impl Kind for PythonKind {
         let bridge = HostSidecarBridge { ctx };
         let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge, &ctx.cancel_pid, &ctx.resources).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
+        // R1: the pool restart killed this call's child.
+        if ctx.cancel_pid.take_heal_killed() {
+            let tail = match &outcome {
+                Ok(SandboxOutcome::Signaled { stderr_tail, .. } | SandboxOutcome::NonZeroExit { stderr_tail, .. }) => {
+                    Some(stderr_tail.clone())
+                }
+                _ => None,
+            };
+            self.warm.note_heal_kill_seen(tail);
+            if !matches!(outcome, Ok(SandboxOutcome::Exited { .. })) {
+                return Err(self.warm.heal_restart_timeout().await);
+            }
+        }
         // Requirement 1/AC4: the cold-path number the AC's ≤5s budget is
         // judged against, logged before the spawn-error `?` so a genuine
         // spawn failure is still timed and visible.
@@ -7036,6 +7329,19 @@ impl Kind for PythonKind {
     /// PRD-mcphost-golden-signals-self-probe R2.
     fn pool_signals(&self, wedge_factor: f64) -> Option<crate::kinds::PoolSignals> {
         Some(self.warm.pool_signals(wedge_factor))
+    }
+
+    /// PRD-mcphost-sandbox-pool-self-restart-v2 R3.
+    async fn pool_restart(
+        &self,
+        req: crate::kinds::PoolRestartRequest,
+    ) -> Option<Result<crate::kinds::PoolRestartEvidence, String>> {
+        Some(self.warm.restart(req.wedge_factor, req.drain_budget).await)
+    }
+
+    fn pool_restart_published(&self, heal_action_id: i64) {
+        self.warm.heal_id.send_replace(Some(heal_action_id));
+        self.warm.heal_id_expected.store(false, Ordering::Release);
     }
 
     /// PRD-mcphost-sandbox-ready requirement 4: `admin.sandbox_recheck`.
