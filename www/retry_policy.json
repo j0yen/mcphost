@@ -1175,6 +1175,16 @@
       "max_attempts": 3,
       "policy": "honour-retry-after",
       "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 2000
+      },
+      "code": "conflict",
+      "max_attempts": 3,
+      "policy": "honour-retry-after",
+      "retryable": true
     }
   ],
   "version": 1

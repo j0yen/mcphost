@@ -499,3 +499,11 @@ globs = ["scripts/live/timeout-clamp.sh"]
 required_commands = [
   "cargo test --workspace stclp_ac",
 ]
+
+[[lane]]
+id = "templates"
+description = "PRD-mcphost-tenant-templates: templates/<name>.toml, the data files src/templates.rs embeds (include_str!) and `host.template_apply` provisions from. Given its own lane since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands. Proof is the ttpl_ tests, including the drift test against the kind registry and host_tools (name-filtered across --workspace, same suite-bucketing reasoning as the recipes lane)."
+globs = ["templates/**"]
+required_commands = [
+  "cargo test --workspace ttpl_",
+]

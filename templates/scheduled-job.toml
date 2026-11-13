@@ -1,0 +1,35 @@
+title = "Scheduled job"
+one_line = "A tool that runs on a schedule, plus the call that shows its first result."
+plan_fit = "free"
+secrets_required = []
+
+[[params]]
+name = "name"
+type = "string"
+required = false
+default = "scheduled_job"
+
+[[tools]]
+name = "{{name}}"
+kind = "jq"
+
+[tools.spec]
+program = "{ok: true, job: \"{{name}}\", ran: \"on schedule\"}"
+description = "Scheduled-job template: replace the program with the work the job should do."
+
+[[triggers]]
+tool = "{{name}}"
+kind = "schedule"
+schedule = "0 * * * *"
+
+[demo]
+call = { tool = "host.tool_call", args = { name = "{{name}}" } }
+expect = { ok = true, job = "{{name}}", ran = "on schedule" }
+
+[[next]]
+tool = "host.tool_publish"
+note = "republish {{name}} with the program the job should run; the schedule keeps firing it"
+
+[[next]]
+tool = "host.trigger.list"
+note = "see the hourly schedule this template set"

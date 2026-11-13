@@ -1,0 +1,44 @@
+title = "Docs Q&A"
+one_line = "A search tool over the tenant's host.docs corpus that answers with name:offset citations."
+plan_fit = "free"
+secrets_required = []
+
+[[params]]
+name = "name"
+type = "string"
+required = false
+default = "ask_docs"
+
+[[tools]]
+name = "{{name}}"
+kind = "python"
+
+[tools.spec]
+source = '''
+import mcphost
+
+
+def main(args):
+    query = args.get("query")
+    if not query or not isinstance(query, str):
+        raise ValueError("missing required argument 'query' (a string)")
+    result = mcphost.docs.search(query=query, k=args.get("k", 5))
+    hits = result.get("results") or []
+    passages = [
+        {"citation": f"{h['name']}:{h['offset']}", "name": h["name"], "offset": h["offset"], "text": h["text"], "score": h.get("score")}
+        for h in hits
+    ]
+    return {"query": query, "found": bool(passages), "passages": passages}
+'''
+
+[demo]
+call = { tool = "host.tool_call", args = { name = "{{name}}", args = { query = "hello" } } }
+expect = { found = false, passages = [] }
+
+[[next]]
+tool = "host.docs.put"
+note = "add the documents {{name}} searches, then call it with a question"
+
+[[next]]
+tool = "host.docs.status"
+note = "wait for index.lag_seconds == 0 before asking"

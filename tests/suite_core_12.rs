@@ -29,6 +29,8 @@ mod tcpn;
 mod timp;
 #[path = "support/tssdk.rs"]
 mod tssdk;
+#[path = "support/ttpl.rs"]
+mod ttpl;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
@@ -1030,6 +1032,18 @@ mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
 mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
 #[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
 mod ttfs_ac07_by_client_only_for_groups_of_five;
+#[path = "ttpl_ac01_scheduled_job_two_calls.rs"]
+mod ttpl_ac01_scheduled_job_two_calls;
+#[path = "ttpl_ac03_plan_ceiling_refused_before_any_create.rs"]
+mod ttpl_ac03_plan_ceiling_refused_before_any_create;
+#[path = "ttpl_ac04_failed_create_rolls_back_every_object.rs"]
+mod ttpl_ac04_failed_create_rolls_back_every_object;
+#[path = "ttpl_ac05_reapply_updates_in_place_and_applies_serialize.rs"]
+mod ttpl_ac05_reapply_updates_in_place_and_applies_serialize;
+#[path = "ttpl_ac06_list_verb_and_templates_json_agree.rs"]
+mod ttpl_ac06_list_verb_and_templates_json_agree;
+#[path = "ttpl_ac07_remove_keeps_what_the_user_changed.rs"]
+mod ttpl_ac07_remove_keeps_what_the_user_changed;
 #[path = "txnhelp_ac01_lint_zero.rs"]
 mod txnhelp_ac01_lint_zero;
 #[path = "txnhelp_ac02_lock_parity.rs"]
