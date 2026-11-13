@@ -85,6 +85,16 @@ fn arg_tools_filter(args: &Value) -> Result<Option<Vec<String>>, AppError> {
     }
 }
 
+/// R2: `include_blobs: true` adds each blob's bytes at `blobs/<id>`; absent
+/// or `false`, the archive carries `blobs/index.json` only.
+fn arg_include_blobs(args: &Value) -> Result<bool, AppError> {
+    match args.get("include_blobs") {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::Bool(b)) => Ok(*b),
+        Some(_) => Err(AppError::InvalidArgs("include_blobs: must be a boolean".to_string())),
+    }
+}
+
 /// `host.export {tools?: [name, ...]}` (P0 requirements 1-3): starts (or,
 /// per requirement 3 / AC3, rejoins) a background job that builds this
 /// tenant's whole data archive. Returns immediately -- the archive itself
@@ -92,12 +102,30 @@ fn arg_tools_filter(args: &Value) -> Result<Option<Vec<String>>, AppError> {
 /// same `runs` ledger every other async job uses.
 pub async fn export(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let tools_filter = arg_tools_filter(args)?;
+    let include_blobs = arg_include_blobs(args)?;
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
         AppError::Internal(format!(
             "tenant's plan '{}' is not in the loaded plan catalog",
             tenant.plan
         ))
     })?;
+    // R2/AC5: the blob bytes alone are checked against the plan's
+    // `export_bytes_max` before a run row exists or any blob file is read --
+    // the form `host.import` refuses with (`import.rs`).
+    if include_blobs {
+        let (_blobs, blob_bytes) = state.db.blobs_usage(tenant.id).await?;
+        if blob_bytes > plan.export_bytes_max {
+            return Err(crate::billing::quota_exceeded_for(
+                &state.plans,
+                state.billing_config.billing_mode(),
+                &tenant.plan,
+                "export_bytes_max",
+                plan.export_bytes_max,
+                blob_bytes,
+                None,
+            ));
+        }
+    }
     let run_id = crate::state::new_ulid();
     let args_json = serde_json::to_string(args)
         .map_err(|e| AppError::Internal(format!("args serialize: {e}")))?;
@@ -111,21 +139,46 @@ pub async fn export(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             args_json,
         )
         .await?;
-    // AC3: an export already `running` for this tenant -- the caller gets
-    // that run's id back, not a second job.
+    // R4: an export already `running` for this tenant is answered with a
+    // typed `export_in_progress` carrying that run's id and its progress,
+    // not a second job.
     let run_id = match outcome {
-        StartExportRun::AlreadyRunning(existing) => {
-            return Ok(json!({"run_id": existing, "status": "running"}));
-        }
+        StartExportRun::AlreadyRunning(existing) => return Err(export_in_progress(state, tenant, &existing).await?),
         StartExportRun::Started(new_id) => new_id,
     };
     let spawn_state = state.clone();
     let spawn_tenant = tenant.clone();
     let spawn_run_id = run_id.clone();
     tokio::spawn(async move {
-        run_export_job(spawn_state, spawn_tenant, spawn_run_id, tools_filter).await;
+        run_export_job(spawn_state, spawn_tenant, spawn_run_id, tools_filter, include_blobs).await;
     });
     Ok(json!({"run_id": run_id, "status": "running"}))
+}
+
+/// The `export_in_progress` refusal for the export `run_id` already running:
+/// `{run_id, started_unix, entries_done, entries_total}`, the counters read
+/// from the run's progress key (`entries_total` is `null` until the collector
+/// has counted, and `entries_done` is 0).
+async fn export_in_progress(state: &AppState, tenant: &Tenant, run_id: &str) -> Result<AppError, AppError> {
+    let started_unix = state.db.get_run(run_id.to_string(), tenant.id).await?.map(|r| r.started_unix);
+    let progress = match state
+        .db
+        .state_kv_get(tenant.id, crate::import::progress_key(run_id), String::new())
+        .await?
+    {
+        Some((json, _)) => serde_json::from_str::<Value>(&json).unwrap_or(Value::Null),
+        None => Value::Null,
+    };
+    Ok(AppError::Structured {
+        code: EXPORT_IN_PROGRESS,
+        message: format!("an export is already running for this tenant (run {run_id}); poll host.runs.get with that run_id"),
+        data: json!({
+            "run_id": run_id,
+            "started_unix": started_unix,
+            "entries_done": progress.get("entries_done").cloned().unwrap_or(json!(0)),
+            "entries_total": progress.get("entries_total").cloned().unwrap_or(Value::Null),
+        }),
+    })
 }
 
 /// Runs one export to completion and finalizes its `runs` row -- same
@@ -136,9 +189,10 @@ async fn run_export_job(
     tenant: Tenant,
     run_id: String,
     tools_filter: Option<Vec<String>>,
+    include_blobs: bool,
 ) {
     let start = std::time::Instant::now();
-    let outcome = build_archive(&state, &tenant, &run_id, tools_filter.as_deref()).await;
+    let outcome = build_archive(&state, &tenant, &run_id, tools_filter.as_deref(), include_blobs).await;
     finish_run(&state, &tenant, run_id, start, outcome).await;
 }
 
@@ -533,6 +587,13 @@ pub enum ArchiveEntry {
     Model { table: String },
     Doc { name: String },
     DocMeta { name: String },
+    Calls,
+    TenantAudit,
+    AuditChain,
+    OauthAudit,
+    Triggers,
+    BlobIndex,
+    Blob { id: String },
 }
 
 impl ArchiveEntry {
@@ -552,7 +613,78 @@ impl ArchiveEntry {
             ArchiveEntry::Model { table } => format!("models/{table}.json"),
             ArchiveEntry::Doc { name } => format!("docs/{name}"),
             ArchiveEntry::DocMeta { name } => format!("docs/{name}.meta.json"),
+            ArchiveEntry::Calls => "calls.jsonl".to_string(),
+            ArchiveEntry::TenantAudit => "tenant_audit.jsonl".to_string(),
+            ArchiveEntry::AuditChain => "audit_chain.jsonl".to_string(),
+            ArchiveEntry::OauthAudit => "oauth_audit.jsonl".to_string(),
+            ArchiveEntry::Triggers => "triggers.jsonl".to_string(),
+            ArchiveEntry::BlobIndex => "blobs/index.json".to_string(),
+            ArchiveEntry::Blob { id } => format!("blobs/{id}"),
         }
+    }
+
+    /// The main-db tables this kind of entry is read from -- the covered set
+    /// the schema walk ([`uncovered_tenant_tables`]) checks `EXPORT_EXCLUSIONS`
+    /// against. An exhaustive match, like [`Self::restore_note`]: a new variant
+    /// does not compile until it names its tables. `TableSchema`/`TableRows`
+    /// read the tenant's own table file, and `Usage` is an aggregate computed
+    /// from several tables, so they name none.
+    pub fn source_tables(&self) -> &'static [&'static str] {
+        match self {
+            ArchiveEntry::Manifest => &[],
+            ArchiveEntry::ToolConfig { .. } | ArchiveEntry::ToolSource { .. } => &["tools"],
+            ArchiveEntry::State { .. } => &["tenant_state_kv"],
+            ArchiveEntry::Document { .. } | ArchiveEntry::Doc { .. } | ArchiveEntry::DocMeta { .. } => {
+                &["documents", "document_blobs"]
+            }
+            ArchiveEntry::Secrets => &["secrets"],
+            ArchiveEntry::Runs => &["runs"],
+            ArchiveEntry::Threads => &["messages", "message_receipts"],
+            ArchiveEntry::Usage => &[],
+            ArchiveEntry::TableSchema { .. } | ArchiveEntry::TableRows { .. } => &[],
+            ArchiveEntry::Model { .. } => &["table_model_annotations"],
+            ArchiveEntry::Calls => &["calls"],
+            ArchiveEntry::TenantAudit => &["tenant_audit"],
+            ArchiveEntry::AuditChain => &["audit_chain"],
+            ArchiveEntry::OauthAudit => &["oauth_audit"],
+            ArchiveEntry::Triggers => &["triggers"],
+            ArchiveEntry::BlobIndex | ArchiveEntry::Blob { .. } => &["blobs"],
+        }
+    }
+
+    /// The data class this entry belongs to, as `manifest.json`'s
+    /// `data_classes` names it: one class per variant (`ToolConfig` and
+    /// `ToolSource` are two).
+    pub fn class_name(&self) -> &'static str {
+        match self {
+            ArchiveEntry::Manifest => "manifest",
+            ArchiveEntry::ToolConfig { .. } => "tool_config",
+            ArchiveEntry::ToolSource { .. } => "tool_source",
+            ArchiveEntry::State { .. } => "state",
+            ArchiveEntry::Document { .. } => "document",
+            ArchiveEntry::Secrets => "secrets",
+            ArchiveEntry::Runs => "runs",
+            ArchiveEntry::Threads => "threads",
+            ArchiveEntry::Usage => "usage",
+            ArchiveEntry::TableSchema { .. } => "table_schema",
+            ArchiveEntry::TableRows { .. } => "table_rows",
+            ArchiveEntry::Model { .. } => "model",
+            ArchiveEntry::Doc { .. } => "doc",
+            ArchiveEntry::DocMeta { .. } => "doc_meta",
+            ArchiveEntry::Calls => "calls",
+            ArchiveEntry::TenantAudit => "tenant_audit",
+            ArchiveEntry::AuditChain => "audit_chain",
+            ArchiveEntry::OauthAudit => "oauth_audit",
+            ArchiveEntry::Triggers => "triggers",
+            ArchiveEntry::BlobIndex => "blob_index",
+            ArchiveEntry::Blob { .. } => "blob",
+        }
+    }
+
+    /// One representative of every class the manifest reports (every
+    /// variant but `Manifest`).
+    pub fn classes() -> Vec<ArchiveEntry> {
+        Self::samples().into_iter().filter(|e| *e != ArchiveEntry::Manifest).collect()
     }
 
     /// The importer's reader: `Some` iff `path` is a member of the layout.
@@ -564,6 +696,12 @@ impl ArchiveEntry {
             "runs.jsonl" => return Some(ArchiveEntry::Runs),
             "threads.jsonl" => return Some(ArchiveEntry::Threads),
             "usage.json" => return Some(ArchiveEntry::Usage),
+            "calls.jsonl" => return Some(ArchiveEntry::Calls),
+            "tenant_audit.jsonl" => return Some(ArchiveEntry::TenantAudit),
+            "audit_chain.jsonl" => return Some(ArchiveEntry::AuditChain),
+            "oauth_audit.jsonl" => return Some(ArchiveEntry::OauthAudit),
+            "triggers.jsonl" => return Some(ArchiveEntry::Triggers),
+            "blobs/index.json" => return Some(ArchiveEntry::BlobIndex),
             _ => {}
         }
         if let Some(rest) = path.strip_prefix("tools/") {
@@ -593,6 +731,9 @@ impl ArchiveEntry {
         if let Some(rest) = path.strip_prefix("models/") {
             return Some(ArchiveEntry::Model { table: non_empty(rest.strip_suffix(".json")?)? });
         }
+        if let Some(rest) = path.strip_prefix("blobs/") {
+            return Some(ArchiveEntry::Blob { id: non_empty(rest)? });
+        }
         if let Some(rest) = path.strip_prefix("docs/") {
             return match rest.strip_suffix(".meta.json") {
                 Some(name) => Some(ArchiveEntry::DocMeta { name: non_empty(name)? }),
@@ -620,6 +761,13 @@ impl ArchiveEntry {
             ArchiveEntry::Model { table: "<table>".to_string() },
             ArchiveEntry::Doc { name: n() },
             ArchiveEntry::DocMeta { name: n() },
+            ArchiveEntry::Calls,
+            ArchiveEntry::TenantAudit,
+            ArchiveEntry::AuditChain,
+            ArchiveEntry::OauthAudit,
+            ArchiveEntry::Triggers,
+            ArchiveEntry::BlobIndex,
+            ArchiveEntry::Blob { id: "<id>".to_string() },
         ]
     }
 
@@ -641,6 +789,13 @@ impl ArchiveEntry {
             ArchiveEntry::Model { .. } => "restored with host.table.model_set",
             ArchiveEntry::Doc { .. } => "restored with host.docs.put (the index rebuilds)",
             ArchiveEntry::DocMeta { .. } => "mime and metadata for the doc beside it",
+            ArchiveEntry::Calls
+            | ArchiveEntry::TenantAudit
+            | ArchiveEntry::AuditChain
+            | ArchiveEntry::OauthAudit
+            | ArchiveEntry::Triggers
+            | ArchiveEntry::BlobIndex
+            | ArchiveEntry::Blob { .. } => "history only, not restored",
         }
     }
 
@@ -658,6 +813,7 @@ impl ArchiveEntry {
             ArchiveEntry::Model { .. } => ArchiveEntry::Model { table: "<table>".to_string() },
             ArchiveEntry::Doc { .. } => ArchiveEntry::Doc { name: n() },
             ArchiveEntry::DocMeta { .. } => ArchiveEntry::DocMeta { name: n() },
+            ArchiveEntry::Blob { .. } => ArchiveEntry::Blob { id: "<id>".to_string() },
             other => other.clone(),
         }
         .path()
@@ -669,9 +825,258 @@ impl ArchiveEntry {
     }
 }
 
+/// PRD-mcphost-export-data-class-completeness-v2 R1: every table of a
+/// migrated db that scopes its rows to a tenant -- a column named
+/// `tenant_id` or ending in `_tenant_id` (`messages` scopes by
+/// `from_tenant_id` only) -- sorted. The schema, not a list, is the valid set.
+pub fn tenant_scoped_tables(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<String>> {
+    let mut names: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")?
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    names.retain(|table| {
+        let quoted = table.replace('"', "\"\"");
+        let Ok(mut stmt) = conn.prepare(&format!("PRAGMA table_info(\"{quoted}\")")) else {
+            return false;
+        };
+        let Ok(cols) = stmt.query_map([], |r| r.get::<_, String>(1)) else {
+            return false;
+        };
+        cols.flatten().any(|c| c == "tenant_id" || c.ends_with("_tenant_id"))
+    });
+    Ok(names)
+}
+
+/// The completeness walk: the tenant-scoped tables of `conn` that are
+/// neither in `covered` (an archive class's source tables) nor in `excluded`
+/// (a documented exclusion). Empty means the archive accounts for every
+/// table; a test failure message names what is left.
+pub fn uncovered_tenant_tables(conn: &rusqlite::Connection, covered: &[&str], excluded: &[&str]) -> Vec<String> {
+    tenant_scoped_tables(conn)
+        .expect("schema walk reads sqlite_master")
+        .into_iter()
+        .filter(|t| !covered.contains(&t.as_str()) && !excluded.contains(&t.as_str()))
+        .collect()
+}
+
+/// Why a tenant-scoped table is not an archive class. Each renders to the
+/// reason text `manifest.json`'s `excluded` list and `docs/tools.md` carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Exclusion {
+    /// An operational record of the host, not data the tenant gave it.
+    HostInternal,
+    /// The host's own billing record of the tenant.
+    BillingRecord,
+    /// Rebuilt from archived data on demand.
+    Derived,
+    /// A credential or other secret material: never exported.
+    SecretMaterial,
+    /// Carried inside another entry kind (named by its path pattern).
+    CoveredBy(&'static str),
+    /// Tenant-held data no archive class carries yet: stated in the manifest
+    /// rather than left out silently, and the next classes the walk is for.
+    NotYetArchived,
+}
+
+impl Exclusion {
+    pub fn reason(&self) -> String {
+        match self {
+            Exclusion::HostInternal => "host-internal operational record".to_string(),
+            Exclusion::BillingRecord => "billing record, retained by host".to_string(),
+            Exclusion::Derived => "derived from archived data, rebuilt on demand".to_string(),
+            Exclusion::SecretMaterial => "credential or secret material, never exported".to_string(),
+            Exclusion::CoveredBy(entry) => format!("carried in {entry}"),
+            Exclusion::NotYetArchived => "tenant-held, not yet archived".to_string(),
+        }
+    }
+}
+
+/// PRD-mcphost-export-data-class-completeness-v2 R1: every tenant-scoped
+/// table that is not an [`ArchiveEntry`] source table, with its reason. The
+/// drift test (`expc_ac02`) walks the migrated schema, so a new table with a
+/// `tenant_id` column fails CI until it is an archive class or listed here.
+pub const EXPORT_EXCLUSIONS: &[(&str, Exclusion)] = &[
+    ("agent_profiles", Exclusion::NotYetArchived),
+    ("asks", Exclusion::NotYetArchived),
+    ("audit_exports", Exclusion::HostInternal),
+    ("billing_events", Exclusion::BillingRecord),
+    ("blob_policy", Exclusion::NotYetArchived),
+    ("blob_versions", Exclusion::NotYetArchived),
+    ("blocks", Exclusion::NotYetArchived),
+    ("call_results", Exclusion::Derived),
+    ("call_traces", Exclusion::NotYetArchived),
+    ("catalog_receipts", Exclusion::HostInternal),
+    ("channel_cursors", Exclusion::HostInternal),
+    ("channel_posts", Exclusion::NotYetArchived),
+    ("chart_index", Exclusion::Derived),
+    ("claim_codes", Exclusion::SecretMaterial),
+    ("claim_email_events", Exclusion::HostInternal),
+    ("confirm_tokens", Exclusion::SecretMaterial),
+    ("consent_cookies", Exclusion::SecretMaterial),
+    ("contact_requests", Exclusion::NotYetArchived),
+    ("contacts", Exclusion::NotYetArchived),
+    ("context_versions", Exclusion::NotYetArchived),
+    ("dead_letter_drops", Exclusion::HostInternal),
+    ("dead_letters", Exclusion::NotYetArchived),
+    ("doc_chunks", Exclusion::CoveredBy("docs/<name>")),
+    ("doc_chunks_fts", Exclusion::CoveredBy("docs/<name>")),
+    ("doc_index_state", Exclusion::CoveredBy("docs/<name>")),
+    ("document_usage_events", Exclusion::HostInternal),
+    ("draft_events", Exclusion::HostInternal),
+    ("drift_alerts", Exclusion::Derived),
+    ("drift_queue", Exclusion::Derived),
+    ("drift_reviews", Exclusion::Derived),
+    ("email_sends", Exclusion::NotYetArchived),
+    ("emitted_reviews", Exclusion::Derived),
+    ("end_user_attributes", Exclusion::NotYetArchived),
+    ("end_users", Exclusion::NotYetArchived),
+    ("example_proposals", Exclusion::NotYetArchived),
+    ("feedback", Exclusion::NotYetArchived),
+    ("group_members", Exclusion::NotYetArchived),
+    ("groups", Exclusion::NotYetArchived),
+    ("handoff_tokens", Exclusion::SecretMaterial),
+    ("help_search_events", Exclusion::HostInternal),
+    ("hint_events", Exclusion::HostInternal),
+    ("host_tool_usage", Exclusion::HostInternal),
+    ("index_chunks", Exclusion::Derived),
+    ("index_sources", Exclusion::NotYetArchived),
+    ("indexes", Exclusion::NotYetArchived),
+    ("invite_joins", Exclusion::NotYetArchived),
+    ("invites", Exclusion::SecretMaterial),
+    ("join_codes", Exclusion::SecretMaterial),
+    ("lineage_edges", Exclusion::Derived),
+    ("lineage_nodes", Exclusion::Derived),
+    ("logs", Exclusion::NotYetArchived),
+    ("meter_events", Exclusion::BillingRecord),
+    ("muted", Exclusion::NotYetArchived),
+    ("network_denials", Exclusion::HostInternal),
+    ("notifies", Exclusion::NotYetArchived),
+    ("notify_channels", Exclusion::SecretMaterial),
+    ("notify_receipts", Exclusion::NotYetArchived),
+    ("oauth_approved_clients", Exclusion::NotYetArchived),
+    ("oauth_codes", Exclusion::SecretMaterial),
+    ("oauth_denied_clients", Exclusion::NotYetArchived),
+    ("oauth_federation_pending", Exclusion::SecretMaterial),
+    ("oauth_grants", Exclusion::NotYetArchived),
+    ("oauth_issuers", Exclusion::NotYetArchived),
+    ("oauth_jti_denylist", Exclusion::HostInternal),
+    ("oauth_pending_clients", Exclusion::NotYetArchived),
+    ("oauth_policies", Exclusion::NotYetArchived),
+    ("oauth_providers", Exclusion::SecretMaterial),
+    ("oauth_scopes", Exclusion::NotYetArchived),
+    ("oauth_trusted_issuers", Exclusion::NotYetArchived),
+    ("org_members", Exclusion::NotYetArchived),
+    ("orgs", Exclusion::NotYetArchived),
+    ("owner_dns_challenges", Exclusion::SecretMaterial),
+    ("owner_github_states", Exclusion::SecretMaterial),
+    ("recipe_uses", Exclusion::HostInternal),
+    ("registry_documents", Exclusion::NotYetArchived),
+    ("row_policies", Exclusion::NotYetArchived),
+    ("sampling_usage", Exclusion::HostInternal),
+    ("signup_events", Exclusion::HostInternal),
+    ("syncs", Exclusion::NotYetArchived),
+    ("table_change_counters", Exclusion::Derived),
+    ("table_graphs", Exclusion::Derived),
+    ("table_models", Exclusion::Derived),
+    ("tasks", Exclusion::NotYetArchived),
+    ("tenant_clients", Exclusion::SecretMaterial),
+    ("tenant_end_user_activity", Exclusion::HostInternal),
+    ("tenant_keys", Exclusion::SecretMaterial),
+    ("tenant_lifecycle_events", Exclusion::HostInternal),
+    ("tenant_state_rows", Exclusion::NotYetArchived),
+    ("tenant_state_tables", Exclusion::NotYetArchived),
+    ("tenants", Exclusion::NotYetArchived),
+    ("thread_participants", Exclusion::NotYetArchived),
+    ("tool_caller_limits", Exclusion::NotYetArchived),
+    ("tool_lock", Exclusion::Derived),
+    ("tool_share_tokens", Exclusion::SecretMaterial),
+    ("tool_version_watermarks", Exclusion::HostInternal),
+    ("tool_versions", Exclusion::NotYetArchived),
+    ("trigger_receipts", Exclusion::NotYetArchived),
+    ("usage_daily", Exclusion::Derived),
+    ("vault_handoff_tokens", Exclusion::SecretMaterial),
+    ("vault_providers", Exclusion::SecretMaterial),
+    ("vault_tokens", Exclusion::SecretMaterial),
+];
+
+/// PRD-mcphost-export-data-class-completeness-v2 R6: `docs/tools.md`'s
+/// archive-layout table, rendered from [`ArchiveEntry::layout`].
+pub fn render_layout_table() -> String {
+    let mut out = String::from("| path | host.import |\n|---|---|\n");
+    for (pattern, note) in ArchiveEntry::layout() {
+        out.push_str(&format!("| `{pattern}` | {note} |\n"));
+    }
+    out
+}
+
+/// The heading `docs/tools.md`'s excluded-classes table sits under.
+pub const EXCLUDED_CLASSES_HEADING: &str = "\n### Excluded classes\n";
+
+/// R6: the excluded-classes table, rendered from [`EXPORT_EXCLUSIONS`].
+pub fn render_exclusions_table() -> String {
+    let mut out = String::from("| table | reason |\n|---|---|\n");
+    for (table, why) in EXPORT_EXCLUSIONS {
+        out.push_str(&format!("| `{table}` | {} |\n", why.reason()));
+    }
+    out
+}
+
+/// The table names of [`EXPORT_EXCLUSIONS`].
+pub fn excluded_tables() -> Vec<&'static str> {
+    EXPORT_EXCLUSIONS.iter().map(|(table, _)| *table).collect()
+}
+
+/// Every source table of every [`ArchiveEntry`] class.
+pub fn covered_tables() -> Vec<&'static str> {
+    let mut tables: Vec<&'static str> =
+        ArchiveEntry::classes().iter().flat_map(|e| e.source_tables().iter().copied()).collect();
+    tables.sort_unstable();
+    tables.dedup();
+    tables
+}
+
 /// `{path, sha256, bytes}` for one entry, as `manifest.json` lists it.
 fn manifest_entry(path: &str, data: &[u8]) -> Value {
     json!({"path": path, "sha256": crate::billing::sha256_hex(data), "bytes": data.len()})
+}
+
+/// How many rows of data one entry holds: lines of a `.jsonl` or the names
+/// in `secrets.txt`, the array length of the blob index, otherwise one.
+fn rows_in(entry: &ArchiveEntry, data: &[u8]) -> usize {
+    let lines = || data.split(|b| *b == b'\n').filter(|l| !l.is_empty()).count();
+    match entry {
+        ArchiveEntry::Secrets => lines(),
+        ArchiveEntry::BlobIndex => serde_json::from_slice::<Vec<Value>>(data).map_or(0, |rows| rows.len()),
+        _ if entry.path().ends_with(".jsonl") => lines(),
+        _ => 1,
+    }
+}
+
+/// R3: one `{class, table, entries, rows, sha256}` row per [`ArchiveEntry`]
+/// class, in layout order. `sha256` is over the class's entry bytes
+/// concatenated in path order, so an auditor re-derives it from the archive;
+/// a class with no entry carries the sha256 of zero bytes.
+fn data_classes(entries: &[(String, Vec<u8>)]) -> Vec<Value> {
+    let parsed: Vec<(ArchiveEntry, &str, &[u8])> = entries
+        .iter()
+        .filter_map(|(path, data)| ArchiveEntry::parse(path).map(|e| (e, path.as_str(), data.as_slice())))
+        .collect();
+    ArchiveEntry::classes()
+        .iter()
+        .map(|class| {
+            let mut members: Vec<&(ArchiveEntry, &str, &[u8])> =
+                parsed.iter().filter(|(e, _, _)| e.class_name() == class.class_name()).collect();
+            members.sort_by_key(|(_, path, _)| *path);
+            let bytes: Vec<u8> = members.iter().flat_map(|(_, _, data)| data.iter().copied()).collect();
+            json!({
+                "class": class.class_name(),
+                "table": class.source_tables().join(","),
+                "entries": members.len(),
+                "rows": members.iter().map(|(e, _, data)| rows_in(e, data)).sum::<usize>(),
+                "sha256": crate::billing::sha256_hex(&bytes),
+            })
+        })
+        .collect()
 }
 
 /// Everything one archive holds, gathered before any byte is written.
@@ -687,6 +1092,14 @@ struct ArchiveContents<'a> {
     tables: &'a [crate::tables::TableDump],
     models: &'a [(String, Value)],
     docs: &'a [DocFile],
+    calls: &'a [crate::calllog::CallRow],
+    tenant_audit: &'a [Value],
+    audit_chain: &'a [Value],
+    oauth_audit: &'a [Value],
+    triggers: &'a [Value],
+    blobs: &'a [crate::db::BlobRow],
+    /// `(id, bytes)` of each blob file, only for `include_blobs: true`.
+    blob_files: &'a [(String, Vec<u8>)],
 }
 
 /// One live document as `docs/<name>` + `docs/<name>.meta.json` carry it.
@@ -711,7 +1124,12 @@ fn jsonl(lines: impl Iterator<Item = String>) -> Vec<u8> {
 /// pre-v2 text view of each live document (docs/ carries the original
 /// bytes), `secrets.txt` is names only, and `runs.jsonl`/`threads.jsonl`
 /// are metadata.
-fn build_tar_gz(c: &ArchiveContents<'_>) -> Result<Vec<u8>, AppError> {
+async fn build_tar_gz(
+    state: &AppState,
+    tenant: &Tenant,
+    progress_run_id: Option<&str>,
+    c: &ArchiveContents<'_>,
+) -> Result<Vec<u8>, AppError> {
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
     let mut push = |entry: ArchiveEntry, data: Vec<u8>| entries.push((entry.path(), data));
 
@@ -781,19 +1199,57 @@ fn build_tar_gz(c: &ArchiveContents<'_>) -> Result<Vec<u8>, AppError> {
         push(ArchiveEntry::DocMeta { name: doc.name.clone() }, to_json_bytes(&doc.meta)?);
         push(ArchiveEntry::Doc { name: doc.name.clone() }, doc.content.clone());
     }
+    // R2: the classes the schema walk surfaced. Each is written even when it
+    // holds no rows, so the layout of an archive does not depend on the data.
+    push(ArchiveEntry::Calls, jsonl(c.calls.iter().rev().map(|row| row.to_json().to_string())));
+    push(ArchiveEntry::TenantAudit, jsonl(c.tenant_audit.iter().map(Value::to_string)));
+    push(ArchiveEntry::AuditChain, jsonl(c.audit_chain.iter().map(Value::to_string)));
+    push(ArchiveEntry::OauthAudit, jsonl(c.oauth_audit.iter().map(Value::to_string)));
+    push(ArchiveEntry::Triggers, jsonl(c.triggers.iter().map(Value::to_string)));
+    let blob_index: Vec<Value> = c
+        .blobs
+        .iter()
+        .map(|b| json!({"id": b.id, "name": b.name, "version": b.version, "mime": b.mime, "bytes": b.bytes, "sha256": b.sha256}))
+        .collect();
+    push(ArchiveEntry::BlobIndex, to_json_bytes(&json!(blob_index))?);
+    for (id, bytes) in c.blob_files {
+        push(ArchiveEntry::Blob { id: id.clone() }, bytes.clone());
+    }
 
     let manifest = to_json_bytes(&json!({
         "version": MANIFEST_VERSION,
         "tools": c.manifest_tools,
         "entries": entries.iter().map(|(p, d)| manifest_entry(p, d)).collect::<Vec<_>>(),
         "total_bytes": entries.iter().map(|(_, d)| d.len()).sum::<usize>(),
+        "exported_unix": crate::state::now_unix(),
+        "host_version": env!("CARGO_PKG_VERSION"),
+        "data_classes": data_classes(&entries),
+        "excluded": EXPORT_EXCLUSIONS
+            .iter()
+            .map(|(table, why)| json!({"table": table, "reason": why.reason()}))
+            .collect::<Vec<_>>(),
     }))?;
 
     let encoder = GzEncoder::new(Vec::new(), Compression::default());
     let mut builder = Builder::new(encoder);
     add_entry(&mut builder, &ArchiveEntry::Manifest.path(), &manifest)?;
-    for (path, data) in &entries {
+    // R4: the count is known once the entries are collected; `host.runs.get`
+    // and a second `host.export` read it from the run's progress key.
+    let total = entries.len();
+    if let Some(run_id) = progress_run_id {
+        crate::import::write_progress(state, tenant, run_id, 0, total).await;
+    }
+    for (done, (path, data)) in entries.iter().enumerate() {
         add_entry(&mut builder, path, data)?;
+        if (done + 1) % PROGRESS_EVERY == 0 && done + 1 < total {
+            if let Some(run_id) = progress_run_id {
+                crate::import::write_progress(state, tenant, run_id, done + 1, total).await;
+            }
+            tokio::task::yield_now().await;
+        }
+    }
+    if let Some(run_id) = progress_run_id {
+        crate::import::write_progress(state, tenant, run_id, total, total).await;
     }
     let encoder = builder
         .into_inner()
@@ -802,6 +1258,9 @@ fn build_tar_gz(c: &ArchiveContents<'_>) -> Result<Vec<u8>, AppError> {
         .finish()
         .map_err(|e| AppError::Internal(format!("gzip finish: {e}")))
 }
+
+/// R4: how many archive entries pass between two progress writes.
+const PROGRESS_EVERY: usize = 50;
 
 /// `manifest.json`'s `version` for archives this build writes.
 pub const MANIFEST_VERSION: i64 = 2;
@@ -813,13 +1272,43 @@ pub(crate) struct TenantArchive {
     pub manifest: Vec<Value>,
 }
 
+/// Rows per page when [`collect_calls`] walks the call log.
+const CALLS_PAGE: i64 = 5000;
+
+/// Every `calls` row of the tenant, newest first, read in keyset pages.
+async fn collect_calls(state: &AppState, tenant_id: i64) -> Result<Vec<crate::calllog::CallRow>, AppError> {
+    use crate::paged::{CallsList, CallsOrder, Paged};
+    let filter = crate::calllog::CallFilter { since_unix: 0, until_unix: i64::MAX, ..Default::default() };
+    let mut out: Vec<crate::calllog::CallRow> = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = state.db.list_call_rows(tenant_id, filter.clone(), cursor.take(), CALLS_PAGE).await?;
+        let full = page.len() as i64 == CALLS_PAGE;
+        if let Some(last) = page.last() {
+            cursor = Some(CallsList::cursor_at(last, CallsOrder::NewestFirst));
+        }
+        out.extend(page);
+        if !full {
+            return Ok(out);
+        }
+    }
+}
+
 /// Gathers this tenant's exportable data and builds its archive in memory.
 /// Reads by the tenant's id only, so a job holding the `Tenant` row can run
 /// it for a member (`org_export.rs`) without that member's credentials.
+/// `progress_run_id` names the run whose progress key the tar writer updates;
+/// `None` (an org member part) writes no progress. /// Gathers this tenant's exportable data and builds its archive in memory.
+/// Reads by the tenant's id only, so a job holding the `Tenant` row can run
+/// it for a member (`org_export.rs`) without that member's credentials.
+/// `progress_run_id` names the run whose progress key the tar writer updates;
+/// `None` (an org member part) writes no progress.
 pub(crate) async fn build_tenant_archive(
     state: &AppState,
     tenant: &Tenant,
+    progress_run_id: Option<&str>,
     tools_filter: Option<&[String]>,
+    include_blobs: bool,
 ) -> Result<TenantArchive, AppError> {
     let mut tools = state.db.list_tools(tenant.id).await?;
     // P1 requirement 5 / AC6: `{tools: ["a"]}` exports only tool `a`.
@@ -870,6 +1359,27 @@ pub(crate) async fn build_tenant_archive(
         });
     }
 
+    let calls = collect_calls(state, tenant.id).await?;
+    let tenant_audit = state.db.export_table_rows(tenant.id, "tenant_audit", "id", &[]).await?;
+    // `record_hash`/`prior_record_hash` stay, so the audit-export verifier
+    // accepts the archive copy.
+    let audit_chain = state.db.export_table_rows(tenant.id, "audit_chain", "id", &[]).await?;
+    let oauth_audit = state.db.export_table_rows(tenant.id, "oauth_audit", "id", &[]).await?;
+    // `hook_id` is the secret path segment of a webhook's URL.
+    let triggers = state.db.export_table_rows(tenant.id, "triggers", "rowid", &["hook_id"]).await?;
+    let blobs = state.db.blob_list(tenant.id, None, i64::MAX).await?;
+    // R2: blob bytes only on request; a blob whose file is gone (`missing`) is
+    // in the index and has no `blobs/<id>` entry.
+    let mut blob_files: Vec<(String, Vec<u8>)> = Vec::new();
+    if include_blobs {
+        for blob in &blobs {
+            let path = crate::blobs::blob_file(state.db.data_dir(), tenant.id, &blob.id);
+            if let Ok(bytes) = tokio::fs::read(&path).await {
+                blob_files.push((blob.id.clone(), bytes));
+            }
+        }
+    }
+
     // P1 requirement 4 / AC5: each manifest entry is exactly a
     // `host.tool_publish` argument object -- see
     // `handler::tool_publish_input_schema` for the schema it validates
@@ -879,7 +1389,7 @@ pub(crate) async fn build_tenant_archive(
         .map(|t| json!({"name": t.name, "kind": t.kind, "spec": t.spec}))
         .collect();
 
-    let bytes = build_tar_gz(&ArchiveContents {
+    let bytes = build_tar_gz(state, tenant, progress_run_id, &ArchiveContents {
         manifest_tools: &manifest,
         tools: &tools,
         secret_names: &secret_names,
@@ -891,7 +1401,15 @@ pub(crate) async fn build_tenant_archive(
         tables: &tables,
         models: &models,
         docs: &docs,
-    })?;
+        calls: &calls,
+        tenant_audit: &tenant_audit,
+        audit_chain: &audit_chain,
+        oauth_audit: &oauth_audit,
+        triggers: &triggers,
+        blobs: &blobs,
+        blob_files: &blob_files,
+    })
+    .await?;
     Ok(TenantArchive { bytes, manifest })
 }
 
@@ -955,8 +1473,9 @@ async fn build_archive(
     tenant: &Tenant,
     run_id: &str,
     tools_filter: Option<&[String]>,
+    include_blobs: bool,
 ) -> Result<Value, AppError> {
-    let archive = build_tenant_archive(state, tenant, tools_filter).await?;
+    let archive = build_tenant_archive(state, tenant, Some(run_id), tools_filter, include_blobs).await?;
     let mut result = store_and_sign(state, tenant, run_id, &archive.bytes).await?;
     result["manifest"] = json!(archive.manifest);
     Ok(result)
@@ -1025,6 +1544,13 @@ pub async fn download(
             .into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "export archive missing").into_response(),
     }
+}
+
+crate::err_code! {
+    pub EXPORT_IN_PROGRESS,
+    code: "export_in_progress", family: Storage, class: HostRefusal, retryable: false,
+    remedy: "An export is already running for this tenant: poll host.runs.get with data.run_id for entries_done/entries_total instead of calling host.export again.",
+    data_keys: &["run_id", "started_unix", "entries_done", "entries_total"],
 }
 
 crate::err_code! {

@@ -2010,16 +2010,25 @@ fn host_tools_part_02() -> Vec<Tool> {
              state, host.table.* tables (schema + rows), table notes, documents (original \
              bytes), secret NAMES (never values), run/thread history and usage, plus a \
              version-2 manifest.json (sha256 and bytes per entry; its tools list is \
-             re-publishable via host.tool_publish). Runs as a background job \
-             (poll host.runs.get with the returned run_id) -- calling this again while one is \
-             already running returns that same run_id rather than starting a second one. The \
-             finished run's result carries a download_url valid 24 hours.",
+             re-publishable via host.tool_publish). Also carries calls, tenant and OAuth audit \
+             rows, the hash-chained audit log, triggers and blobs/index.json; the manifest's \
+             data_classes lists every class with its sha256 and its excluded list names every \
+             table left out and why. include_blobs: true adds each blob's bytes (refused as \
+             quota_exceeded on export_bytes_max when they alone exceed it). Runs as a \
+             background job (poll host.runs.get: entries_done / entries_total with the returned \
+             run_id) -- calling this again while one is already running is refused as \
+             export_in_progress naming that run_id and its counters. The finished run's result \
+             carries a download_url valid 24 hours.",
             host_schema(
                 json!({
                     "tools": {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Local names of the tools to include; every tool when omitted.",
+                    },
+                    "include_blobs": {
+                        "type": "boolean",
+                        "description": "Add each blob's bytes at blobs/<id>; default false (blobs/index.json only). Refused quota_exceeded {export_bytes_max} when the blobs alone exceed this plan's export_bytes_max.",
                     },
                 }),
                 &[],

@@ -654,10 +654,13 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
         "\nEvery `host.export` archive is a `.tar.gz` of exactly these entries, and \
          `host.import` accepts exactly these. Generated from `export::ArchiveEntry`.\n\n",
     );
-    out.push_str("| path | host.import |\n|---|---|\n");
-    for (pattern, note) in crate::export::ArchiveEntry::layout() {
-        out.push_str(&format!("| `{pattern}` | {note} |\n"));
-    }
+    out.push_str(&crate::export::render_layout_table());
+    out.push_str(crate::export::EXCLUDED_CLASSES_HEADING);
+    out.push_str(
+        "\nEvery tenant-scoped table that no archive class carries, and why; `manifest.json`'s \
+         `excluded` lists the same rows. Generated from `export::EXPORT_EXCLUSIONS`.\n\n",
+    );
+    out.push_str(&crate::export::render_exclusions_table());
     // PRD-mcphost-contract-output-schemas R7: one `Returns` block per tool,
     // rendered from the same `output_schema` the contract and `tools/list`
     // carry.

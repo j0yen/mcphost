@@ -13043,6 +13043,49 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-export-data-class-completeness-v2 R2: every row of one
+    /// tenant-scoped table as a JSON object (column -> value), ordered by
+    /// `order_by`, for the export classes that are a plain dump of one table
+    /// (`tenant_audit`, `audit_chain`, `oauth_audit`, `triggers`). `table`
+    /// and `order_by` are compile-time constants of the exporter, never
+    /// tenant input; `omit` names columns left out of each object.
+    pub async fn export_table_rows(
+        &self,
+        tenant_id: i64,
+        table: &'static str,
+        order_by: &'static str,
+        omit: &'static [&'static str],
+    ) -> Result<Vec<serde_json::Value>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt =
+                conn.prepare(&format!("SELECT * FROM \"{table}\" WHERE tenant_id = ?1 ORDER BY {order_by}"))?;
+            let names: Vec<String> = stmt.column_names().map(|n| n.to_string()).collect();
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    let mut obj = serde_json::Map::new();
+                    for (i, name) in names.iter().enumerate() {
+                        if omit.contains(&name.as_str()) {
+                            continue;
+                        }
+                        let value = match r.get_ref(i)? {
+                            rusqlite::types::ValueRef::Null => serde_json::Value::Null,
+                            rusqlite::types::ValueRef::Integer(n) => serde_json::json!(n),
+                            rusqlite::types::ValueRef::Real(f) => serde_json::json!(f),
+                            rusqlite::types::ValueRef::Text(t) => {
+                                serde_json::Value::String(String::from_utf8_lossy(t).into_owned())
+                            }
+                            rusqlite::types::ValueRef::Blob(_) => continue,
+                        };
+                        obj.insert(name.clone(), value);
+                    }
+                    Ok(serde_json::Value::Object(obj))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
     /// PRD-mcphost-tenant-data-export P0 requirement 2: `GET /exports/{run_id}`
     /// has no bearer/tenant context (a signed URL is the whole auth story),
     /// so this looks a run up by id alone -- unlike [`Self::get_run`], which
