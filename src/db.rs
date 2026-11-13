@@ -371,6 +371,9 @@ const MIGRATION_0138: &str = include_str!("../migrations/0138_tool_test_verdict.
 /// PRD-mcphost-trusted-discovery-catalog-receipts AC6: the index, receipts cache and triggers behind `calls_30d`.
 const MIGRATION_0139: &str = include_str!("../migrations/0139_catalog_receipts.sql");
 const MIGRATION_0140: &str = include_str!("../migrations/0140_synthetic_tenant_purge.sql");
+const MIGRATION_0141: &str = include_str!("../migrations/0141_slo_targets.sql");
+/// PRD-mcphost-org-export-and-offboard-v2 R4/R5: `orgs.offboarded_unix`.
+const MIGRATION_0142: &str = include_str!("../migrations/0142_org_offboard.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3661,6 +3664,21 @@ impl Db {
         conn.execute_batch(MIGRATION_0139)?;
         // `IF NOT EXISTS` / `INSERT OR IGNORE` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0140)?;
+        // `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0141)?;
+        Self::migrate_0142_org_offboard(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-org-export-and-offboard-v2: gated on `orgs.offboarded_unix`
+    /// (the batch is an `ALTER`, so a rerun must skip it).
+    fn migrate_0142_org_offboard(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('orgs') WHERE name = 'offboarded_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0142)?;
+        }
         Ok(())
     }
 
@@ -7197,7 +7215,7 @@ impl Db {
         disabled: bool,
     ) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
-            let reason: Option<&str> = if disabled { Some("admin_disable") } else { None };
+            let reason: Option<&str> = if disabled { Some(crate::auth_shape::ADMIN_DISABLE_REASON) } else { None };
             let n = conn.execute(
                 "UPDATE tenants SET disabled = ?1, disabled_reason = ?2 WHERE namespace = ?3",
                 params![disabled as i64, reason, namespace],
@@ -7226,9 +7244,9 @@ impl Db {
     pub async fn self_offboard_tenant(&self, tenant_id: i64) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
             let n = conn.execute(
-                "UPDATE tenants SET disabled = 1, disabled_reason = 'self_offboard' \
+                "UPDATE tenants SET disabled = 1, disabled_reason = ?2 \
                  WHERE id = ?1 AND disabled = 0",
-                params![tenant_id],
+                params![tenant_id, crate::auth_shape::SELF_OFFBOARD_REASON],
             )?;
             Ok(n > 0)
         })
@@ -21740,6 +21758,206 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-slo-targets-on-status R2: `status_daily`'s summed
+    /// `ok_samples`/`total_samples` over every component at or after
+    /// `since_day` (same lexicographic day comparison as
+    /// [`Self::status_daily_sum_since`]). `(0, 0)` when no rollup row exists.
+    pub async fn status_daily_sum_all_since(&self, since_day: String) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COALESCE(SUM(ok_samples), 0), COALESCE(SUM(total_samples), 0) \
+                 FROM status_daily WHERE day >= ?1",
+                params![since_day],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-slo-targets-on-status R4: one day's `status_daily` sum over
+    /// every component (`day` is the `"YYYY-MM-DD"` text the rollup keys on).
+    pub async fn status_daily_sum_all_on(&self, day: String) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COALESCE(SUM(ok_samples), 0), COALESCE(SUM(total_samples), 0) \
+                 FROM status_daily WHERE day = ?1",
+                params![day],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// R4: replaces the `(day, key)` row, so a re-run recomputes rather than accumulates.
+    pub async fn upsert_slo_daily(
+        &self,
+        day: String,
+        key: String,
+        measured: Option<f64>,
+        sample_n: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO slo_daily (day, key, measured, sample_n) VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT (day, key) DO UPDATE SET measured = excluded.measured, sample_n = excluded.sample_n",
+                params![day, key, measured, sample_n],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R6: the `days` most recent `slo_daily` rows for `key`, oldest first
+    /// (newest last).
+    pub async fn slo_daily_recent(&self, key: String, days: i64) -> Result<Vec<SloDailyRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT day, measured, sample_n FROM \
+                 (SELECT day, measured, sample_n FROM slo_daily WHERE key = ?1 ORDER BY day DESC LIMIT ?2) \
+                 ORDER BY day ASC",
+            )?;
+            let rows = stmt
+                .query_map(params![key, days.max(0)], |r| {
+                    Ok(SloDailyRow { day: r.get(0)?, measured: r.get(1)?, sample_n: r.get(2)? })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-slo-targets-on-status R2: the `calls` aggregate behind the
+    /// two 24 h SLO keys over `[since_unix, until_unix)`, one indexed range
+    /// scan over `started_unix` (R7). `origin = 'probe'` rows and
+    /// `outcome = 'test'` rows (nothing ran for real, the same skip the
+    /// health error rate makes) are excluded. `host_fault_codes` is the set
+    /// of wire codes `calls.error_class` is matched against; the p95 is the
+    /// nearest-rank 95th percentile of `duration_ms` over `ok = 1` rows.
+    pub async fn slo_calls_window(
+        &self,
+        since_unix: i64,
+        until_unix: i64,
+        host_fault_codes: Vec<String>,
+    ) -> Result<SloCallStats, AppError> {
+        self.with_conn(move |conn| {
+            // One covering-index range scan (the `WHERE` terms are the partial
+            // index's own, see migration 0141). SQLite packs each row into one
+            // integer, `duration_ms * 4 + ok * 2 + is_host_fault`, so a 100 k-row
+            // window costs one column read per row, not three.
+            let in_list = (0..host_fault_codes.len()).map(|i| format!("?{}", i + 3)).collect::<Vec<_>>().join(", ");
+            let is_fault = if host_fault_codes.is_empty() {
+                "0".to_string()
+            } else {
+                format!("CASE WHEN error_class IS NULL THEN 0 WHEN error_class IN ({in_list}) THEN 1 ELSE 0 END")
+            };
+            let mut stmt = conn.prepare(&format!(
+                "SELECT duration_ms * 4 + ok * 2 + {is_fault} FROM calls {SLO_CALLS_WINDOW_WHERE}"
+            ))?;
+            let mut bind: Vec<rusqlite::types::Value> = vec![since_unix.into(), until_unix.into()];
+            bind.extend(host_fault_codes.into_iter().map(rusqlite::types::Value::from));
+            let mut rows = stmt.query(rusqlite::params_from_iter(bind.iter()))?;
+            let (mut total, mut host_faults) = (0_i64, 0_i64);
+            let mut ok_durations: Vec<i64> = Vec::new();
+            while let Some(r) = rows.next()? {
+                let packed: i64 = r.get(0)?;
+                total += 1;
+                host_faults += packed & 1;
+                if packed & 2 != 0 {
+                    ok_durations.push(packed >> 2);
+                }
+            }
+            let ok_n = ok_durations.len() as i64;
+            // Nearest rank: the ceil(0.95 * n)-th smallest duration.
+            let p95_ms = (ok_n > 0).then(|| {
+                let rank = ((ok_n as f64) * 0.95).ceil() as usize;
+                *ok_durations.select_nth_unstable(rank - 1).1
+            });
+            Ok(SloCallStats { total, host_faults, ok_n, p95_ms })
+        })
+        .await
+    }
+
+    /// Test-only (PRD-mcphost-slo-targets-on-status AC1/AC5/AC7): insert one
+    /// finished `calls` row with explicit `ok`, `error_class`, `duration_ms`
+    /// and `origin`, bypassing dispatch.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_slo_call_row_for_test(
+        &self,
+        tenant_id: i64,
+        started_unix: i64,
+        duration_ms: i64,
+        ok: bool,
+        error_class: Option<String>,
+        origin: &str,
+    ) -> Result<(), AppError> {
+        let origin = origin.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, origin, credential) \
+                 VALUES (?1, 'test_tool', ?2, ?3, ?4, ?5, ?6, ?7, 'primary')",
+                params![tenant_id, crate::state::rfc3339_from_unix(started_unix), started_unix, duration_ms, ok as i64, error_class, origin],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only (PRD-mcphost-slo-targets-on-status AC7): `count` finished
+    /// `calls` rows in one transaction, spread over the `spread_secs` ending
+    /// at `end_unix`, with varied durations (`1 + i % 997` ms) and every
+    /// 50th row a failure carrying `error_class`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_slo_calls_bulk_for_test(
+        &self,
+        tenant_id: i64,
+        count: i64,
+        end_unix: i64,
+        spread_secs: i64,
+        error_class: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                {
+                    let mut stmt = tx.prepare(
+                        "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
+                         duration_ms, ok, error_class, credential) VALUES (?1, 'test_tool', '', ?2, ?3, ?4, ?5, 'primary')",
+                    )?;
+                    for i in 0..count {
+                        let started_unix = end_unix - 1 - (i * spread_secs) / count.max(1);
+                        let failed = i % 50 == 49;
+                        stmt.execute(params![
+                            tenant_id,
+                            started_unix,
+                            1 + i % 997,
+                            (!failed) as i64,
+                            failed.then(|| error_class.clone()),
+                        ])?;
+                    }
+                }
+                Ok(())
+            })
+        })
+        .await
+    }
+
+    /// Test-only (AC7): `EXPLAIN QUERY PLAN` of [`Self::slo_calls_window`]'s
+    /// first statement, joined into one string.
+    pub async fn explain_slo_window_for_test(&self) -> Result<String, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "EXPLAIN QUERY PLAN SELECT ok, error_class, duration_ms, COUNT(*) FROM calls \
+                 WHERE started_unix >= ?1 AND started_unix < ?2 AND origin <> 'probe' AND outcome <> 'test'",
+            )?;
+            let rows = stmt
+                .query_map(params![0_i64, i64::MAX], |r| r.get::<_, String>(3))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows.join("; "))
+        })
+        .await
+    }
+
     /// requirement 1: every distinct `(component, day)` pair with at least
     /// one raw sample in `[since_ts, until_ts)` -- what `rollup_range`
     /// iterates to know which rows to (re)compute.
@@ -24708,6 +24926,34 @@ pub struct StatusDailyRow {
     pub ok_samples: i64,
     pub total_samples: i64,
     pub p95_latency_ms: i64,
+}
+
+/// PRD-mcphost-slo-targets-on-status R2/R7: [`Db::slo_calls_window`]'s
+/// `WHERE` clause. The `origin`/`outcome` terms are `idx_calls_started_unix`'s own
+/// partial-index predicate (migration 0141); SQLite uses the index only while
+/// the two spell the same expression.
+const SLO_CALLS_WINDOW_WHERE: &str =
+    "WHERE started_unix >= ?1 AND started_unix < ?2 AND origin <> 'probe' AND outcome <> 'test'";
+
+/// PRD-mcphost-slo-targets-on-status R4: one `slo_daily` row.
+#[derive(Debug, Clone, Serialize)]
+pub struct SloDailyRow {
+    pub day: String,
+    pub measured: Option<f64>,
+    pub sample_n: i64,
+}
+
+/// PRD-mcphost-slo-targets-on-status R2: [`Db::slo_calls_window`]'s result.
+#[derive(Debug, Clone, Copy)]
+pub struct SloCallStats {
+    /// Finished rows in the window (probe and test rows excluded).
+    pub total: i64,
+    /// Rows whose `error_class` is a host-fault code.
+    pub host_faults: i64,
+    /// Rows with `ok = 1`.
+    pub ok_n: i64,
+    /// Nearest-rank p95 of `duration_ms` over the `ok = 1` rows.
+    pub p95_ms: Option<i64>,
 }
 
 fn status_daily_from_row(r: &Row) -> rusqlite::Result<StatusDailyRow> {

@@ -552,8 +552,8 @@
   "info": {
     "description": "Every non-MCP HTTP route mcphost serves, generated from the router's own route table.",
     "title": "mcphost HTTP API",
-    "version": "0.130.4",
-    "x-contract-version": "1.5ccd9de023bc"
+    "version": "0.130.9",
+    "x-contract-version": "1.24f02fee6bc8"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -2253,6 +2253,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "slo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2266,6 +2274,16 @@
             },
             "description": "OK"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
           "500": {
             "content": {
               "application/json": {
@@ -2277,7 +2295,7 @@
             "description": "Internal Server Error"
           }
         },
-        "summary": "Status feed; component and days select one component's daily rollup",
+        "summary": "Status feed; component and days select one component's daily rollup, slo and days one slo key's",
         "tags": [
           "status"
         ],

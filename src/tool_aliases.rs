@@ -8,9 +8,8 @@
 //! alias resolution), `tools/list` (`handler::host_tools`'s alias-entry
 //! injection), docs generation (`gendocs`'s `docs/tools.md` renderer), and
 //! the lint (`scripts/tool-naming-lint.sh` parses this file's own
-//! `TOOL_ALIASES` table by regex, the same way `spec-fields-doc-check.sh`
-//! parses `known_spec_fields()` -- see that script's own header doc for why
-//! a parsed source beats a hand-copied second list).
+//! `TOOL_ALIASES` table by regex, so a parsed source beats a hand-copied
+//! second list).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};

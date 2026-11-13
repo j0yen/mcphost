@@ -41,6 +41,16 @@
               "tool_run_unsupported"
             ],
             "name": "tool_state"
+          },
+          {
+            "codes": [
+              "step_tool_not_allowed",
+              "step_tool_not_found",
+              "fixture_shape_mismatch",
+              "fixture_step_ambiguous",
+              "fixture_step_unknown"
+            ],
+            "name": "chain_spec"
           }
         ],
         "secret_redaction": false,
@@ -80,6 +90,13 @@
               "host_not_allowed"
             ],
             "name": "upstream"
+          },
+          {
+            "codes": [
+              "response_too_large",
+              "template_error"
+            ],
+            "name": "http_call"
           }
         ],
         "secret_redaction": true,
@@ -197,6 +214,12 @@
               "tool_run_unsupported"
             ],
             "name": "tool_state"
+          },
+          {
+            "codes": [
+              "typescript_not_supported"
+            ],
+            "name": "js_spec"
           }
         ],
         "secret_redaction": true,
@@ -278,6 +301,17 @@
               "tool_run_unsupported"
             ],
             "name": "tool_state"
+          },
+          {
+            "codes": [
+              "build_failed",
+              "capacity",
+              "egress_unavailable",
+              "requirement_not_allowed",
+              "state_quota_exceeded",
+              "unknown_import"
+            ],
+            "name": "python_call"
           }
         ],
         "secret_redaction": true,
@@ -20252,6 +20286,117 @@
       "since": "0.112.7"
     },
     {
+      "description": "Owner only: build one downloadable .tar.gz of the whole team. It holds org_manifest.json (each live member's namespace, role, tools as name, kind and spec_sha256, and the sha256 and size of that member's part) and one members/<namespace>.tar.gz per live member, each the member's own host.export archive (the member's key is not needed). Runs as a background job (poll host.runs.get with the returned run_id); calling this again while one is running returns that same run_id. The finished run's result carries a download_url valid 24 hours and the org_manifest.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.org.export",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "onboarding": {
+            "properties": {
+              "claim_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "memory_hint": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "memory_line": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "note": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tenant": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.7"
+    },
+    {
       "description": "Join an org with the tenant you already have, using the code from its org invite url. Your key, namespace, url and tools are untouched; you become a member.",
       "input_schema": {
         "additionalProperties": false,
@@ -20502,6 +20647,100 @@
       "since": "0.108.110"
     },
     {
+      "description": "Owner only: switch the whole org off. confirm must equal the org name, else confirm_mismatch and nothing changes. Cancels each pro member's live subscription, then disables every live member, the owner included, with disabled_reason org_offboard; each member's next call answers tenant_disabled with that reason. Nothing is deleted: tools and state stay, and host.org.restore (owner key, any age) re-enables everyone this call disabled. A repeat call answers already_offboarded. Refused with org_export_running while an org export of this org runs. Run host.org.export first to take the data with you.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "The org's name, exactly.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.org.offboard",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "already_offboarded": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "billing_canceled": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "members_disabled": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offboarded_unix": {
+            "type": "integer"
+          },
+          "org": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "org",
+          "offboarded_unix"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.7"
+    },
+    {
       "description": "Owner only: end one member's membership in your org. The member keeps its own tenant, key, url and tools; its host.whoami shows org: null from then on.",
       "input_schema": {
         "additionalProperties": false,
@@ -20569,6 +20808,73 @@
         }
       },
       "since": "0.108.121"
+    },
+    {
+      "description": "Owner only: undo host.org.offboard. Re-enables every member that offboard disabled (disabled_reason org_offboard) and clears the reason; their tools answer again. Works at any age. Does not re-create a cancelled subscription: a member returns on the plan its row then holds.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.org.restore",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "members_restored": {
+            "type": "integer"
+          },
+          "org": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "org",
+          "members_restored"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.7"
     },
     {
       "description": "Per-member and per-tool usage for your org over a window: calls, errors, seconds, state_bytes and est_cost_usd for each member, plus org totals. Figures are the same ones each member's own host.usage reports. A member sees only its own row and the totals.",
@@ -22196,6 +22502,12 @@
               "null"
             ]
           },
+          "doc_anchor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "endpoint": {
             "type": [
               "string",
@@ -22677,6 +22989,15 @@
             },
             "type": [
               "object",
+              "null"
+            ]
+          },
+          "spec_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -45752,6 +46073,24 @@
       "since": "0.112.7"
     },
     {
+      "alias_of": "host.org.export",
+      "description": "Owner only: build one downloadable .tar.gz of the whole team. It holds org_manifest.json (each live member's namespace, role, tools as name, kind and spec_sha256, and the sha256 and size of that member's part) and one members/<namespace>.tar.gz per live member, each the member's own host.export archive (the member's key is not needed). Runs as a background job (poll host.runs.get with the returned run_id); calling this again while one is running returns that same run_id. The finished run's result carries a download_url valid 24 hours and the org_manifest.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_org_export",
+      "since": "0.130.7"
+    },
+    {
       "alias_of": "host.org.join",
       "description": "Join an org with the tenant you already have, using the code from its org invite url. Your key, namespace, url and tools are untouched; you become a member.",
       "input_schema": {
@@ -45820,6 +46159,30 @@
       "since": "0.108.110"
     },
     {
+      "alias_of": "host.org.offboard",
+      "description": "Owner only: switch the whole org off. confirm must equal the org name, else confirm_mismatch and nothing changes. Cancels each pro member's live subscription, then disables every live member, the owner included, with disabled_reason org_offboard; each member's next call answers tenant_disabled with that reason. Nothing is deleted: tools and state stay, and host.org.restore (owner key, any age) re-enables everyone this call disabled. A repeat call answers already_offboarded. Refused with org_export_running while an org export of this org runs. Run host.org.export first to take the data with you.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "description": "The org's name, exactly.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_org_offboard",
+      "since": "0.130.7"
+    },
+    {
       "alias_of": "host.org.remove",
       "description": "Owner only: end one member's membership in your org. The member keeps its own tenant, key, url and tools; its host.whoami shows org: null from then on.",
       "input_schema": {
@@ -45842,6 +46205,24 @@
       },
       "name": "host_org_remove",
       "since": "0.108.121"
+    },
+    {
+      "alias_of": "host.org.restore",
+      "description": "Owner only: undo host.org.offboard. Re-enables every member that offboard disabled (disabled_reason org_offboard) and clears the reason; their tools answer again. Works at any age. Does not re-create a cancelled subscription: a member returns on the plan its row then holds.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_org_restore",
+      "since": "0.130.7"
     },
     {
       "alias_of": "host.org.usage",

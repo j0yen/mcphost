@@ -32,6 +32,18 @@ mod tssdk;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
+mod refrow_ac01_args_invalid_writes_refused_row;
+#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
+mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
+#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
+mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
+#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
+mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
+#[path = "refrow_ac05_host_usage_reports_refused.rs"]
+mod refrow_ac05_host_usage_reports_refused;
+#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
+mod refrow_ac06_unwritable_db_refusal_still_returned;
 #[path = "refst_ac01_unimplemented_method_status_by_revision.rs"]
 mod refst_ac01_unimplemented_method_status_by_revision;
 #[path = "refst_ac03_refusal_status_rule_and_batch.rs"]
@@ -402,6 +414,20 @@ mod skillsrc_ac03_missing_skill_md_is_stale_and_recreated;
 mod skillsrc_ac04_gen_docs_idempotent;
 #[path = "skillsrc_ac05_output_list_and_drift_test_kept.rs"]
 mod skillsrc_ac05_output_list_and_drift_test_kept;
+#[path = "slopg_ac01_slo_block_measured_against_target.rs"]
+mod slopg_ac01_slo_block_measured_against_target;
+#[path = "slopg_ac02_under_twenty_samples_is_null.rs"]
+mod slopg_ac02_under_twenty_samples_is_null;
+#[path = "slopg_ac03_availability_from_status_daily.rs"]
+mod slopg_ac03_availability_from_status_daily;
+#[path = "slopg_ac04_slo_keys_drift_status_html_and_llms_txt.rs"]
+mod slopg_ac04_slo_keys_drift_status_html_and_llms_txt;
+#[path = "slopg_ac05_error_rate_counts_host_faults_only.rs"]
+mod slopg_ac05_error_rate_counts_host_faults_only;
+#[path = "slopg_ac06_slo_daily_rows_by_key.rs"]
+mod slopg_ac06_slo_daily_rows_by_key;
+#[path = "slopg_ac07_slo_block_under_50ms_at_100k_calls.rs"]
+mod slopg_ac07_slo_block_under_50ms_at_100k_calls;
 #[path = "snp_ac01_url_to_unbound_host_is_blocked.rs"]
 mod snp_ac01_url_to_unbound_host_is_blocked;
 #[path = "snp_ac02_echoed_secret_in_result_is_blocked.rs"]
@@ -1012,25 +1038,3 @@ mod umeta_ac04_unlimited_plan_renders_null_limit;
 mod umeta_ac05_no_extra_select_on_hot_path;
 #[path = "umeta_ac06_caller_limit_in_meta_usage.rs"]
 mod umeta_ac06_caller_limit_in_meta_usage;
-#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
-mod unkfield_ac04_trigger_set_unknown_argument;
-#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
-mod unkfield_ac05_tools_list_additional_properties_false;
-#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
-mod unkfield_ac07_spec_fields_doc_check_script;
-#[path = "upfam_ac01_auth_family_401_403.rs"]
-mod upfam_ac01_auth_family_401_403;
-#[path = "upfam_ac02_403_error_surface_names_secret_set.rs"]
-mod upfam_ac02_403_error_surface_names_secret_set;
-#[path = "upfam_ac02_rate_limited_retry_after.rs"]
-mod upfam_ac02_rate_limited_retry_after;
-#[path = "upfam_ac03_client_and_server_error_families.rs"]
-mod upfam_ac03_client_and_server_error_families;
-#[path = "upfam_ac04_remedy_table_total_and_single_source.rs"]
-mod upfam_ac04_remedy_table_total_and_single_source;
-#[path = "upfam_ac05_hints_name_real_tools.rs"]
-mod upfam_ac05_hints_name_real_tools;
-#[path = "upfam_ac06_host_not_allowed_names_tool_call.rs"]
-mod upfam_ac06_host_not_allowed_names_tool_call;
-#[path = "upfam_ac07_tool_test_matches_real_call.rs"]
-mod upfam_ac07_tool_test_matches_real_call;

@@ -453,6 +453,8 @@ const TOUCHED_PREFIX_BY_VERB: &[(&str, &str)] = &[
     ("host.table.", "table_"),
     ("host.docs.", "docs_"),
     ("host.export", "export_"),
+    // PRD-mcphost-org-export-and-offboard-v2 R7: an org export answers as `host.export` does.
+    ("host.org.export", "export_"),
     // PRD-mcphost-blob-retention-and-quota R4: `blobs_max`, `blob_bytes_max`
     // and `blob_max_bytes` all begin `blob`.
     ("host.blob.", "blob"),

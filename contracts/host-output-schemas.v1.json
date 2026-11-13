@@ -7202,6 +7202,9 @@
         },
         "type": "object"
       },
+      "doc_anchor": {
+        "type": "string"
+      },
       "endpoint": {
         "type": "string"
       },
@@ -7485,6 +7488,12 @@
           }
         },
         "type": "object"
+      },
+      "spec_fields": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       },
       "starter_tool": {
         "properties": {
@@ -15249,6 +15258,95 @@
     "required": [
       "org",
       "sent"
+    ]
+  },
+  "host.org.export": {
+    "properties": {
+      "onboarding": {
+        "properties": {
+          "claim_url": {
+            "type": "string"
+          },
+          "memory_hint": {
+            "type": "string"
+          },
+          "memory_line": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "tenant": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "run_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "run_id",
+      "status"
+    ],
+    "type": "object"
+  },
+  "host.org.offboard": {
+    "type": "object",
+    "properties": {
+      "org": {
+        "type": "string"
+      },
+      "offboarded_unix": {
+        "type": "integer"
+      },
+      "members_disabled": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "billing_canceled": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "string"
+        }
+      },
+      "already_offboarded": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "org",
+      "offboarded_unix"
+    ]
+  },
+  "host.org.restore": {
+    "type": "object",
+    "properties": {
+      "org": {
+        "type": "string"
+      },
+      "members_restored": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "org",
+      "members_restored"
     ]
   },
   "host.secret.leak_test": {

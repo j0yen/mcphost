@@ -155,6 +155,10 @@ mod insch_ac06_contract_and_docs_carry_constraints;
 mod kdr_ac02_python_page_tables_generated;
 #[path = "kdr_ac03_check_names_stale_block.rs"]
 mod kdr_ac03_check_names_stale_block;
+#[path = "kdrb_ac02_retired_scripts_gone.rs"]
+mod kdrb_ac02_retired_scripts_gone;
+#[path = "kdrb_ac05_planted_drift_names_its_file.rs"]
+mod kdrb_ac05_planted_drift_names_its_file;
 #[path = "lanecov_ac07_docs_document_adding_a_lane.rs"]
 mod lanecov_ac07_docs_document_adding_a_lane;
 #[path = "mcphost-external-class-positive-evidence_ac06_four_surfaces_agree.rs"]
@@ -185,6 +189,8 @@ mod ntfy_ac01_no_tenant_settable_alert_sink;
 mod ntfy_ac02_enums_generated_into_every_surface;
 #[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
+#[path = "orgx_ac02_disabled_reasons_one_source.rs"]
+mod orgx_ac02_disabled_reasons_one_source;
 #[path = "osmatch_ac01_dry_run_branch.rs"]
 mod osmatch_ac01_dry_run_branch;
 #[path = "osmatch_ac02_success_constructor.rs"]
@@ -279,11 +285,5 @@ mod spmsg_ac07_driver_passes_on_test_server;
 mod sreg_ac01_registry_single_source;
 #[path = "statusfeed_ac11_deferral_is_justified.rs"]
 mod statusfeed_ac11_deferral_is_justified;
-#[path = "suite_ac2_check_catches_unregistered_file.rs"]
-mod suite_ac2_check_catches_unregistered_file;
-#[path = "suite_ac4_archived_prd_pointers_resolve.rs"]
-mod suite_ac4_archived_prd_pointers_resolve;
-#[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
-mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;

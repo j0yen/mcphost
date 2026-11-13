@@ -132,27 +132,26 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // above gives) -- a thirteenth, intended addition since the baseline,
     // not drift.
     // PRD-mcphost-spec-unknown-field-rejection added its own
-    // "spec-fields-doc-check" lane (routes the new
-    // scripts/spec-fields-doc-check.sh to its own --run, duplicated from
-    // the pre-existing docs lane rather than folded into it, for the same
-    // required_commands-immutability reason the sharing-docs/launch-docs
-    // lanes above give) -- a fourteenth, intended addition since the
-    // baseline, not drift.
+    // spec-fields lane, retired by
+    // PRD-mcphost-kind-docs-from-registry-b-v2 R3 together with its script
+    // (the checks run in Rust now).
     // PRD-mcphost-sandbox-bridge-discoverability added its own
-    // "sandbox-api-docs" lane (routes scripts/sandbox-api-doc-check.sh --
+    // "sandbox-api-docs" lane (routes the sandbox-api doc-check script --
     // the drift check that docs/kinds/python.md, www/llms.txt, and
     // plugin/skills/mcphost/SKILL.md stay in sync with
     // kinds::python::BRIDGE_MODULES -- to that script's own check mode,
     // kept separate from the pre-existing docs/www/plugin lanes for the
     // same required_commands-immutability reason the sharing-docs/
     // launch-docs lanes above already give) -- a fifteenth, intended
-    // addition since the baseline, not drift.
+    // addition since the baseline, not drift. PRD-mcphost-kind-docs-from-
+    // registry-b-v2 R4 renamed that lane "generated-docs-check" when the
+    // script became scripts/generated-docs-check.sh.
     // PRD-mcphost-tool-naming-convention-and-aliases added its own
     // "tool-naming" lane (routes docs/tool-naming.md, docs/tools.md,
     // scripts/tool-naming-lint.sh, and scripts/gen-docs-tools.sh to the
     // lint's own --run, duplicated from the pre-existing docs lane rather
     // than folded into it, for the same required_commands-immutability
-    // reason the sharing-docs/launch-docs/spec-fields-doc-check lanes
+    // reason the sharing-docs/launch-docs lanes
     // above give) -- a sixteenth, intended addition since the baseline,
     // not drift.
     // PRD-mcphost-status-host-pressure added its own "host-pressure-doc-check"
@@ -254,6 +253,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // "origin-counts-script" lane (routes scripts/ops/origin-counts.py to the
     // AC6 and AC7 proof tests) -- an intended addition since the baseline, not
     // drift.
+    // PR #541 added its own "ceiling-guard" lane (routes scripts/ceiling-guard.sh
+    // and tests/scripts/ceiling-guard.test.sh to the shell test) -- an intended
+    // addition since the baseline, not drift.
     // PRD-mcphost-sandbox-timeout-clamp-live-probe added its own
     // "timeout-clamp-live-script" lane (routes scripts/live/timeout-clamp.sh
     // to the stclp_ac proof tests) -- an intended addition since the
@@ -265,6 +267,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "audit-export",
             "blobguard-fixtures",
             "capabilities-wire-check",
+            "ceiling-guard",
             "checkcompat-race-soak",
             "child-proc-lint",
             "ci-refresh-weights-auto",
@@ -279,6 +282,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "example-manifest",
             "examples",
             "flake-lint",
+            "generated-docs-check",
             "heal-config",
             "heal-docs",
             "host-pressure-doc-check",
@@ -295,11 +299,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "recipes",
             "registry-manifest",
             "required-checks",
-            "sandbox-api-docs",
             "sdk-python",
             "sharing-docs",
             "signup-args-doc-check",
-            "spec-fields-doc-check",
             "spmsg-live-script",
             "tblurlp-live-script",
             "timeout-clamp-live-script",
@@ -307,10 +309,10 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "vendor",
             "wasm-fixtures",
         ],
-        "only admin-schemas, blobguard-fixtures, capabilities-wire-check, checkcompat-race-soak, child-proc-lint, ci-refresh-weights-auto, ci-test-partition-land, contracts, docs-links, docsearch-fixtures, \
-         event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
-         loop-config, oauthconf-data, origin-counts-script, osrx-live-script, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sdk-python, sharing-docs, \
-         spec-fields-doc-check, spmsg-live-script, tblurlp-live-script, tool-naming, vendor, and wasm-fixtures may have been added since \
+        "only admin-schemas, blobguard-fixtures, capabilities-wire-check, ceiling-guard, checkcompat-race-soak, child-proc-lint, ci-refresh-weights-auto, ci-test-partition-land, contracts, docs-links, docsearch-fixtures, \
+         event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, generated-docs-check, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
+         loop-config, oauthconf-data, origin-counts-script, osrx-live-script, output-schemas, plugin, registry-manifest, required-checks, sdk-python, sharing-docs, \
+         spmsg-live-script, tblurlp-live-script, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"
     );
 }

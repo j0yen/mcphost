@@ -1,58 +1,70 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-response-size-budget-explicit-v2.md",
-  "intent_slug": "mcphost-response-size-budget-explicit-v2",
-  "root_motivation": "WHO: an agent reading host.table.query, host.runs.list or host.docs.list on a plan or client that cannot use a very large answer, and Joe, who sets the byte budget by editing one plan row. WHAT: nothing sizes a page of a paged verb and nothing tells an agent where a shorter page stopped, so a client that cuts the text on its side reasons over a partial result as if it were whole. WHY: a page over the plan's byte budget must be cut at a row boundary and name its size, the full size and the exact next call, and a cut must never happen without that marker.",
-  "user_persona": "An agent (or its operator) paging a host list verb or a SQL result who needs every page to fit a stated budget, end on a whole row, and carry a continue_with call it can make verbatim; and an operator who raises the pro budget by editing one plan row.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-org-export-and-offboard-v2.md",
+  "intent_slug": "mcphost-org-export-and-offboard-v2",
+  "root_motivation": "WHO: the owner closing a team's account or moving hosts, and the member who wants their tools back. WHAT: one signed download of the whole team, one confirmed switch-off of every member key, one undo, and nothing deleted. WHY: export and offboard are per tenant and per key today, so a leaving team needs N humans to each run two tools and a mistaken offboard needs an operator.",
+  "user_persona": "An org owner's agent that calls host.org.export, polls host.runs.get for the download_url, then calls host.org.offboard with the org name, and later host.org.restore if the owner changes their mind; and a member whose key answers tenant_disabled with org_offboard.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 5
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a page cut for budget on a paged verb, When rszb_ac01_one_truncation_struct serializes _meta.mcphost.truncated, Then it has exactly the keys bytes, of and continue_with, and a response that was also clamped by limit holds both limit_clamped and truncated under _meta.mcphost.",
-      "test": "tests/rszb_ac01_one_truncation_struct.rs"
+      "description": "Given an org of 3 members with 2 tools each, whose member keys the test rotated and discarded, When the owner runs host.org.export and the job completes, Then one signed download_url serves a tar.gz whose members/<ns>.tar.gz parts list each member's own tools as host.export does, org_manifest.members has 3 rows with matching sha256, and grep -c key_hash src/org_export.rs prints 0.",
+      "test": "tests/orgx_ac01_one_bundle_holds_every_members_own_archive.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given each verb in PAGED_VERBS with enough rows to pass an 8 KiB plan budget, When it is read at its maximum limit and every continue_with is followed verbatim, Then each page is within 8 KiB or is one row, ends on a whole row, continue_with.args.limit equals the request's limit, and the walk visits every row once; Given host.channel.read {ack: true} cut, Then the stored position is the last row kept.",
-      "test": "tests/rszb_ac02_every_paged_verb_walks_within_budget.rs"
+      "description": "Given DISABLED_REASONS in src/auth_shape.rs, When the drift test scans src/ for disabled_reason writes and calls admin.tenants with each value and with bogus, Then no write spells a literal outside the const, each value filters its tenants, bogus is args_invalid, and SYNTHETIC_PURGE_REASONS still equals [idle_expired, self_offboard].",
+      "test": "tests/orgx_ac02_disabled_reasons_one_source.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the free and pro plans, When host.quickstart runs, Then limits.plan.response_budget_bytes equals the plan struct's field, limits.output_bytes_max still reads the 1 MiB wall, and render_ceilings_table lists the field in docs/plans.md with the docs drift test green.",
-      "test": "tests/rszb_ac03_plan_field_in_quickstart_and_docs.rs"
+      "description": "Given a member caller, When it calls host.org.export, host.org.offboard or host.org.restore, Then it gets not_owner and nothing is written.",
+      "test": "tests/orgx_ac03_member_gets_not_owner_and_nothing_is_written.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a python tool that returns a 2 MiB line, When called synchronously, Then the existing tool_output_too_large answers with limit_bytes equal to limits.output_bytes_max and no truncated key; Given a non-paged verb under the wall, Then its response is whole.",
-      "test": "tests/rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs"
+      "description": "Given the owner, When it calls host.org.offboard {confirm: wrong}, Then confirm_mismatch and every member stays enabled; with confirm equal to the org name, Then every live member, the owner included, is disabled = 1, disabled_reason = org_offboard, each member's next call answers tenant_disabled with that reason, and a repeat call answers already_offboarded.",
+      "test": "tests/orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key.rs"
     },
     {
       "id": "AC5",
-      "level": "SHOULD",
-      "description": "Given a 5 MiB table and a 32 KiB plan budget, When host.table.query {sql: \"SELECT * FROM t\", limit: 1000} runs and each continue_with is followed, Then every page is within the budget and ends on a whole row and the walk visits every row once; Given an empty table, Then rows: [] with no marker.",
-      "test": "tests/rszb_ac05_table_query_offset_walk.rs"
+      "level": "MUST",
+      "description": "Given an org offboarded at any age, When the synthetic and external expire and purge stages run and the owner then calls host.org.restore, Then no tenant, tool or state row was deleted, every member disabled by that offboard is enabled with a NULL reason and their tools answer, and one tenant_audit row org.restore exists per member.",
+      "test": "tests/orgx_ac05_restore_undoes_an_offboard_at_any_age.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given prod after landing, When tests/rszb_ac06_live_prod_quickstart_budget.rs calls anonymous host.quickstart {}, Then limits.plan.response_budget_bytes is a positive integer (Live; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)",
-      "test": "deferred: Live (prod; evidence: MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test rszb_ac06_live_prod_quickstart_budget)"
+      "description": "Given a fixture org, When every tool in each member part's manifest.json is re-published into a fresh org with host.tool_publish and the fresh org is exported, Then the two org_manifest.json files agree on member count and, member by member, on tools[].name, kind and spec_sha256.",
+      "test": "tests/orgx_ac06_exported_tools_republish_to_the_same_hashes.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given an org export already running, When the owner calls host.org.export again, Then the answer is, field for field, what host.export answers for its own duplicate on the same tree, and names the running run_id.",
+      "test": "tests/orgx_ac07_duplicate_org_export_answers_like_host_export.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after this lands, When llms.txt is fetched, Then it documents host.org.export, host.org.offboard and host.org.restore (Live; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)",
+      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)"
     }
   ],
   "scope": [
-    "src/response_budget.rs (Truncated, Call, cut_page, cut_values, budget_of); src/plans.rs (response_budget_bytes); src/paged.rs (project_rows); the byte-budget cut in src/runs.rs, src/docs.rs, src/calllog.rs, src/messaging.rs and src/channels.rs; src/tables.rs and src/handler/arms.rs (host.table.query offset and cut); src/handler.rs (_meta.mcphost.truncated, host.table.query descriptor); docs/plans.md, docs/tools.md, docs/openapi.json, contracts/host-tools.v1.json and the SDKs rendered from it."
+    "src/org_export.rs (host.org.export job, org_manifest.json); src/org_offboard.rs (host.org.offboard, host.org.restore, their Db methods); src/export.rs (build_tenant_archive, store_and_sign, ORG_EXPORT_TOOL_NAME in the download route); src/auth_shape.rs (DISABLED_REASONS, DISABLED_PASSES); src/org.rs (TOOLS, owned_org, org_live_members); migrations/0142_org_offboard.sql (orgs.offboarded_unix); descriptors, dispatch arms, write_verbs rows, output schemas and the generated contracts, docs, SDKs and llms.txt."
   ],
   "non_goals": [
-    "A per-client budget axis; compression; streaming; cutting a non-paged response; paging host.tool.logs; the AC 6 prod read (operator-provisioned, deferred)."
+    "Deleting any data or any prune or retention stage for offboarded orgs; importing an org bundle into another host; exporting secret values; re-creating a cancelled subscription; an approvals list in the bundle; changing the behaviour of host.export or host.self.offboard; the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -62,49 +74,55 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "one_marker": "A cut is reported only as _meta.mcphost.truncated {bytes, of, continue_with}; the kinds' 1 MiB wall still refuses and never cuts."
+      "no_member_credentials": "src/org_export.rs never reads a Tenant credential field; the member archive is built from the Tenant row by id and the owner's row signs the URL.",
+      "one_reason_list": "DISABLED_REASONS in src/auth_shape.rs is the only list of tenants.disabled_reason values; writers use its constants.",
+      "nothing_deleted": "org_offboard tenants are never purged and no stage deletes a tenant, tool or state row of an offboarded org."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent reason over a partial result as if it were whole?",
-      "a": "A page of a paged verb has no byte bound and nothing says where a shorter page stopped."
+      "q": "Why can a team not leave in one step today?",
+      "a": "host.export and host.self.offboard act on one tenant with its own key."
     },
     {
       "why": 2,
-      "q": "Why is there no byte bound?",
-      "a": "limits.output_bytes_max is one global 1 MiB constant read only by the kinds; the plan catalog has no byte ceiling."
+      "q": "Why is that per key?",
+      "a": "The archive builder and the disable flip were written for the tenant itself, not for an owner acting over members."
     },
     {
       "why": 3,
-      "q": "Why not cut at the wall?",
-      "a": "The wall refuses a synchronous kind call and chunks an async run; a cut is only well defined at a row boundary of a paged verb."
+      "q": "Why can an owner-side job run the builder without a member key?",
+      "a": "The builder takes a Tenant row and reads by tenant id; no key is part of what it reads."
     },
     {
       "why": 4,
-      "q": "Why must the cut carry a continue_with?",
-      "a": "A cut without the next call is worse than an error; the keyset cursor each verb already mints makes the call exact."
+      "q": "Why a new disabled reason and a restore verb?",
+      "a": "org_offboard must be distinguishable from self_offboard so it is restorable and never purged; deleting nothing keeps the undo free."
     },
     {
       "why": 5,
-      "q": "Why does host.table.query need an offset?",
-      "a": "It has limit but no continuation, so its cut page could not be resumed without the agent rewriting its own SQL."
+      "q": "Why one generated reason list?",
+      "a": "tenants.disabled_reason is plain TEXT, so writers, the admin filter and the purge list drift unless one const names them all."
     }
   ],
   "created_at": "2026-11-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Where is the size measured, before or after fields projection?",
-      "resolution": "After: the page is projected first and the serialized rows array is what is compared with the budget, so bytes and of equal what the client receives."
+      "question": "Does a member keep host.export alone while org-offboarded?",
+      "resolution": "No: every member key is dark until host.org.restore; only the org verbs pass the disabled-tenant refusal, per (verb, reason)."
     },
     {
-      "question": "What does a row larger than the whole budget do?",
-      "resolution": "It is returned alone (a page always keeps at least one row), and the next continue_with resumes after it."
+      "question": "Which members get an org.offboard or org.restore audit row?",
+      "resolution": "Those the call changed: members already disabled for another reason are neither flipped nor restored and get no row."
     },
     {
-      "question": "Offset or keyset for host.table.query?",
-      "resolution": "Offset, applied as LIMIT n OFFSET m over the caller's own SELECT, because arbitrary SELECTs, row-policy rewrites and CTEs do not guarantee a rowid order."
+      "question": "Does restore reset last_seen_unix?",
+      "resolution": "Yes, to the restore time, so no expiry sweep reads the offboarded interval as idleness."
+    },
+    {
+      "question": "What bounds the bundle size?",
+      "resolution": "The owner's plan export_bytes_max, checked on the running sum of member parts and on the finished bundle (export_too_large)."
     }
   ]
 }

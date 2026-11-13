@@ -1327,10 +1327,6 @@
         {
           "code": "args_invalid",
           "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
         }
       ],
       "variants": []
@@ -1338,7 +1334,7 @@
     "host.org.digest.send": {
       "unreached": [
         {
-          "code": "not_in_org",
+          "code": "owner_unverified",
           "state": "after_create"
         },
         {
@@ -1352,12 +1348,17 @@
       "unreached": [
         {
           "code": "not_in_org",
-          "state": "after_create"
+          "state": "dry_run"
         },
         {
           "code": "not_in_org",
-          "state": "dry_run"
-        },
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.export": {
+      "unreached": [
         {
           "code": "not_in_org",
           "state": "fresh"
@@ -1381,7 +1382,7 @@
     "host.org.leave": {
       "unreached": [
         {
-          "code": "not_in_org",
+          "code": "owner_cannot_leave",
           "state": "after_create"
         },
         {
@@ -1395,6 +1396,15 @@
       "unreached": [
         {
           "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.offboard": {
+      "unreached": [
+        {
+          "code": "confirm_mismatch",
           "state": "after_create"
         },
         {
@@ -1407,7 +1417,7 @@
     "host.org.remove": {
       "unreached": [
         {
-          "code": "not_owner",
+          "code": "not_a_member",
           "state": "after_create"
         },
         {
@@ -1417,12 +1427,17 @@
       ],
       "variants": []
     },
-    "host.org.usage": {
+    "host.org.restore": {
       "unreached": [
         {
-          "code": "org_required",
-          "state": "after_create"
-        },
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.usage": {
+      "unreached": [
         {
           "code": "org_required",
           "state": "fresh"
@@ -3902,10 +3917,6 @@
         {
           "code": "args_invalid",
           "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
         }
       ],
       "variants": []
@@ -3913,7 +3924,7 @@
     "host_org_digest_send": {
       "unreached": [
         {
-          "code": "not_in_org",
+          "code": "owner_unverified",
           "state": "after_create"
         },
         {
@@ -3927,12 +3938,17 @@
       "unreached": [
         {
           "code": "not_in_org",
-          "state": "after_create"
+          "state": "dry_run"
         },
         {
           "code": "not_in_org",
-          "state": "dry_run"
-        },
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_export": {
+      "unreached": [
         {
           "code": "not_in_org",
           "state": "fresh"
@@ -3956,7 +3972,7 @@
     "host_org_leave": {
       "unreached": [
         {
-          "code": "not_in_org",
+          "code": "owner_cannot_leave",
           "state": "after_create"
         },
         {
@@ -3970,6 +3986,15 @@
       "unreached": [
         {
           "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_offboard": {
+      "unreached": [
+        {
+          "code": "confirm_mismatch",
           "state": "after_create"
         },
         {
@@ -3982,7 +4007,7 @@
     "host_org_remove": {
       "unreached": [
         {
-          "code": "not_owner",
+          "code": "not_a_member",
           "state": "after_create"
         },
         {
@@ -3992,12 +4017,17 @@
       ],
       "variants": []
     },
-    "host_org_usage": {
+    "host_org_restore": {
       "unreached": [
         {
-          "code": "org_required",
-          "state": "after_create"
-        },
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_usage": {
+      "unreached": [
         {
           "code": "org_required",
           "state": "fresh"

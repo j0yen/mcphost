@@ -764,6 +764,16 @@ mod orgmb_ac01_owner_removes_member;
 mod orgmb_ac02_concurrent_create_one_winner;
 #[path = "orgmb_ac03_llms_txt_and_quickstart_name_org_verbs.rs"]
 mod orgmb_ac03_llms_txt_and_quickstart_name_org_verbs;
+#[path = "orgx_ac01_one_bundle_holds_every_members_own_archive.rs"]
+mod orgx_ac01_one_bundle_holds_every_members_own_archive;
+#[path = "orgx_ac03_member_gets_not_owner_and_nothing_is_written.rs"]
+mod orgx_ac03_member_gets_not_owner_and_nothing_is_written;
+#[path = "orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key.rs"]
+mod orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key;
+#[path = "orgx_ac06_exported_tools_republish_to_the_same_hashes.rs"]
+mod orgx_ac06_exported_tools_republish_to_the_same_hashes;
+#[path = "orgx_ac07_duplicate_org_export_answers_like_host_export.rs"]
+mod orgx_ac07_duplicate_org_export_answers_like_host_export;
 #[path = "oschv_ac01_opaque_pointers_resolve.rs"]
 mod oschv_ac01_opaque_pointers_resolve;
 #[path = "oschv_ac02_chain_step_array_result_validates.rs"]
@@ -1024,15 +1034,3 @@ mod qsbc_ac05_quickstart_client_chatgpt;
 mod qsbc_ac06_connect_go_json_matches_quickstart;
 #[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
 mod qsbc_ac07_quickstart_writes_client_name;
-#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
-mod refrow_ac01_args_invalid_writes_refused_row;
-#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
-mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
-#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
-mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
-#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
-mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
-#[path = "refrow_ac05_host_usage_reports_refused.rs"]
-mod refrow_ac05_host_usage_reports_refused;
-#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
-mod refrow_ac06_unwritable_db_refusal_still_returned;

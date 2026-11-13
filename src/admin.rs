@@ -109,6 +109,14 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
     // PRD-mcphost-synthetic-implicit-tenant-expiry P1: `disabled_reason`
     // filters rows by the exact reason; every row carries `expires_at_unix`.
     let reason_filter = arg_str_opt(args, "disabled_reason");
+    if let Some(reason) = reason_filter.as_deref()
+        && !crate::auth_shape::DISABLED_REASONS.contains(&reason)
+    {
+        return Err(AppError::InvalidArgs(format!(
+            "disabled_reason: must be one of {}; got '{reason}'",
+            crate::auth_shape::DISABLED_REASONS.join(", ")
+        )));
+    }
     let expiries = state.db.subject_expiries().await?;
     // PRD-mcphost-external-unclaimed-tenant-expiry P1: the external policy's
     // per-tenant clock.

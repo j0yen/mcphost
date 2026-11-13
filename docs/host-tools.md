@@ -4,7 +4,7 @@ Every host verb that mutates tenant data, from the `WRITE_VERBS` table in
 `src/write_verbs.rs`. A `supported` verb called with `dry_run: true` runs inside a
 rolled-back savepoint and answers `{would: {...}, _meta: {dry_run: true}}`; a `refused`
 verb fails with `args_invalid` and `data.no_dry_run_reason` set to the reason beside it.
-Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
+Regenerate with `scripts/generated-docs-check.sh --write`.
 
 <!-- mcphost-write-verbs:start -->
 | verb | kind | dry_run | no_dry_run_reason |
@@ -93,6 +93,8 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.org.leave` | remove | refused | `irreversible_by_design` |
 | `host.org.digest.set` | write | supported | |
 | `host.org.digest.send` | write | refused | `external_effect` |
+| `host.org.offboard` | revoke | refused | `external_effect` |
+| `host.org.restore` | write | refused | `external_effect` |
 | `host.resume` | write | refused | `read_only_shape` |
 
 ### Confirm rule

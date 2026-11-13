@@ -334,7 +334,7 @@ use serde::Deserialize;
 use tokio::sync::Semaphore;
 
 use super::contract::{
-    BudgetDim, COMPOSE_FAMILY, CONFORMANCE_SECRET_NAME, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, TOOL_LIMIT_FAMILY, TOOL_STATE_FAMILY, UPSTREAM_FAMILY, codes, key,
+    BudgetDim, COMPOSE_FAMILY, CONFORMANCE_SECRET_NAME, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, TOOL_LIMIT_FAMILY, TOOL_STATE_FAMILY, UPSTREAM_FAMILY, codes, family, key,
 };
 use super::secretenv::{environment_report, merge_env, redact_kind_error, redact_value, secret_env};
 use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, ToolDescriptor};
@@ -793,8 +793,18 @@ const JS_TOOL_CODE: ErrorFamily = ErrorFamily {
     codes: &[codes::TOOL_EXCEPTION, codes::TOOL_OUTPUT_INVALID],
 };
 
+const JS_SPEC_FAMILY: ErrorFamily =
+    ErrorFamily { name: family::JS_SPEC, codes: &[TYPESCRIPT_NOT_SUPPORTED] };
+
 static CONTRACT: KindContract = KindContract {
-    error_families: &[JS_TOOL_CODE, TOOL_LIMIT_FAMILY, UPSTREAM_FAMILY, COMPOSE_FAMILY, TOOL_STATE_FAMILY],
+    error_families: &[
+        JS_TOOL_CODE,
+        TOOL_LIMIT_FAMILY,
+        UPSTREAM_FAMILY,
+        COMPOSE_FAMILY,
+        TOOL_STATE_FAMILY,
+        JS_SPEC_FAMILY,
+    ],
     budgets: &[
         BudgetDim { field: "timeout_s", min: 1, max: MAX_TIMEOUT_S, default: DEFAULT_TIMEOUT_S },
         BudgetDim { field: "memory_mb", min: 1, max: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB },

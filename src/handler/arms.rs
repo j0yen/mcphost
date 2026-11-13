@@ -614,6 +614,27 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_org_export<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::org_export::export(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_org_offboard<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::org_offboard::offboard(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_org_restore<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::org_offboard::restore(&self.state, tenant, &args).await
+        })
+    }
+
     pub(crate) fn arm_host_org_usage<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;

@@ -917,9 +917,22 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant, session_id: Option
     Ok(json!({
         "tenant": tenant.namespace,
         "disabled": true,
-        "disabled_reason": "self_offboard",
+        "disabled_reason": crate::auth_shape::SELF_OFFBOARD_REASON,
         "billing_canceled": billing_canceled,
     }))
+}
+
+/// The runtime half of taking a tenant offline: every session, implicit-signup
+/// and tenant-key memory bound to it, and every kind's `on_tenant_removed`.
+/// No billing, no row writes -- shared by [`teardown_expired_tenant`] and
+/// `host.org.offboard` (`org_offboard.rs`).
+pub(crate) async fn release_tenant_runtime(state: &AppState, tenant_id: i64) {
+    state.session_bindings.drop_tenant(tenant_id);
+    state.implicit_signup_memory.drop_tenant(tenant_id);
+    state.tenant_key_arg_memory.drop_tenant(tenant_id);
+    for k in state.kinds.all() {
+        k.on_tenant_removed(tenant_id).await;
+    }
 }
 
 /// PRD-mcphost-synthetic-implicit-tenant-expiry: the teardown the idle
@@ -929,12 +942,7 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant, session_id: Option
 /// billing cancel (a no-op for a subject, which carries no `billing_ref`).
 /// Idempotent, so a crash between claim and teardown is safe to replay.
 pub async fn teardown_expired_tenant(state: &AppState, tenant_id: i64) {
-    state.session_bindings.drop_tenant(tenant_id);
-    state.implicit_signup_memory.drop_tenant(tenant_id);
-    state.tenant_key_arg_memory.drop_tenant(tenant_id);
-    for k in state.kinds.all() {
-        k.on_tenant_removed(tenant_id).await;
-    }
+    release_tenant_runtime(state, tenant_id).await;
     match state.db.find_tenant_by_id(tenant_id).await {
         Ok(Some(tenant)) if tenant.plan == "pro" => {
             if let Some(customer) = tenant.stripe_customer_id.as_deref()
@@ -1533,6 +1541,16 @@ fn quickstart_inner(
     if let (Some(secret), Value::Object(map)) = (path_url_secret, &mut response) {
         let base = format!("{}/u/{}", state.public_url.trim_end_matches('/'), secret);
         map.insert("install_links".to_string(), json!(crate::install_links::for_url(&base)));
+    }
+    // PRD-mcphost-kind-docs-from-registry-b-v2 R6: the page of the kind's
+    // spec fields and the names it lists, both from the same `KindDoc` the
+    // page's `kind-fields` table renders (each name once).
+    if let Value::Object(map) = &mut response {
+        if let Some(anchor) = crate::doc_anchors::DocAnchor::kind_spec_fields(&kind_name) {
+            map.insert("doc_anchor".to_string(), json!(anchor.as_str()));
+        }
+        let names: Vec<String> = kind.doc(&state.plans).spec_fields.into_iter().map(|f| f.name).collect();
+        map.insert("spec_fields".to_string(), json!(names));
     }
     // PRD-mcphost-chain-host-steps requirement 1: `host.quickstart
     // kind=chain`'s own allowlist of step-nameable `host.*` verbs --

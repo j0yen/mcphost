@@ -39,7 +39,6 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 | `description` | string | no | human-readable text shown in `tools/list` |
 | `upstream` | string | unless `method`, `url` | name of a connected upstream provider to call instead of `method` + `url` |
 | `upstream_provider` | string | no | provider the `upstream` connection belongs to |
-| `description` | string | no | human-readable text shown in `tools/list` |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
@@ -67,6 +66,8 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 | `upstream_unreachable` | the upstream could not be reached |
 | `upstream_not_connected` | the named upstream provider is not connected for this tenant |
 | `host_not_allowed` | the target host is not on the allowed list or resolves to a private address |
+| `response_too_large` | the upstream's response was larger than the call's size cap |
+| `template_error` | a `{name}` placeholder or template in the spec could not be filled |
 <!-- kind-errors:end -->
 
 ## Canonical example
@@ -87,6 +88,7 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 |---|---|
 | budget `timeout_s` | 1-30 (default 10) |
 | family `upstream` | upstream_auth, upstream_rate_limited, upstream_client_error, upstream_error, upstream_timeout, upstream_unreachable, upstream_not_connected, host_not_allowed |
+| family `http_call` | response_too_large, template_error |
 | source_line | no |
 | bridges | none |
 | secret redaction | yes |
