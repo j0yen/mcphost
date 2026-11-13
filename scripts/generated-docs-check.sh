@@ -1,125 +1,31 @@
 #!/usr/bin/env bash
-# sandbox-api-doc-check.sh -- PRD-mcphost-sandbox-bridge-discoverability
-# requirement 7 (AC7): docs/kinds/python.md, www/llms.txt, and
-# plugin/skills/mcphost/SKILL.md must each carry the same module table --
-# one bullet per `mcphost.*` submodule python-kind tool code can import,
-# generated from src/kinds/python.rs's own BRIDGE_MODULES constant (the
-# registration constant requirement 1's host.quickstart sandbox_api field
-# also reads from -- see kinds::python::build_sandbox_api) rather than a
-# second, hand-copied list that can drift from it.
+# generated-docs-check.sh -- the doc blocks no `mcphost gen-docs` target renders
+# yet. PRD-mcphost-kind-docs-from-registry-b-v2 R4: this was the umbrella
+# `generated-docs-check` script; the mcphost-sandbox-api block moved into
+# `mcphost gen-docs kinds` (the python kind's KindDoc.bridge_modules), and
+# the checks below stay here, unchanged:
+#   - docs/sandbox-api.md's bridge-modules block (`mcphost bridge-docs-block`)
+#   - the `## Capabilities` section of www/llms.txt and docs/protocol/capabilities.md
+#   - README.md's `quickstart-recipe:sub_agent_key` block
+#   - docs/protocol/prompts.md
+#   - scripts/protocol-frames-check.sh, scripts/host-tools-doc-check.sh,
+#     scripts/signup-args-doc-check.sh
+#   - the OAuth entry-path check over seven client files
 #
 # Usage:
-#   scripts/sandbox-api-doc-check.sh          check: exit 0 and report
-#                                              modules=<n> docs_in_sync=<n>,
-#                                              or exit 1 naming the first
-#                                              missing module and file.
-#   scripts/sandbox-api-doc-check.sh --write  regenerate the marked block
-#                                              in every target file.
-#   scripts/sandbox-api-doc-check.sh --write-bridge
+#   scripts/generated-docs-check.sh          check: exit 0 and print
+#                                              generated_docs_in_sync, or exit 1
+#                                              naming every drifted file.
+#   scripts/generated-docs-check.sh --write  regenerate every block above.
+#   scripts/generated-docs-check.sh --write-bridge
 #                                              regenerate only docs/sandbox-api.md's
 #                                              bridge-modules block.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-SOURCE="src/kinds/python.rs"
-TARGETS=("docs/kinds/python.md" "docs/kinds/js.md" "www/llms.txt" "plugin/skills/mcphost/SKILL.md")
-START="<!-- mcphost-sandbox-api:start -->"
-END="<!-- mcphost-sandbox-api:end -->"
 MODE="${1:-check}"
 [ "$MODE" = "--write" ] && MODE="write"
 [ "$MODE" = "--write-bridge" ] && MODE="write-bridge"
-
-if [ ! -f "$SOURCE" ]; then
-  echo "sandbox-api-doc-check.sh: missing $SOURCE" >&2
-  exit 2
-fi
-
-# Renders the marked block's own content (markers included) from
-# BRIDGE_MODULES's own `name: "..."` / `purpose: "..."` pairs, parsed back
-# out of the Rust source text -- never a second, hand-maintained list.
-render_block() {
-  python3 - "$SOURCE" "$START" "$END" <<'PY'
-import re
-import sys
-
-source_path, start, end = sys.argv[1:4]
-with open(source_path, encoding="utf-8") as f:
-    text = f.read()
-
-m = re.search(r"pub const BRIDGE_MODULES: &\[BridgeModule\] = &\[(.*?)\n\];", text, re.S)
-if not m:
-    print("sandbox-api-doc-check.sh: could not find BRIDGE_MODULES in " + source_path, file=sys.stderr)
-    sys.exit(2)
-block = m.group(1)
-
-names = re.findall(r'name: "([a-z_]+)"', block)
-purposes = re.findall(r'purpose: "([^"]*)"', block)
-if not names or len(names) != len(purposes):
-    print(
-        f"sandbox-api-doc-check.sh: BRIDGE_MODULES parse mismatch: {len(names)} names, "
-        f"{len(purposes)} purposes",
-        file=sys.stderr,
-    )
-    sys.exit(2)
-
-print(start)
-print(
-    "A python tool's own code does `import mcphost` to reach this tenant's "
-    "data without a second tool call:"
-)
-print()
-for name, purpose in zip(names, purposes):
-    print(f"- `mcphost.{name}` -- {purpose}")
-print(end)
-PY
-}
-
-# Replaces the text between START and END (inclusive) in $1 with $2 --
-# same mechanism gen-agent-docs.sh/gen-docs-sharing.sh already use. Fails
-# loudly if the file has zero or more than one start/end marker pair.
-apply_to_file() {
-  local file="$1" rendered="$2"
-  local n_start n_end
-  n_start=$(grep -Fc "$START" "$file")
-  n_end=$(grep -Fc "$END" "$file")
-  if [ "$n_start" -ne 1 ] || [ "$n_end" -ne 1 ]; then
-    echo "sandbox-api-doc-check.sh: $file must have exactly one $START / $END pair (found start=$n_start end=$n_end)" >&2
-    return 2
-  fi
-  case "$rendered" in
-    "$START"*"$END") ;;
-    *)
-      echo "sandbox-api-doc-check.sh: refusing to write $file: the rendered block is empty or lacks its $START / $END markers" >&2
-      return 2
-      ;;
-  esac
-  local tmp
-  tmp="$(mktemp "$file.XXXXXX")"  # same dir: mv is an atomic rename, no unlink window
-  if ! python3 - "$file" "$START" "$END" "$rendered" > "$tmp" <<'PY'
-import sys
-
-file_path, start_marker, end_marker, rendered = sys.argv[1:5]
-with open(file_path, encoding="utf-8") as f:
-    text = f.read()
-start_idx = text.index(start_marker)
-end_idx = text.index(end_marker) + len(end_marker)
-if end_idx <= start_idx:
-    sys.exit("end marker precedes start marker")
-sys.stdout.write(text[:start_idx] + rendered + text[end_idx:])
-PY
-  then
-    rm -f "$tmp"
-    echo "sandbox-api-doc-check.sh: refusing to write $file: the marker splice failed; file left untouched" >&2
-    return 2
-  fi
-  if [ ! -s "$tmp" ]; then
-    rm -f "$tmp"
-    echo "sandbox-api-doc-check.sh: refusing to write $file: the splice produced an empty file; file left untouched" >&2
-    return 2
-  fi
-  chmod 644 "$tmp"
-  mv "$tmp" "$file"
-}
 
 # PRD-mcphost-server-capabilities-from-registry requirement 4: the
 # `## Capabilities` section in www/llms.txt and docs/protocol/capabilities.md
@@ -182,12 +88,12 @@ render_bridge_block() {
   case "$first|$last" in
     "<!--"*":start -->|<!--"*":end -->") ;;
     *)
-      echo "sandbox-api-doc-check.sh: bridge-docs-block output is empty or lacks its start/end markers; writing nothing" >&2
+      echo "generated-docs-check.sh: bridge-docs-block output is empty or lacks its start/end markers; writing nothing" >&2
       return 2
       ;;
   esac
   if ! grep -qE '^- `mcphost\.[a-z_]+` -- ' <<<"$block"; then
-    echo "sandbox-api-doc-check.sh: bridge-docs-block output has no module bullets; writing nothing" >&2
+    echo "generated-docs-check.sh: bridge-docs-block output has no module bullets; writing nothing" >&2
     return 2
   fi
   printf '%s' "$block"
@@ -201,7 +107,7 @@ write_bridge_doc() {
   n_start=$(grep -Fxc "$first" "$BRIDGE_DOC")
   n_end=$(grep -Fxc "$last" "$BRIDGE_DOC")
   if [ "$n_start" -ne 1 ] || [ "$n_end" -ne 1 ]; then
-    echo "sandbox-api-doc-check.sh: $BRIDGE_DOC must have exactly one $first / $last pair (found start=$n_start end=$n_end)" >&2
+    echo "generated-docs-check.sh: $BRIDGE_DOC must have exactly one $first / $last pair (found start=$n_start end=$n_end)" >&2
     return 2
   fi
   tmp="$(mktemp "$BRIDGE_DOC.XXXXXX")" || return $?  # same dir: mv is an atomic rename
@@ -218,12 +124,12 @@ sys.stdout.write(text[:s] + block + text[e:])
 PY
   then
     rm -f "$tmp"
-    echo "sandbox-api-doc-check.sh: refusing to write $BRIDGE_DOC: the marker splice failed; file left untouched" >&2
+    echo "generated-docs-check.sh: refusing to write $BRIDGE_DOC: the marker splice failed; file left untouched" >&2
     return 2
   fi
   if [ ! -s "$tmp" ]; then
     rm -f "$tmp"
-    echo "sandbox-api-doc-check.sh: refusing to write $BRIDGE_DOC: the splice produced an empty file; file left untouched" >&2
+    echo "generated-docs-check.sh: refusing to write $BRIDGE_DOC: the splice produced an empty file; file left untouched" >&2
     return 2
   fi
   chmod 644 "$tmp"
@@ -252,13 +158,13 @@ validate_cap_block() {
   case "$block" in
     "$CAP_START"*"$CAP_END") ;;
     *)
-      echo "sandbox-api-doc-check.sh: $label output is empty or lacks its $CAP_START / $CAP_END markers; writing nothing" >&2
+      echo "generated-docs-check.sh: $label output is empty or lacks its $CAP_START / $CAP_END markers; writing nothing" >&2
       return 2
       ;;
   esac
   rows=$(grep -cE '^\| `[a-z_]+` \| (yes|no) \|' <<<"$block" || true)
   if [ "${rows:-0}" -lt 1 ]; then
-    echo "sandbox-api-doc-check.sh: $label output has no capability rows; writing nothing" >&2
+    echo "generated-docs-check.sh: $label output has no capability rows; writing nothing" >&2
     return 2
   fi
 }
@@ -289,7 +195,7 @@ write_capabilities() {
   fi
   if [ "$doc_block" != "$section" ] || [ "$(head -c2 "$tmp_doc")" != "# " ]; then
     rm -f "$tmp_doc"
-    echo "sandbox-api-doc-check.sh: capabilities-section --doc disagrees with capabilities-section or lacks its title heading; writing nothing" >&2
+    echo "generated-docs-check.sh: capabilities-section --doc disagrees with capabilities-section or lacks its title heading; writing nothing" >&2
     return 2
   fi
   mkdir -p docs/protocol
@@ -314,7 +220,7 @@ with open(path, "w", encoding="utf-8") as f:
 PY
   then
     rm -f "$tmp_doc"
-    echo "sandbox-api-doc-check.sh: refusing to write www/llms.txt: the capabilities splice failed; file left untouched" >&2
+    echo "generated-docs-check.sh: refusing to write www/llms.txt: the capabilities splice failed; file left untouched" >&2
     return 2
   fi
   cat "$tmp_doc" > docs/protocol/capabilities.md || rc=$?
@@ -349,7 +255,7 @@ write_recipe_readme() {
   block="$(mcphost_bin recipe-section)" || return $?
   case "$block" in
     "$RECIPE_START"*"$RECIPE_END") ;;
-    *) echo "sandbox-api-doc-check.sh: recipe-section output lacks its markers; writing nothing" >&2; return 2 ;;
+    *) echo "generated-docs-check.sh: recipe-section output lacks its markers; writing nothing" >&2; return 2 ;;
   esac
   tmp="$(mktemp "${TMPDIR:-/tmp}/readme-recipe.XXXXXX")" || return $?
   if ! python3 - "$README_FILE" "$RECIPE_START" "$RECIPE_END" "$block" "### Sub-agents" "## Contributing: naming a new" > "$tmp" <<'PY'
@@ -372,12 +278,12 @@ sys.stdout.write(out)
 PY
   then
     rm -f "$tmp"
-    echo "sandbox-api-doc-check.sh: refusing to write README.md: the recipe splice failed; file left untouched" >&2
+    echo "generated-docs-check.sh: refusing to write README.md: the recipe splice failed; file left untouched" >&2
     return 2
   fi
   if [ ! -s "$tmp" ]; then
     rm -f "$tmp"
-    echo "sandbox-api-doc-check.sh: refusing to write README.md: the splice produced an empty file; file left untouched" >&2
+    echo "generated-docs-check.sh: refusing to write README.md: the splice produced an empty file; file left untouched" >&2
     return 2
   fi
   cat "$tmp" > "$README_FILE"
@@ -394,7 +300,7 @@ write_prompts_doc() {
   case "$doc" in
     "# MCP prompts"*"<!-- prompts:end -->") ;;
     *)
-      echo "sandbox-api-doc-check.sh: prompts-section did not render a usable $PROMPTS_DOC; writing nothing" >&2
+      echo "generated-docs-check.sh: prompts-section did not render a usable $PROMPTS_DOC; writing nothing" >&2
       return 2
       ;;
   esac
@@ -402,26 +308,20 @@ write_prompts_doc() {
   printf '%s\n' "$doc" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$PROMPTS_DOC"
 }
 
-RENDERED="$(render_block)" || exit $?
-MODULE_COUNT=$(printf '%s\n' "$RENDERED" | grep -c '^- `mcphost\.')
-
 # --write-bridge: only docs/sandbox-api.md's bridge-modules block (what the
 # msmp_ac07 test pins), none of the other generated docs.
 if [ "$MODE" = "write-bridge" ]; then
   write_bridge_doc || exit $?
-  echo "sandbox-api-doc-check.sh: wrote the bridge-modules block to $BRIDGE_DOC"
+  echo "generated-docs-check.sh: wrote the bridge-modules block to $BRIDGE_DOC"
   exit 0
 fi
 
 if [ "$MODE" = "write" ]; then
-  for f in "${TARGETS[@]}"; do
-    apply_to_file "$f" "$RENDERED" || exit $?
-  done
   write_bridge_doc || exit $?
   write_capabilities || exit $?
   write_recipe_readme || exit $?
   write_prompts_doc || exit $?
-  echo "sandbox-api-doc-check.sh: wrote modules=${MODULE_COUNT} to ${#TARGETS[@]} files"
+  echo "generated-docs-check.sh: wrote the generated blocks"
   # PRD-mcphost-dry-run-on-write-verbs R5: docs/host-tools.md, generated
   # from src/write_verbs.rs, rides along in both modes.
   "$(dirname "$0")/host-tools-doc-check.sh" --write || exit $?
@@ -434,98 +334,63 @@ if [ "$MODE" = "write" ]; then
   exit 0
 fi
 
-# Check mode: each target's own marked block must equal $RENDERED exactly;
-# a drifted or missing module is named with the file it's missing from.
+# Check mode: every drift is counted and named; the sandbox-API block of the
+# kind pages, www/llms.txt and the plugin skill is `mcphost gen-docs kinds --check`.
 FAILURES=0
-for f in "${TARGETS[@]}"; do
-  if [ ! -f "$f" ]; then
-    echo "sandbox-api-doc-check.sh: $f does not exist" >&2
-    FAILURES=$((FAILURES + 1))
-    continue
-  fi
-  n_start=$(grep -Fc "$START" "$f")
-  n_end=$(grep -Fc "$END" "$f")
-  if [ "$n_start" -ne 1 ] || [ "$n_end" -ne 1 ]; then
-    echo "sandbox-api-doc-check.sh: $f must have exactly one $START / $END pair (found start=$n_start end=$n_end)" >&2
-    FAILURES=$((FAILURES + 1))
-    continue
-  fi
-  ACTUAL=$(python3 - "$f" "$START" "$END" <<'PY'
-import sys
-
-file_path, start_marker, end_marker = sys.argv[1:4]
-with open(file_path, encoding="utf-8") as f:
-    text = f.read()
-start_idx = text.index(start_marker)
-end_idx = text.index(end_marker) + len(end_marker)
-sys.stdout.write(text[start_idx:end_idx])
-PY
-  )
-  while IFS= read -r name; do
-    # A here-string, not `printf | grep -q`: grep -q exits on its first match
-    # and, under `pipefail`, a printf still writing its trailing newline gets
-    # SIGPIPE and fails the pipeline -- a false "is missing" about 1 run in 100
-    # under load.
-    if ! grep -qF "\`mcphost.${name}\`" <<<"$ACTUAL"; then
-      echo "sandbox-api-doc-check.sh: $f is missing mcphost.${name}" >&2
-      FAILURES=$((FAILURES + 1))
-    fi
-  done < <(printf '%s\n' "$RENDERED" | grep -o '`mcphost\.[a-z_]*`' | sed -e 's/`mcphost\.//' -e 's/`//')
-done
 
 BRIDGE_EXPECTED="$(render_bridge_block)" || {
-  echo "sandbox-api-doc-check.sh: could not render the bridge-modules block (mcphost bridge-docs-block failed)" >&2
+  echo "generated-docs-check.sh: could not render the bridge-modules block (mcphost bridge-docs-block failed)" >&2
   exit 2
 }
 BRIDGE_FIRST="${BRIDGE_EXPECTED%%$'\n'*}"
 BRIDGE_LAST="${BRIDGE_EXPECTED##*$'\n'}"
 if [ ! -f "$BRIDGE_DOC" ]; then
-  echo "sandbox-api-doc-check.sh: $BRIDGE_DOC does not exist (run sandbox-api-doc-check.sh --write)" >&2
+  echo "generated-docs-check.sh: $BRIDGE_DOC does not exist (run generated-docs-check.sh --write)" >&2
   FAILURES=$((FAILURES + 1))
 elif ! BRIDGE_ACTUAL="$(bridge_block_of "$BRIDGE_DOC" "$BRIDGE_FIRST" "$BRIDGE_LAST")"; then
-  echo "sandbox-api-doc-check.sh: $BRIDGE_DOC must have exactly one $BRIDGE_FIRST / $BRIDGE_LAST pair" >&2
+  echo "generated-docs-check.sh: $BRIDGE_DOC must have exactly one $BRIDGE_FIRST / $BRIDGE_LAST pair" >&2
   FAILURES=$((FAILURES + 1))
 elif [ "$BRIDGE_ACTUAL" != "$BRIDGE_EXPECTED" ]; then
-  echo "sandbox-api-doc-check.sh: $BRIDGE_DOC bridge-modules block differs from render_bridge_docs_block() (run sandbox-api-doc-check.sh --write)" >&2
+  echo "generated-docs-check.sh: $BRIDGE_DOC bridge-modules block differs from render_bridge_docs_block() (run generated-docs-check.sh --write)" >&2
   FAILURES=$((FAILURES + 1))
 fi
 
 CAP_EXPECTED="$(mcphost_bin capabilities-section)" || {
-  echo "sandbox-api-doc-check.sh: could not render the capabilities section (mcphost capabilities-section failed)" >&2
+  echo "generated-docs-check.sh: could not render the capabilities section (mcphost capabilities-section failed)" >&2
   exit 2
 }
 for f in "${CAP_TARGETS[@]}"; do
   if [ ! -f "$f" ]; then
-    echo "sandbox-api-doc-check.sh: $f does not exist (run sandbox-api-doc-check.sh --write)" >&2
+    echo "generated-docs-check.sh: $f does not exist (run generated-docs-check.sh --write)" >&2
     FAILURES=$((FAILURES + 1))
     continue
   fi
   CAP_ACTUAL="$(cap_block_of "$f")"
   if [ "$CAP_ACTUAL" != "$CAP_EXPECTED" ]; then
-    echo "sandbox-api-doc-check.sh: $f ## Capabilities section differs from render_capabilities_section() (run sandbox-api-doc-check.sh --write)" >&2
+    echo "generated-docs-check.sh: $f ## Capabilities section differs from render_capabilities_section() (run generated-docs-check.sh --write)" >&2
     FAILURES=$((FAILURES + 1))
   fi
 done
 
 RECIPE_EXPECTED="$(mcphost_bin recipe-section)" || {
-  echo "sandbox-api-doc-check.sh: could not render the sub-agent recipe (mcphost recipe-section failed)" >&2
+  echo "generated-docs-check.sh: could not render the sub-agent recipe (mcphost recipe-section failed)" >&2
   exit 2
 }
 RECIPE_ACTUAL="$(recipe_block_of "$README_FILE")"
 if [ "$RECIPE_ACTUAL" != "$RECIPE_EXPECTED" ]; then
-  echo "sandbox-api-doc-check.sh: $README_FILE quickstart-recipe:sub_agent_key block differs from the rendered recipe (run sandbox-api-doc-check.sh --write)" >&2
+  echo "generated-docs-check.sh: $README_FILE quickstart-recipe:sub_agent_key block differs from the rendered recipe (run generated-docs-check.sh --write)" >&2
   FAILURES=$((FAILURES + 1))
 fi
 
 PROMPTS_EXPECTED="$(mcphost_bin prompts-section)" || {
-  echo "sandbox-api-doc-check.sh: could not render the prompts table (mcphost prompts-section failed)" >&2
+  echo "generated-docs-check.sh: could not render the prompts table (mcphost prompts-section failed)" >&2
   exit 2
 }
 if [ ! -f "$PROMPTS_DOC" ]; then
-  echo "sandbox-api-doc-check.sh: $PROMPTS_DOC does not exist (run sandbox-api-doc-check.sh --write)" >&2
+  echo "generated-docs-check.sh: $PROMPTS_DOC does not exist (run generated-docs-check.sh --write)" >&2
   FAILURES=$((FAILURES + 1))
 elif [ "$(cat "$PROMPTS_DOC")" != "$PROMPTS_EXPECTED" ]; then
-  echo "sandbox-api-doc-check.sh: $PROMPTS_DOC differs from recipe_prompts() rendered (run sandbox-api-doc-check.sh --write)" >&2
+  echo "generated-docs-check.sh: $PROMPTS_DOC differs from recipe_prompts() rendered (run generated-docs-check.sh --write)" >&2
   FAILURES=$((FAILURES + 1))
 fi
 
@@ -540,7 +405,7 @@ if ! "$(dirname "$0")/host-tools-doc-check.sh" >/dev/null; then
 fi
 
 # signup argument block (control::SIGNUP_ARGS) in plugin/skills/mcphost/SKILL.md
-# and www/skill.md: neither file is a TARGETS entry above.
+# and www/skill.md.
 if ! "$(dirname "$0")/signup-args-doc-check.sh" >/dev/null; then
   "$(dirname "$0")/signup-args-doc-check.sh" >&2
   FAILURES=$((FAILURES + 1))
@@ -552,26 +417,26 @@ fi
 # /login/), and the install docs must name it at all.
 ENTRY_PATH=$(sed -n 's|^pub const OAUTH_ENTRY_PATH: &str = "\(.*\)";|\1|p' src/oauth.rs)
 if [ -z "$ENTRY_PATH" ]; then
-  echo "sandbox-api-doc-check.sh: could not read OAUTH_ENTRY_PATH from src/oauth.rs" >&2
+  echo "generated-docs-check.sh: could not read OAUTH_ENTRY_PATH from src/oauth.rs" >&2
   FAILURES=$((FAILURES + 1))
 else
   for f in README.md llms-install.md www/llms-install.md www/llms.txt www/llms-full.txt www/index.html docs/oauth-connect.md; do
     if ! grep -qF "https://mcphost.dev${ENTRY_PATH}" "$f"; then
-      echo "sandbox-api-doc-check.sh: $f does not name the OAuth entry URL https://mcphost.dev${ENTRY_PATH}" >&2
+      echo "generated-docs-check.sh: $f does not name the OAuth entry URL https://mcphost.dev${ENTRY_PATH}" >&2
       FAILURES=$((FAILURES + 1))
     fi
     stray=$(grep -oE 'https://mcphost\.dev/login/[A-Za-z0-9_./-]*' "$f" | grep -vxF "https://mcphost.dev${ENTRY_PATH}" || true)
     if [ -n "$stray" ]; then
-      echo "sandbox-api-doc-check.sh: $f names an entry path other than ${ENTRY_PATH}: $stray" >&2
+      echo "generated-docs-check.sh: $f names an entry path other than ${ENTRY_PATH}: $stray" >&2
       FAILURES=$((FAILURES + 1))
     fi
   done
 fi
 
 if [ "$FAILURES" -gt 0 ]; then
-  echo "sandbox-api-doc-check.sh: FAILED (${FAILURES} issue(s))" >&2
+  echo "generated-docs-check.sh: FAILED (${FAILURES} issue(s))" >&2
   exit 1
 fi
 
-echo "modules=${MODULE_COUNT} docs_in_sync=${#TARGETS[@]}"
+echo "generated_docs_in_sync"
 exit 0

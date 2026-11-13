@@ -10,6 +10,12 @@ mod common;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "suite_ac2_check_catches_unregistered_file.rs"]
+mod suite_ac2_check_catches_unregistered_file;
+#[path = "suite_ac4_archived_prd_pointers_resolve.rs"]
+mod suite_ac4_archived_prd_pointers_resolve;
+#[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
+mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
 #[path = "sylp_ac01_awaits_tick_validator.rs"]
 mod sylp_ac01_awaits_tick_validator;
 #[path = "sylp_ac02_first_get_pins_the_receipt.rs"]

@@ -41,6 +41,16 @@
               "tool_run_unsupported"
             ],
             "name": "tool_state"
+          },
+          {
+            "codes": [
+              "step_tool_not_allowed",
+              "step_tool_not_found",
+              "fixture_shape_mismatch",
+              "fixture_step_ambiguous",
+              "fixture_step_unknown"
+            ],
+            "name": "chain_spec"
           }
         ],
         "secret_redaction": false,
@@ -80,6 +90,13 @@
               "host_not_allowed"
             ],
             "name": "upstream"
+          },
+          {
+            "codes": [
+              "response_too_large",
+              "template_error"
+            ],
+            "name": "http_call"
           }
         ],
         "secret_redaction": true,
@@ -197,6 +214,12 @@
               "tool_run_unsupported"
             ],
             "name": "tool_state"
+          },
+          {
+            "codes": [
+              "typescript_not_supported"
+            ],
+            "name": "js_spec"
           }
         ],
         "secret_redaction": true,
@@ -278,6 +301,17 @@
               "tool_run_unsupported"
             ],
             "name": "tool_state"
+          },
+          {
+            "codes": [
+              "build_failed",
+              "capacity",
+              "egress_unavailable",
+              "requirement_not_allowed",
+              "state_quota_exceeded",
+              "unknown_import"
+            ],
+            "name": "python_call"
           }
         ],
         "secret_redaction": true,
@@ -22196,6 +22230,12 @@
               "null"
             ]
           },
+          "doc_anchor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "endpoint": {
             "type": [
               "string",
@@ -22677,6 +22717,15 @@
             },
             "type": [
               "object",
+              "null"
+            ]
+          },
+          "spec_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },

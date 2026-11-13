@@ -1534,6 +1534,16 @@ fn quickstart_inner(
         let base = format!("{}/u/{}", state.public_url.trim_end_matches('/'), secret);
         map.insert("install_links".to_string(), json!(crate::install_links::for_url(&base)));
     }
+    // PRD-mcphost-kind-docs-from-registry-b-v2 R6: the page of the kind's
+    // spec fields and the names it lists, both from the same `KindDoc` the
+    // page's `kind-fields` table renders (each name once).
+    if let Value::Object(map) = &mut response {
+        if let Some(anchor) = crate::doc_anchors::DocAnchor::kind_spec_fields(&kind_name) {
+            map.insert("doc_anchor".to_string(), json!(anchor.as_str()));
+        }
+        let names: Vec<String> = kind.doc(&state.plans).spec_fields.into_iter().map(|f| f.name).collect();
+        map.insert("spec_fields".to_string(), json!(names));
+    }
     // PRD-mcphost-chain-host-steps requirement 1: `host.quickstart
     // kind=chain`'s own allowlist of step-nameable `host.*` verbs --
     // exported under this exact key so `host.tool_publish`'s

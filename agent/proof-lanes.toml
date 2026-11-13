@@ -160,14 +160,6 @@ required_commands = [
 ]
 
 [[lane]]
-id = "spec-fields-doc-check"
-description = "PRD-mcphost-spec-unknown-field-rejection requirement 6 (AC7): scripts/spec-fields-doc-check.sh diffs each kind's known_spec_fields() (parsed straight out of its own src/kinds/<kind>.rs, never a second hand-maintained list) against its docs/kinds/<kind>.md page, so the two can't silently drift. Given its own lane rather than folded into the pre-existing docs lane above, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline and folding in here would have changed the docs lane's own required_commands (same reasoning as the sharing-docs/launch-docs lanes above)."
-globs = ["scripts/spec-fields-doc-check.sh"]
-required_commands = [
-  "scripts/spec-fields-doc-check.sh",
-]
-
-[[lane]]
 id = "kind-contract-doc-check"
 description = "PRD-mcphost-kind-contract-conformance-generated-b R5 (AC1): scripts/kind-contract-doc-check.sh diffs the `## Contract` block of every docs/kinds/<kind>.md against the block rendered from the kind's KindContract (`mcphost gen-docs --kinds-only`). Given its own lane since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline."
 globs = ["scripts/kind-contract-doc-check.sh"]
@@ -186,7 +178,7 @@ required_commands = [
 
 [[lane]]
 id = "host-pressure-doc-check"
-description = "PRD-mcphost-status-host-pressure requirement 6 (AC7): scripts/host-pressure-doc-check.sh generates docs/metrics.md's host-field table from HostPressure's field list in src/hostpressure.rs and fails on drift. Given its own lane rather than folded into the pre-existing docs lane, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the spec-fields-doc-check lane above)."
+description = "PRD-mcphost-status-host-pressure requirement 6 (AC7): scripts/host-pressure-doc-check.sh generates docs/metrics.md's host-field table from HostPressure's field list in src/hostpressure.rs and fails on drift. Given its own lane rather than folded into the pre-existing docs lane, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the lanes above)."
 globs = ["scripts/host-pressure-doc-check.sh"]
 required_commands = [
   "scripts/host-pressure-doc-check.sh",
@@ -308,16 +300,16 @@ required_commands = [
 ]
 
 [[lane]]
-id = "sandbox-api-docs"
-description = "PRD-mcphost-sandbox-bridge-discoverability requirement 7 (AC7): scripts/sandbox-api-doc-check.sh, the drift check that docs/kinds/python.md, www/llms.txt, and plugin/skills/mcphost/SKILL.md each carry the same mcphost.* module table rendered from src/kinds/python.rs's own BRIDGE_MODULES constant. Added project-locally: the shipped scaffold's proof-lanes.toml has no lane for a project-local doc-check script under scripts/, and no existing lane's required_commands would run this script's own drift check (docs/www/plugin each have their own lane, but none names this script), kept as its own lane rather than folded into any of those three specifically so tests/lanecov_ac04_existing_lanes_unchanged.rs's required_commands-unchanged half stays green, same reasoning the sharing-docs/launch-docs lanes above already give. Proof is the script's own check mode (bare invocation, no args), matching tests/bridgedisc_ac07_sandbox_api_doc_check.rs's own two cases (clean pass, fixture-removed-module failure)."
-globs = ["scripts/sandbox-api-doc-check.sh"]
+id = "generated-docs-check"
+description = "PRD-mcphost-kind-docs-from-registry-b-v2 R4: scripts/generated-docs-check.sh, the umbrella drift check for the generated docs no `mcphost gen-docs` target renders yet (the bridge-modules block of docs/sandbox-api.md, the `## Capabilities` section, the README recipe block, docs/protocol/prompts.md, protocol frames, host tools, signup args and the OAuth entry path). Renamed from the sandbox-api-docs lane when its sandbox-API block moved into `mcphost gen-docs kinds` (the python kind's KindDoc.bridge_modules); that renderer and the `kind-fields` tables are proved by `mcphost gen-docs kinds --check` and the kdrb_ac0N tests. The second glob keeps the path of the retired spec-fields checker routed (its two checks run in Rust: the kdrb tests and `mcphost gen-docs kinds --check`). Kept as its own lane rather than folded into the docs/www/plugin lanes so tests/lanecov_ac04_existing_lanes_unchanged.rs's required_commands-unchanged half stays green."
+globs = ["scripts/generated-docs-check.sh", "scripts/spec-fields-*.sh"]
 required_commands = [
-  "scripts/sandbox-api-doc-check.sh",
+  "scripts/generated-docs-check.sh",
 ]
 
 [[lane]]
 id = "tool-naming"
-description = "PRD-mcphost-tool-naming-convention-and-aliases: the naming rule doc (docs/tool-naming.md), the generated tool listing (docs/tools.md, rendered by gendocs::render_tools_markdown -- folded into the pre-existing `mcphost gen-docs` subcommand, not a new script), and the naming lint (scripts/tool-naming-lint.sh). Given its own lane rather than folded into the pre-existing docs lane above, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the sharing-docs/launch-docs/spec-fields-doc-check lanes above). The lint itself is the proof (violations=0 against the live registry); the toolname_ac0x integration tests (routed through the pre-existing rust-tests lane, since they live under tests/**/*.rs) cover the rest of this PRD's behavior, including docs/tools.md's own drift check."
+description = "PRD-mcphost-tool-naming-convention-and-aliases: the naming rule doc (docs/tool-naming.md), the generated tool listing (docs/tools.md, rendered by gendocs::render_tools_markdown -- folded into the pre-existing `mcphost gen-docs` subcommand, not a new script), and the naming lint (scripts/tool-naming-lint.sh). Given its own lane rather than folded into the pre-existing docs lane above, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the sharing-docs/launch-docs lanes above). The lint itself is the proof (violations=0 against the live registry); the toolname_ac0x integration tests (routed through the pre-existing rust-tests lane, since they live under tests/**/*.rs) cover the rest of this PRD's behavior, including docs/tools.md's own drift check."
 globs = ["docs/tool-naming.md", "docs/tools.md", "scripts/tool-naming-lint.sh"]
 required_commands = [
   "scripts/tool-naming-lint.sh",
@@ -325,7 +317,7 @@ required_commands = [
 
 [[lane]]
 id = "registry-manifest"
-description = "PRD-mcphost-registry-listing: the committed public MCP-registry listing artifacts under registry/ -- registry/server.json (generated by `mcphost registry-manifest --write`, never hand-edited) and registry/schema.json (the upstream registry schema, pinned by hand, not re-fetched at build time). Given its own lane rather than folded into the pre-existing `meta` lane (which already covers the unrelated root-level server.json from PRD-mcphost-registry-publish, a different, tenant-facing feature), since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the tool-naming/sandbox-api-docs lanes above) and, unlike that static metadata, registry/server.json has real build proof: the reglist_ac0N suite drift-checks it against the generator and schema-validates it. Widened (globs only, required_commands untouched) by PRD-mcphost-chatgpt-submission-pack with the sibling generated listing artifacts: submission/chatgpt/** (written by `mcphost submission-pack --chatgpt`) and its schema docs/chatgpt-submission.schema.json; proof is the mcphost-chatgpt-submission-pack_ac0N tests via rust-tests."
+description = "PRD-mcphost-registry-listing: the committed public MCP-registry listing artifacts under registry/ -- registry/server.json (generated by `mcphost registry-manifest --write`, never hand-edited) and registry/schema.json (the upstream registry schema, pinned by hand, not re-fetched at build time). Given its own lane rather than folded into the pre-existing `meta` lane (which already covers the unrelated root-level server.json from PRD-mcphost-registry-publish, a different, tenant-facing feature), since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the tool-naming/generated-docs-check lanes above) and, unlike that static metadata, registry/server.json has real build proof: the reglist_ac0N suite drift-checks it against the generator and schema-validates it. Widened (globs only, required_commands untouched) by PRD-mcphost-chatgpt-submission-pack with the sibling generated listing artifacts: submission/chatgpt/** (written by `mcphost submission-pack --chatgpt`) and its schema docs/chatgpt-submission.schema.json; proof is the mcphost-chatgpt-submission-pack_ac0N tests via rust-tests."
 globs = ["registry/**", "docs/chatgpt-submission.schema.json", "submission/**", "scripts/registry-submit.sh"]
 required_commands = [
   "cargo test --workspace reglist_ac",
@@ -377,7 +369,7 @@ required_commands = [
 
 [[lane]]
 id = "heal-docs"
-description = "PRD-mcphost-heal-action-registry-and-ledger R6 (AC1): scripts/heal-doc-check.sh, the drift check that docs/self-healing.md carries one table row per HealAction rendered from src/heal.rs's own heal_actions! invocation. Added project-locally, same gap class and reasoning as the sandbox-api-docs lane above (its own lane so tests/lanecov_ac04_existing_lanes_unchanged.rs's pinned baseline stays green). Proof is the script's check mode (bare invocation), matching tests/heal_ac01_action_set_single_source.rs."
+description = "PRD-mcphost-heal-action-registry-and-ledger R6 (AC1): scripts/heal-doc-check.sh, the drift check that docs/self-healing.md carries one table row per HealAction rendered from src/heal.rs's own heal_actions! invocation. Added project-locally, same gap class and reasoning as the generated-docs-check lane above (its own lane so tests/lanecov_ac04_existing_lanes_unchanged.rs's pinned baseline stays green). Proof is the script's check mode (bare invocation), matching tests/heal_ac01_action_set_single_source.rs."
 globs = ["scripts/heal-doc-check.sh", "docs/self-healing.md"]
 required_commands = [
   "scripts/heal-doc-check.sh",

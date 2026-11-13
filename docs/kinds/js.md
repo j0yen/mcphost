@@ -65,8 +65,6 @@ A js tool reaches this tenant's data through the global `mcphost` object. Its me
 | `env` | object | no | plain, non-secret environment variables (`process.env`) |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
 | `description` | string | no | human-readable text shown in `tools/list` |
-| `description` | string | no | human-readable text shown in `tools/list` |
-| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->
@@ -111,6 +109,7 @@ A js tool reaches this tenant's data through the global `mcphost` object. Its me
 | `tool_building` | the tool's dependencies are still building |
 | `tool_not_found` | a named tool does not exist for this tenant |
 | `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+| `typescript_not_supported` | the tool's source uses TypeScript syntax; js tools run plain JavaScript |
 <!-- kind-errors:end -->
 
 ## Canonical example
@@ -135,6 +134,7 @@ A js tool reaches this tenant's data through the global `mcphost` object. Its me
 | family `upstream` | upstream_auth, upstream_rate_limited, upstream_client_error, upstream_error, upstream_timeout, upstream_unreachable, upstream_not_connected, host_not_allowed |
 | family `compose` | compose_self_call, compose_depth_exceeded, compose_children_exceeded, compose_item_outside_for_each, compose_mapping_type, compose_mapping_missing, compose_fanout_exceeded, compose_fanout_item_failed, compose_input_missing |
 | family `tool_state` | tool_building, tool_not_found, tool_run_unsupported |
+| family `js_spec` | typescript_not_supported |
 | source_line | yes (`data.source_line`) |
 | bridges | state, table, docs, lineage, channel, msg |
 | secret redaction | yes |
