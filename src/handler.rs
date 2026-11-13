@@ -2415,6 +2415,43 @@ fn host_tools_part_03() -> Vec<Tool> {
             host_schema(json!({}), &[]),
         ),
         Tool::new(
+            "host.org.export",
+            "Owner only: build one downloadable .tar.gz of the whole team. It holds \
+             org_manifest.json (each live member's namespace, role, tools as name, kind and \
+             spec_sha256, and the sha256 and size of that member's part) and one \
+             members/<namespace>.tar.gz per live member, each the member's own host.export \
+             archive (the member's key is not needed). Runs as a background job (poll \
+             host.runs.get with the returned run_id); calling this again while one is running \
+             returns that same run_id. The finished run's result carries a download_url valid \
+             24 hours and the org_manifest.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.org.offboard",
+            "Owner only: switch the whole org off. confirm must equal the org name, else \
+             confirm_mismatch and nothing changes. Cancels each pro member's live subscription, \
+             then disables every live member, the owner included, with disabled_reason \
+             org_offboard; each member's next call answers tenant_disabled with that reason. \
+             Nothing is deleted: tools and state stay, and host.org.restore (owner key, any \
+             age) re-enables everyone this call disabled. A repeat call answers \
+             already_offboarded. Refused with org_export_running while an org export of this \
+             org runs. Run host.org.export first to take the data with you.",
+            host_schema(
+                json!({
+                    "confirm": {"type": "string", "description": "The org's name, exactly."},
+                }),
+                &["confirm"],
+            ),
+        ),
+        Tool::new(
+            "host.org.restore",
+            "Owner only: undo host.org.offboard. Re-enables every member that offboard disabled \
+             (disabled_reason org_offboard) and clears the reason; their tools answer again. \
+             Works at any age. Does not re-create a cancelled subscription: a member returns \
+             on the plan its row then holds.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
             "host.secret.set",
             "Store an encrypted secret value under this tenant's namespace, optionally bound to the hosts it may be sent to.",
             host_schema(
@@ -6045,7 +6082,7 @@ fn admin_tools_raw() -> Vec<Tool> {
                 json!({
                     "prefix": {"type": "string"},
                     "synthetic": {"type": "string", "enum": crate::admin::SYNTHETIC_FILTERS},
-                    "disabled_reason": {"type": "string", "description": "Only tenants disabled for this reason (self_offboard, admin_disable, idle_expired)."},
+                    "disabled_reason": {"type": "string", "enum": crate::auth_shape::DISABLED_REASONS, "description": "Only tenants disabled for this reason."},
                 }),
                 &[],
             ),

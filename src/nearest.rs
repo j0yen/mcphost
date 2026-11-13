@@ -16,8 +16,16 @@ use crate::errors::{MAX_DID_YOU_MEAN, MAX_DID_YOU_MEAN_DISTANCE, levenshtein};
 pub const MAX_NEAREST: usize = 5;
 
 /// The host verbs a misnamed tool must never be steered into by a hint that
-/// replays the caller's arguments: both act on the credential itself.
-const DESTRUCTIVE_VERBS: &[&str] = &["host.key.rotate", "host.key_rotate", "host.self.offboard", "host.self_offboard"];
+/// replays the caller's arguments: they act on the credential itself, or
+/// (`host.org.offboard`) switch off every member's.
+const DESTRUCTIVE_VERBS: &[&str] = &[
+    "host.key.rotate",
+    "host.key_rotate",
+    "host.self.offboard",
+    "host.self_offboard",
+    "host.org.offboard",
+    "host.org_offboard",
+];
 
 /// Where a candidate name came from; the order is the order `next_call` is
 /// chosen in (own tool, then a share, then a control-plane verb).

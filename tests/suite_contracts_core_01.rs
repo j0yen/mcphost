@@ -187,6 +187,8 @@ mod ntfy_ac01_no_tenant_settable_alert_sink;
 mod ntfy_ac02_enums_generated_into_every_surface;
 #[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
+#[path = "orgx_ac02_disabled_reasons_one_source.rs"]
+mod orgx_ac02_disabled_reasons_one_source;
 #[path = "osmatch_ac01_dry_run_branch.rs"]
 mod osmatch_ac01_dry_run_branch;
 #[path = "osmatch_ac02_success_constructor.rs"]

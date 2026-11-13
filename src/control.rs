@@ -917,9 +917,22 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant, session_id: Option
     Ok(json!({
         "tenant": tenant.namespace,
         "disabled": true,
-        "disabled_reason": "self_offboard",
+        "disabled_reason": crate::auth_shape::SELF_OFFBOARD_REASON,
         "billing_canceled": billing_canceled,
     }))
+}
+
+/// The runtime half of taking a tenant offline: every session, implicit-signup
+/// and tenant-key memory bound to it, and every kind's `on_tenant_removed`.
+/// No billing, no row writes -- shared by [`teardown_expired_tenant`] and
+/// `host.org.offboard` (`org_offboard.rs`).
+pub(crate) async fn release_tenant_runtime(state: &AppState, tenant_id: i64) {
+    state.session_bindings.drop_tenant(tenant_id);
+    state.implicit_signup_memory.drop_tenant(tenant_id);
+    state.tenant_key_arg_memory.drop_tenant(tenant_id);
+    for k in state.kinds.all() {
+        k.on_tenant_removed(tenant_id).await;
+    }
 }
 
 /// PRD-mcphost-synthetic-implicit-tenant-expiry: the teardown the idle
@@ -929,12 +942,7 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant, session_id: Option
 /// billing cancel (a no-op for a subject, which carries no `billing_ref`).
 /// Idempotent, so a crash between claim and teardown is safe to replay.
 pub async fn teardown_expired_tenant(state: &AppState, tenant_id: i64) {
-    state.session_bindings.drop_tenant(tenant_id);
-    state.implicit_signup_memory.drop_tenant(tenant_id);
-    state.tenant_key_arg_memory.drop_tenant(tenant_id);
-    for k in state.kinds.all() {
-        k.on_tenant_removed(tenant_id).await;
-    }
+    release_tenant_runtime(state, tenant_id).await;
     match state.db.find_tenant_by_id(tenant_id).await {
         Ok(Some(tenant)) if tenant.plan == "pro" => {
             if let Some(customer) = tenant.stripe_customer_id.as_deref()
