@@ -2928,6 +2928,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `authenticated`: boolean | null
 - `bridge_returns`: object | null
 - `contract`: object | null
+- `doc_anchor`: string | null
 - `endpoint`: string | null
 - `example`: object | null
 - `hint`: string | null
@@ -2947,6 +2948,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `recipes_nearby`: array<string> | null
 - `resolved_from`: string | null
 - `sandbox_api`: object | null
+- `spec_fields`: array<string> | null
 - `starter_tool`: object | null
 - `steps`: array<object> | null
 - `triggers`: string | null

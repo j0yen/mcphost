@@ -102,7 +102,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
 use super::contract::{
-    BudgetDim, COMPOSE_FAMILY, CONFORMANCE_SECRET_NAME, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, TOOL_LIMIT_FAMILY, TOOL_STATE_FAMILY, UPSTREAM_FAMILY, codes, key,
+    BudgetDim, COMPOSE_FAMILY, CONFORMANCE_SECRET_NAME, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, TOOL_LIMIT_FAMILY, TOOL_STATE_FAMILY, UPSTREAM_FAMILY, codes, family, key,
 };
 use super::infer;
 use super::secretenv::{block_result_leak, environment_report, merge_env, redact_kind_error, redact_value, secret_env};
@@ -2226,8 +2226,8 @@ fn call_fingerprint(
 // [`PY_RUNNER_SCRIPT`] below registers in `sys.modules` -- `host.quickstart`'s
 // `sandbox_api` field (`control::quickstart`, via [`build_sandbox_api`]), the
 // static unknown-import scan ([`scan_unknown_imports`]), the `unknown_import`
-// hint text ([`unknown_import_hint`]), and `scripts/sandbox-api-doc-check.sh`
-// all read this list instead of a second, hand-copied one. `signatures` are
+// hint text ([`unknown_import_hint`]), and the `mcphost-sandbox-api` doc block
+// (`gen-docs kinds`) all read this list instead of a second, hand-copied one. `signatures` are
 // one-line, pre-formatted call + short doc strings -- exactly what
 // `sandbox_api.modules` hands back, not a (call, doc) tuple `build_sandbox_api`
 // would have to re-render.
@@ -6285,8 +6285,30 @@ const PYTHON_TOOL_CODE: ErrorFamily = ErrorFamily {
     codes: &[codes::TOOL_EXCEPTION, codes::TOOL_OUTPUT_INVALID],
 };
 
+/// The codes a python tool's build, sandbox and spec answer with beyond the
+/// shared families. `timeout_clamped` is a notice and is in
+/// `KIND_PAGE_EXEMPT`.
+const PYTHON_CALL_FAMILY: ErrorFamily = ErrorFamily {
+    name: family::PYTHON_CALL,
+    codes: &[
+        BUILD_FAILED,
+        CAPACITY,
+        EGRESS_UNAVAILABLE,
+        REQUIREMENT_NOT_ALLOWED,
+        STATE_QUOTA_EXCEEDED,
+        UNKNOWN_IMPORT,
+    ],
+};
+
 static CONTRACT: KindContract = KindContract {
-    error_families: &[PYTHON_TOOL_CODE, TOOL_LIMIT_FAMILY, UPSTREAM_FAMILY, COMPOSE_FAMILY, TOOL_STATE_FAMILY],
+    error_families: &[
+        PYTHON_TOOL_CODE,
+        TOOL_LIMIT_FAMILY,
+        UPSTREAM_FAMILY,
+        COMPOSE_FAMILY,
+        TOOL_STATE_FAMILY,
+        PYTHON_CALL_FAMILY,
+    ],
     budgets: &[
         BudgetDim { field: "timeout_s", min: 1, max: MAX_TIMEOUT_S, default: DEFAULT_TIMEOUT_S },
         BudgetDim { field: "memory_mb", min: 1, max: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB },

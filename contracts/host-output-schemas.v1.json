@@ -7202,6 +7202,9 @@
         },
         "type": "object"
       },
+      "doc_anchor": {
+        "type": "string"
+      },
       "endpoint": {
         "type": "string"
       },
@@ -7485,6 +7488,12 @@
           }
         },
         "type": "object"
+      },
+      "spec_fields": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       },
       "starter_tool": {
         "properties": {

@@ -138,6 +138,9 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
     // PRD-mcphost-docs-import-and-stated-boundary R4: `host.docs.status` gained
     // the optional `import_paths`/`put_many_max`/`doc_max_bytes` keys.
     edited.insert("host.docs.status");
+    // PRD-mcphost-kind-docs-from-registry-b-v2 AC3: `host.quickstart` gained the
+    // optional `doc_anchor`/`spec_fields` keys naming its kind page.
+    edited.insert("host.quickstart");
     // A tenant-defined value the corpus can only sample is declared free-form
     // (`output_schemas::OPAQUE_FIELDS`): `host.table.query` rows are the
     // tenant's columns.

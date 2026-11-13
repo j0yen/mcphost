@@ -12,8 +12,8 @@
 #                                              the file whose block differs.
 #   scripts/signup-args-doc-check.sh --write  regenerate the marked block in
 #                                              every target file.
-# sandbox-api-doc-check.sh runs this in both modes, so the CI regen-check job
-# (which runs sandbox-api-doc-check.sh) covers it.
+# generated-docs-check.sh runs this in both modes, so the CI regen-check job
+# (which runs generated-docs-check.sh) covers it.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -23,7 +23,7 @@ END="<!-- mcphost-signup-args:end -->"
 MODE="${1:-check}"
 [ "$MODE" = "--write" ] && MODE="write"
 
-# Same lookup as sandbox-api-doc-check.sh's mcphost_bin: $MCPHOST_BIN, else
+# Same lookup as generated-docs-check.sh's mcphost_bin: $MCPHOST_BIN, else
 # $CARGO_BIN_EXE_mcphost, else a prebuilt binary newer than src/, else a
 # cargo run of the mcphost bin.
 mcphost_bin() {

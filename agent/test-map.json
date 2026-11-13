@@ -1989,6 +1989,14 @@
       "AC3": "tests/kdr_ac03_check_names_stale_block.rs",
       "AC4": "tests/kdr_ac04_page_set_matches_registry.rs"
     },
+    "kdrb": {
+      "_prd": "PRD-mcphost-kind-docs-from-registry-b-v2.md (test_prefix: kdrb)",
+      "AC1": "tests/kdrb_ac01_sandbox_api_block_from_registry.rs",
+      "AC2": "tests/kdrb_ac02_retired_scripts_gone.rs",
+      "AC3": "tests/kdrb_ac03_quickstart_names_its_page.rs",
+      "AC5": "tests/kdrb_ac05_planted_drift_names_its_file.rs",
+      "AC6": "tests/kdrb_ac06_kind_error_codes_on_their_page.rs"
+    },
     "ctrs": {
       "_prd": "PRD-mcphost-contract-suite-generated.md (test_prefix: ctrs)",
       "AC1": "tests/ctrs_ac01_marked_files_live_in_contract_suites.rs",

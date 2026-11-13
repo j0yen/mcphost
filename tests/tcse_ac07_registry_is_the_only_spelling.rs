@@ -1,7 +1,7 @@
 //! PRD-mcphost-table-conflict-structured-error
 //! contract: walks src/
 //! AC7 -- Given the error registry, When the SDK generators and
-//! `sandbox-api-doc-check.sh` run, Then the python and TS SDKs expose
+//! `generated-docs-check.sh` run, Then the python and TS SDKs expose
 //! `TableRowConflict` and the doc lists `table_row_conflict`; the registry row
 //! is the only place the code is spelled (a grep of `src/` for the literal
 //! outside `err_code!` finds nothing).
@@ -37,10 +37,10 @@ fn tcse_ac07() {
     let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/sandbox-api.md")).expect("read doc");
     assert!(doc.contains(&format!("`{CODE}`")), "docs/sandbox-api.md must list {CODE}");
     let out = std::process::Command::new("bash")
-        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/sandbox-api-doc-check.sh"))
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/generated-docs-check.sh"))
         .env("MCPHOST_BIN", env!("CARGO_BIN_EXE_mcphost"))
         .output()
-        .expect("run sandbox-api-doc-check.sh");
+        .expect("run generated-docs-check.sh");
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 
     // One spelling: the `err_code!` declaration, nowhere else under src/.

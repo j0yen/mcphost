@@ -191,7 +191,7 @@ enum Command {
     },
     /// PRD-mcphost-server-capabilities-from-registry requirement 4: print
     /// the generated `## Capabilities` section (`--doc`: the whole
-    /// `docs/protocol/capabilities.md`) for `scripts/sandbox-api-doc-check.sh`.
+    /// `docs/protocol/capabilities.md`) for `scripts/generated-docs-check.sh`.
     CapabilitiesSection {
         #[arg(long)]
         doc: bool,
@@ -201,7 +201,7 @@ enum Command {
     ResourcesDoc,
     /// PRD-mcphost-delegation-recipes-and-quickstart requirement 5: print the
     /// README's `<!-- quickstart-recipe:sub_agent_key -->` block for
-    /// `scripts/sandbox-api-doc-check.sh`.
+    /// `scripts/generated-docs-check.sh`.
     RecipeSection,
     /// PRD-mcphost-prompts-from-published-tools requirement 5: print
     /// `docs/protocol/prompts.md`, rendered from `recipe_prompts()`.
@@ -209,7 +209,7 @@ enum Command {
     /// PRD-mcphost-sampling-from-tools R1/AC7 (seed SDB): print the marked
     /// `<!-- mcphost-bridge-modules:start/end -->` block `docs/sandbox-api.md`
     /// carries (`kinds::python::render_bridge_docs_block`, markers included)
-    /// for `scripts/sandbox-api-doc-check.sh`.
+    /// for `scripts/generated-docs-check.sh`.
     BridgeDocsBlock,
     /// Print the marked `<!-- mcphost-signup-args:start/end -->` block
     /// `plugin/skills/mcphost/SKILL.md` and `www/skill.md` carry

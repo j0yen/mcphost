@@ -32,7 +32,7 @@ use serde_json::{Map, Value, json};
 
 use crate::leakguard;
 use super::contract::{
-    BudgetDim, CASE_BUDGET_EXCEEDED, CASE_CALL, CASE_ERROR_WITH_SOURCE_POSITION, CASE_SECRET_REDACTION, CONFORMANCE_SECRET_NAME, CaseSkip, ConformanceFixtures, KindContract, SourcePosition, UPSTREAM_FAMILY, codes, key,
+    BudgetDim, CASE_BUDGET_EXCEEDED, CASE_CALL, CASE_ERROR_WITH_SOURCE_POSITION, CASE_SECRET_REDACTION, CONFORMANCE_SECRET_NAME, CaseSkip, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, UPSTREAM_FAMILY, codes, family, key,
 };
 use super::infer;
 use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, ToolDescriptor};
@@ -1184,8 +1184,12 @@ fn conformance_secret_spec() -> Value {
     })
 }
 
+/// The codes an http call answers with beyond the upstream family.
+const HTTP_CALL_FAMILY: ErrorFamily =
+    ErrorFamily { name: family::HTTP_CALL, codes: &[RESPONSE_TOO_LARGE, TEMPLATE_ERROR] };
+
 static CONTRACT: KindContract = KindContract {
-    error_families: &[UPSTREAM_FAMILY],
+    error_families: &[UPSTREAM_FAMILY, HTTP_CALL_FAMILY],
     budgets: &[BudgetDim { field: "timeout_s", min: 1, max: MAX_TIMEOUT_S, default: DEFAULT_TIMEOUT_S }],
     source_position: SourcePosition::None,
     bridges: &[],

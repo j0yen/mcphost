@@ -744,6 +744,10 @@ mod kconb_ac01_contract_doc_drift_check;
 mod kconb_ac02_host_tools_contract_carries_kind_contracts;
 #[path = "kdr_ac04_page_set_matches_registry.rs"]
 mod kdr_ac04_page_set_matches_registry;
+#[path = "kdrb_ac03_quickstart_names_its_page.rs"]
+mod kdrb_ac03_quickstart_names_its_page;
+#[path = "kdrb_ac06_kind_error_codes_on_their_page.rs"]
+mod kdrb_ac06_kind_error_codes_on_their_page;
 #[path = "kih_ac01_envelope_hands_a_sessionless_client_its_key.rs"]
 mod kih_ac01_envelope_hands_a_sessionless_client_its_key;
 #[path = "kih_ac02_the_handed_key_runs_as_the_minted_tenant.rs"]
