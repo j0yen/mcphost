@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-sql-exec-and-grammar.md",
-  "intent_slug": "mcphost-table-sql-exec-and-grammar",
-  "root_motivation": "WHO: the agent keeping a user's table current, and the owner who says 'mark order 17 shipped'. WHAT: one DML verb, one by-example verb, and refusals that name the position and the allowed grammar. WHY: the only write today is host.table.append, so correcting one row means a duplicate or a drop and recreate, and a refusal names nothing the agent may send instead.",
-  "user_persona": "An agent that already writes GROUP BY for a recipe and sends host.table.exec(sql='UPDATE orders SET status=... WHERE id=17'), or a SQL-averse persona calling host.table.find(table, where), or a python tool calling mcphost.table.exec.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-templates.md",
+  "intent_slug": "mcphost-tenant-templates",
+  "root_motivation": "WHO: an agent that knows the job (a scheduled job, a webhook inbox, uptime probes, a table, docs Q&A) and its user. WHAT: host.template_apply(name) provisions the whole job -- tools, tables, triggers -- in one all-or-nothing call and returns the demo call that shows the first result. WHY: the unit an agent wants is the job, not the tool; assembling a scheduled job from primitives takes three calls (publish, trigger set, call) and the 10-09 recipe sessions took 7 to 13.",
+  "user_persona": "An agent on a fresh free tenant that calls host.template_list or GET /templates.json to pick a template, host.template_apply(name=\"scheduled-job\"), runs the returned demo.call and shows its user the job's first result in two calls; and later host.template_remove to undo it without losing what the user changed.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,57 +14,57 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given `host.table.exec` statements containing `ATTACH`, `PRAGMA`, `load_extension(...)`, `readfile(...)`, a `CREATE TRIGGER`, or an INSERT whose subquery is not a plain SELECT, When each runs, Then each is refused `table_exec_rejected` and the tenant's file, schema and pragmas are unchanged.",
-      "test": "tests/tsql_ac01_exec_refuses_escape_statements.rs"
+      "description": "Given a fresh free tenant and a test call log, When host.template_apply(name=\"scheduled-job\") runs and then the returned demo.call runs, Then a result equal to demo.expect is in the second call's result and the log holds exactly 2 calls; a third required call fails the test (premise falsified).",
+      "test": "tests/ttpl_ac01_scheduled_job_two_calls.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a table with 3 rows, When `host.table.exec(sql=\"UPDATE t SET a=1 WHERE id=2\")` runs, Then the response is `{changed: 1, table: \"t\"}`, a following `host.table.query` shows the change, `bump_change_counter` ran with `rewrite=true`, a `dry_run` call changes nothing, and a `host.table.append` right after succeeds (`query_only` not left on).",
-      "test": "tests/tsql_ac02_update_one_row_dry_run_and_append_after.rs"
+      "description": "Given templates/*.toml, When cargo test ttpl_drift runs, Then every kind, spec field, demo tool and next verb resolves against the registry and host_tools, and a fixture template with kind = \"webhook\" fails naming the file and field.",
+      "test": "tests/ttpl_ac02_drift.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `DELETE FROM t` without WHERE, When exec runs, Then it is refused `table_exec_rejected` with `data.allowed` containing `DELETE FROM <table> WHERE \u2026` and no row is deleted.",
-      "test": "tests/tsql_ac03_where_less_delete_and_update_refused.rs"
+      "description": "Given a free tenant already holding 3 event triggers, When webhook-inbox is applied, Then the error is plan_limit with data.ceiling == \"event_triggers_max\" and the tenant's tool, table and trigger counts are unchanged.",
+      "test": "tests/ttpl_ac03_plan_ceiling_refused_before_any_create.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `SELEC * FROM t`, When `host.table.query` runs, Then the refusal carries `data.line = 1`, `data.column = 1` and `data.allowed` equal to `allowed_statement_forms()`; a test parses each `allowed` form back to a statement kind and asserts the set equals the validator's accepted set.",
-      "test": "tests/tsql_ac04_refusal_carries_position_and_generated_grammar.rs"
+      "description": "Given a tool create that fails midway (planted invalid spec in a test template), When apply runs, Then the response is the create's error and no object tagged with that template remains.",
+      "test": "tests/ttpl_ac04_failed_create_rolls_back_every_object.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a plan with `table_rows_max` reached, When exec runs an INSERT, Then `quota_exceeded` names `table_rows_max` with the same `data` keys `table_append` uses; Given two concurrent exec calls on the same row, Then both complete and `changed` sums to 2.",
-      "test": "tests/tsql_ac05_quota_and_concurrency.rs"
+      "description": "Given an applied template, When applied again with the same name, Then no duplicate tool, table or trigger exists, updated lists the objects, and the tool's version advanced by one; Given two concurrent applies, Then one succeeds and one returns conflict with data.retry_after_s.",
+      "test": "tests/ttpl_ac05_reapply_updates_in_place_and_applies_serialize.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `host.table.find(table=\"t\", where={\"amount\": {\">\": 500}, \"status\": \"open\"})`, When it runs, Then rows match the parameterised SELECT and `data.sql` shows it; Given an unknown operator `\"~\"`, Then the refusal lists `allowed_operators` and the table's columns.",
-      "test": "tests/tsql_ac06_find_by_example.rs"
+      "description": "Given anonymous and keyed host.template_list and GET /templates.json, When called, Then all three return the same five names with one_line, creates counts and plan_fit, and keyed host.quickstart without kind carries templates.",
+      "test": "tests/ttpl_ac06_list_verb_and_templates_json_agree.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given a python tool calling `mcphost.table.exec(\"INSERT INTO t (id,a) VALUES (9,1)\")`, When called via `host.tool_call`, Then the row exists and `host.table.query_log` shows `statement_kind: insert, changed: 1`.",
-      "test": "tests/tsql_ac07_python_exec.rs"
+      "level": "SHOULD",
+      "description": "Given an applied template whose tool the user republished, When host.template_remove runs, Then the trigger and table are removed, the tool is kept and named under kept.",
+      "test": "tests/ttpl_ac07_remove_keeps_what_the_user_changed.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after deploy, When the joe-test tenant runs `host.table.exec` with a one-row UPDATE through the MCP endpoint, Then `changed` is 1 and `host.table.query_log(limit=1)` returns that statement (Live; evidence: `examples/database-in-a-minute/proof.sh --exec-check`, a mode this PRD's builder adds, key read from the tenant env file, never printed) [deferred: Live, operator-provisioned prod run]",
-      "test": "examples/database-in-a-minute/proof.sh"
+      "description": "Given prod after this lands, When the public listing is fetched, Then it names at least five templates (Live; evidence: curl -s https://mcphost.dev/templates.json | python3 -c 'import json,sys;n=len(json.load(sys.stdin)[\"templates\"]);print(n);sys.exit(0 if n>=5 else 1)')",
+      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/templates.json | python3 -c 'import json,sys;n=len(json.load(sys.stdin)[\"templates\"]);print(n);sys.exit(0 if n>=5 else 1)')"
     }
   ],
   "scope": [
-    "src/table/exec.rs (allowed_statement_forms, validate_exec_structure, table_exec); src/table/find.rs (by-example compile, table_find); src/tables.rs (table_exec_rejected, positioned refusals, query-log statement_kind/changed); src/handler.rs, src/handler/arms.rs, src/dispatch_table.rs, src/write_verbs.rs (host.table.exec dry run), src/kinds/python.rs (mcphost.table.exec/find); descriptors, output schemas, generated contracts, docs, SDKs, llms.txt; examples/database-in-a-minute/proof.sh --exec-check."
+    "src/templates.rs (templates, apply, remove, list, drift check, per-tenant lock); templates/*.toml (five templates); migrations/0143_template_objects.sql (template_objects tags); src/db.rs (tag methods); src/webhook_inbox.rs and src/uptime.rs reused in process; descriptors, dispatch arms, write_verbs rows, output schemas, GET /templates.json, quickstart.templates and the generated contracts, docs, SDKs and llms.txt."
   ],
   "non_goals": [
-    "DDL through SQL; multi-statement batches; cross-tenant joins; transactions spanning calls; the llms.txt recipe example; the AC 8 prod run (operator-provisioned, deferred)."
+    "User-authored templates (host.template_apply source=, P2); templates that need secrets the host cannot ask for (the response names secrets_required and stops); changing host.webhook_inbox.create, host.uptime.create or host.example.fork; generating templates from recipes/*.toml (hand-written here); the AC 8 prod read (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -74,54 +74,54 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "one_grammar": "allowed_statement_forms() is the only list of exec statement forms; the validator, the refusal data.allowed and the tests read it.",
-      "query_only_restored": "QueryOnlyGuard restores PRAGMA query_only on every exit path."
+      "wrap_not_replace": "webhook-inbox and uptime-probes call host.webhook_inbox.create and host.uptime.create in process; they do not replace them.",
+      "all_or_nothing": "A failed create removes every object the call made; plan ceilings are checked before any create."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does an agent duplicate or recreate a table to fix a row?",
-      "a": "host.table.append only inserts whole rows and refuses a duplicate key."
+      "q": "Why does an agent need several calls to show a job's first result?",
+      "a": "host.tool_publish creates one tool; the trigger and the demo call are separate steps."
     },
     {
       "why": 2,
-      "q": "Why is there no update or delete?",
-      "a": "validate_query_structure accepts only Statement::Query, so the read guard doubled as the only write policy."
+      "q": "Why are those separate steps?",
+      "a": "The host exposes primitives; nothing composes tools, tables and triggers into a job."
     },
     {
       "why": 3,
-      "q": "Why not widen the query verb?",
-      "a": "query runs under query_only with read guards; DML needs its own gate, quota check and change counter."
+      "q": "Why can a template compose them in one call?",
+      "a": "The host already knows every piece: the kind registry, the plan ceilings and the in-process handlers behind publish, table create and trigger set."
     },
     {
       "why": 4,
-      "q": "Why do refusals not teach the agent?",
-      "a": "query_rejected carries a reason string with no position and no allowed set."
+      "q": "Why data files and a drift test?",
+      "a": "Templates are reviewable data; a PR that names a kind or verb the registry lacks must fail CI, not an agent's call."
     },
     {
       "why": 5,
-      "q": "Why generate the grammar from the allowlist?",
-      "a": "a hand-written allowed list drifts from the validator, so one function feeds both and a test parses each form back."
+      "q": "Why tag every object and lock per tenant?",
+      "a": "Rollback, re-apply and remove must act on exactly what a template made, and two applies on one tenant must not race."
     }
   ],
   "created_at": "2026-11-13T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Upsert spelling: INSERT OR REPLACE as well as ON CONFLICT?",
-      "resolution": "Both are accepted, as SQLite accepts both."
+      "question": "Does a template that needs a secret stop before create or create and mark needs_secret?",
+      "resolution": "It stops before any create and names secrets_required; the five shipped templates need none today."
     },
     {
-      "question": "Does find return the SQL it compiled?",
-      "resolution": "Yes: data.sql and data.params, plus total."
+      "question": "Should scheduled-job take the tool source as a param or wrap an existing tool?",
+      "resolution": "It ships its own jq tool in tools[], so apply works on a fresh tenant."
     },
     {
-      "question": "When is the table_rows_max ceiling checked for exec?",
-      "resolution": "After execution inside one BEGIN IMMEDIATE transaction, rolling back on excess."
+      "question": "Which tool kind does scheduled-job use?",
+      "resolution": "jq: it runs in process with no sandbox, so the demo call returns demo.expect deterministically."
     },
     {
-      "question": "Which error family does table_exec_rejected use?",
-      "resolution": "Storage, so shp_ac01 does not flag it as an unlisted Args refusal."
+      "question": "What does unmodified since apply mean for remove?",
+      "resolution": "A tool whose active version still equals the one tagged, a table whose row count still equals the count tagged, and a trigger still firing the tagged tool; anything else is kept."
     }
   ]
 }

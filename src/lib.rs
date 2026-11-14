@@ -100,6 +100,7 @@ pub mod org_export;
 pub mod org_offboard;
 pub mod org_usage;
 pub mod tenant_clients;
+pub mod templates;
 pub mod kinds;
 pub mod host_args;
 pub mod lineage;
