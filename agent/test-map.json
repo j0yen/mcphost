@@ -2751,6 +2751,17 @@
       "AC6": "tests/orgs_ac06_org_share_counts_against_shared_tools_max.rs",
       "AC7": "tests/orgs_ac07_org_tool_name_taken.rs",
       "AC8": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/llms.txt | grep -cE 'host\\.org\\.tools|visibility=\"org\"' >= 2); operator-provisioned, and host.org.tools (R6) is not built by this attempt"
+    },
+    "tsql": {
+      "_prd": "PRD-mcphost-table-sql-exec-and-grammar.md (test_prefix: tsql)",
+      "AC1": "tests/tsql_ac01_exec_refuses_escape_statements.rs",
+      "AC2": "tests/tsql_ac02_update_one_row_dry_run_and_append_after.rs",
+      "AC3": "tests/tsql_ac03_where_less_delete_and_update_refused.rs",
+      "AC4": "tests/tsql_ac04_refusal_carries_position_and_generated_grammar.rs",
+      "AC5": "tests/tsql_ac05_quota_and_concurrency.rs",
+      "AC6": "tests/tsql_ac06_find_by_example.rs",
+      "AC7": "tests/tsql_ac07_python_exec.rs",
+      "AC8": "deferred: Live (prod; evidence: examples/database-in-a-minute/proof.sh --exec-check, a mode this PRD adds; key read from the tenant env file, never printed)"
     }
   }
 }

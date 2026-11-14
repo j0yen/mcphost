@@ -70,6 +70,13 @@ async fn every_table_write_verb_bumps_the_change_counter_exactly_once() {
     assert_eq!(change_counter(&dir, "fixture"), 3, "model_set bumps once");
     exercised.insert("host.table.model_set");
 
+    // host.table.exec
+    mcphost::table::exec::table_exec(&state, &tenant, &json!({"sql": "UPDATE fixture SET notes = 'c' WHERE id = 1"}))
+        .await
+        .expect("exec");
+    assert_eq!(change_counter(&dir, "fixture"), 4, "one exec is one bump");
+    exercised.insert("host.table.exec");
+
     // host.table.handle_drop: a handle is a table of its own.
     let summary: Value = tables::table_query(&state, &tenant, &json!({"sql": "SELECT * FROM fixture", "handle": true}), None)
         .await
@@ -82,14 +89,14 @@ async fn every_table_write_verb_bumps_the_change_counter_exactly_once() {
 
     // host.table.drop
     tables::table_drop(&state, &tenant, &json!({"name": "fixture"})).await.expect("drop");
-    assert_eq!(change_counter(&dir, "fixture"), 4, "drop bumps once");
+    assert_eq!(change_counter(&dir, "fixture"), 5, "drop bumps once");
     exercised.insert("host.table.drop");
 
     // A refused call writes nothing and does not bump.
     tables::table_append(&state, &tenant, &json!({"table": "fixture", "rows": [{"id": 3}]}))
         .await
         .expect_err("the table is gone");
-    assert_eq!(change_counter(&dir, "fixture"), 4, "a refused append does not bump");
+    assert_eq!(change_counter(&dir, "fixture"), 5, "a refused append does not bump");
 
     let all: BTreeSet<&str> = TABLE_WRITE_VERBS.iter().copied().collect();
     assert_eq!(exercised, all, "this test called every verb in TABLE_WRITE_VERBS");

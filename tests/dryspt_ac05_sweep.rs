@@ -80,6 +80,7 @@ fn fixtures() -> Vec<Fx> {
     vec![
         fx("host.table.create", vec![], d(json!({"name": "t1", "columns": {"a": "text"}})), vec![("host.table.list", json!({}))]),
         fx("host.table.append", tbl(), d(json!({"table": "t1", "rows": [{"a": "x"}]})), vec![("host.table.query", json!({"sql": "SELECT COUNT(*) AS n FROM t1"}))]),
+        fx("host.table.exec", tbl_rows(), d(json!({"sql": "UPDATE t1 SET a = 'z' WHERE a = 'x'"})), vec![("host.table.query", json!({"sql": "SELECT a FROM t1 ORDER BY a"}))]),
         fx("host.table.drop", tbl_rows(), d(json!({"name": "t1"})), vec![("host.table.list", json!({})), ("host.table.query", json!({"sql": "SELECT COUNT(*) AS n FROM t1"}))]),
         fx("host.table.handle_drop", { let mut v = tbl_rows(); v.push(("host.table.query", json!({"sql": "SELECT * FROM t1", "handle": true}))); v }, d(json!({"handle": "{last.handle}"})), vec![("host.table.handles", json!({})), ("host.table.list", json!({}))]),
         fx("host.table.model_set", tbl(), d(json!({"table": "t1", "key": "description", "value": "x"})), vec![("host.table.models", json!({}))]),

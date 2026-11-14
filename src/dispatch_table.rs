@@ -216,6 +216,8 @@ pub const DISPATCH_TABLE: &[(&str, Arm)] = &[
     ("host.table.create", McpHostHandler::arm_host_table_create),
     ("host.table.describe", McpHostHandler::arm_host_table_describe),
     ("host.table.drop", McpHostHandler::arm_host_table_drop),
+    ("host.table.exec", McpHostHandler::arm_host_table_exec),
+    ("host.table.find", McpHostHandler::arm_host_table_find),
     ("host.table.graph", McpHostHandler::arm_host_table_graph),
     ("host.table.handle_drop", McpHostHandler::arm_host_table_handle_drop),
     ("host.table.handle_export", McpHostHandler::arm_host_table_handle_export),

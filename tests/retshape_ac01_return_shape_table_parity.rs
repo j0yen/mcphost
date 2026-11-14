@@ -42,6 +42,8 @@ def main(args):
         ("mcphost.table.append", lambda: table.append("orders", [{"n": 1}])),
         ("mcphost.table.query", lambda: table.query("SELECT n FROM orders")),
         ("mcphost.table.query(handle=True)", lambda: table.query("SELECT n FROM orders", handle=True)),
+        ("mcphost.table.exec", lambda: table.exec("UPDATE orders SET n = 2 WHERE n = 1")),
+        ("mcphost.table.find", lambda: table.find("orders", {"n": {">": 0}})),
         ("mcphost.table.list", lambda: table.list()),
         ("mcphost.table.schema", lambda: table.schema("orders")),
         ("mcphost.table.chart", lambda: table.chart("SELECT n FROM orders")),
