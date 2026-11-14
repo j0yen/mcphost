@@ -1,0 +1,1 @@
+{"changed":1,"data":{"quota":{"table_bytes_max":{"limit":10485760,"remaining":10444800,"used":40960},"table_handle_bytes_max":{"limit":67108864,"remaining":67108864,"used":0},"table_rows_max":{"limit":5000,"remaining":4997,"used":3},"table_tables_max":{"limit":5,"remaining":4,"used":1}}},"table":"t"}
