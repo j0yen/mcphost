@@ -2,46 +2,46 @@ import time
 
 import mcphost
 
-WINDOW_S = 24 * 60 * 60
-
-
-def _is_up(code):
-    return code is not None and 200 <= code < 300
+MINUTE_S = 60
+DAY_S = 24 * 60 * 60
 
 
 def main(args):
-    targets = mcphost.state.query(table="targets", order_by="added_at asc")["rows"]
-    now = time.time()
+    # PRD-mcphost-timeseries-buckets R6: every number below is a bucket
+    # `host.ts.get` computed; this tool only reads them. The window starts on
+    # a whole minute so the bucket timestamps (and `down_since`) do not move
+    # between two calls, and ends under a day after it so the 1d bucket is one.
+    now = int(time.time())
+    start = (now // MINUTE_S - (DAY_S // MINUTE_S - 1)) * MINUTE_S
+
     out = []
-    for t in targets:
-        url = t["url"]
-        rows = mcphost.state.query(table="checks", where=f"url = '{url}'", order_by="at asc")["rows"]
-        if not rows:
+    for url in mcphost.state.get("targets", default=[]):
+        tags = {"url": url}
+        minutes = mcphost.ts.get("up", "1m", from_=start, tags=tags)["buckets"]
+        if not minutes:
             out.append(
-                {"url": url, "last_code": None, "last_ms": None, "last_at": None, "up_pct_24h": 0}
+                {"url": url, "up": None, "up_pct_24h": 0, "last_at": None, "latency_p95_ms": None}
             )
             continue
 
-        last = rows[-1]
-        recent = [r for r in rows if r["at"] >= now - WINDOW_S]
-        up_count = sum(1 for r in recent if _is_up(r["code"]))
-        up_pct = round(100 * up_count / len(recent)) if recent else 0
-
+        day = mcphost.ts.get("up", "1d", from_=start, tags=tags)["buckets"]
+        latency = mcphost.ts.get("latency_ms", "1d", from_=start, tags=tags)["buckets"]
+        newest = minutes[-1]
         entry = {
             "url": url,
-            "last_code": last["code"],
-            "last_ms": last["ms"],
-            "last_at": last["at"],
-            "up_pct_24h": up_pct,
+            "up": newest["max"] >= 1,
+            "up_pct_24h": round(100 * day[0]["avg"]),
+            "last_at": newest["ts"],
+            "latency_p95_ms": latency[0]["p95"] if latency else None,
         }
-        if not _is_up(last["code"]):
-            # Walk back from the newest row while it's still down; the
-            # earliest `at` in that unbroken streak is `down_since`.
-            down_since = last["at"]
-            for r in reversed(rows):
-                if _is_up(r["code"]):
+        if not entry["up"]:
+            # Walk back from the newest minute while no probe in it succeeded;
+            # the earliest bucket of that unbroken streak is `down_since`.
+            down_since = newest["ts"]
+            for bucket in reversed(minutes):
+                if bucket["max"] >= 1:
                     break
-                down_since = r["at"]
+                down_since = bucket["ts"]
             entry["down_since"] = down_since
         out.append(entry)
     return {"targets": out}
