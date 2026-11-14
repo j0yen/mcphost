@@ -155,7 +155,7 @@ One line per family; `host.help.get(name)` describes a verb. Callable before you
 - `host.spec.*` (1): test (alias host.spec_test)
 - `host.state.*` (9): delete, delete_rows, get, insert, list, query, set, table_create, table_drop
 - `host.sync.*` (5): create, delete, get, list, run_now
-- `host.table.*` (21): append, chart, charts, count, create, describe, drop, graph, handle_drop, handle_export, handles, join_paths, list, model_set, models, next_questions, query, query_diagnose, query_log, query_stats, schema
+- `host.table.*` (23): append, chart, charts, count, create, describe, drop, exec, find, graph, handle_drop, handle_export, handles, join_paths, list, model_set, models, next_questions, query, query_diagnose, query_log, query_stats, schema
 - `host.task.*` (5): claim, complete, dead_letters, get, post
 - `host.tool.*` (15): call (alias host.tool_call), diff (alias host.tool_diff), fork (alias host.tool_fork), history (alias host.tool_history), list (alias host.tool_list), list_shared (alias host.tool_list_shared), logs (alias host.tool_logs), publish (alias host.tool_publish), remove (alias host.tool_remove), rollback (alias host.tool_rollback), run (alias host.tool_run), share (alias host.tool_share), spec_shared (alias host.tool_spec_shared), test (alias host.tool_test), unshare (alias host.tool_unshare)
 - `host.trigger.*` (10): dead_letters, fire, get, list, pause, remove, replay, resume, set, test
@@ -505,6 +505,7 @@ What to do next for each code the host returns (`host.errors` has the full rows)
 - `table_already_exists` (agent_fault): Use a different table name or drop the existing one.
 - `table_bound_exceeded` (agent_fault): Narrow the query so it stays under data.bound's limit.
 - `table_column_not_found` (agent_fault): Use a declared column; data.candidates lists the closest ones in data.table.
+- `table_exec_rejected` (agent_fault): Fix the statement; data.reason says why it was rejected and data.allowed lists the statement forms.
 - `table_not_found` (agent_fault): Declare the table first or use a declared name.
 - `table_query_rejected` (agent_fault): Fix the query; data.reason says why it was rejected.
 - `table_row_conflict` (agent_fault): Change the conflicting value in data.column or query the table first; nothing was appended.

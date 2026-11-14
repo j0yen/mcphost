@@ -1308,7 +1308,7 @@ impl AppError {
                 // the same INVALID_PARAMS bucket the `state_*` group above
                 // already uses for the analogous KV-store rejections.
                 "table_schema_violation" | "table_not_found" | "table_column_not_found" | "table_query_rejected"
-                | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
+                | "table_exec_rejected" | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
                 c if c == crate::tables::TABLE_ROW_CONFLICT || c == NAMESPACE_RESERVED => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-document-store P0 requirements 2-5: a too-large
                 // put, an unsupported mime, or either quota overrun are all

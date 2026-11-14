@@ -1925,6 +1925,36 @@
       ],
       "variants": []
     },
+    "host.table.exec": {
+      "unreached": [
+        {
+          "code": "table_exec_rejected",
+          "state": "after_create"
+        },
+        {
+          "code": "table_exec_rejected",
+          "state": "dry_run"
+        },
+        {
+          "code": "table_exec_rejected",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.find": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
     "host.table.graph": {
       "unreached": [],
       "variants": []
@@ -4475,6 +4505,36 @@
       ],
       "variants": []
     },
+    "host_table_exec": {
+      "unreached": [
+        {
+          "code": "table_exec_rejected",
+          "state": "after_create"
+        },
+        {
+          "code": "table_exec_rejected",
+          "state": "dry_run"
+        },
+        {
+          "code": "table_exec_rejected",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_find": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
     "host_table_graph": {
       "unreached": [],
       "variants": []
@@ -5026,5 +5086,5 @@
       "variants": []
     }
   },
-  "unreached_cap": 616
+  "unreached_cap": 626
 }

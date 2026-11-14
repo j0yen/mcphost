@@ -23,6 +23,10 @@
 #                 Default: https://mcphost.dev/mcp
 #
 # Exit code 0 iff every check below passes.
+#
+# proof.sh --exec-check [URL] runs the one-row `host.table.exec` proof instead
+# (PRD-mcphost-table-sql-exec-and-grammar AC8, Live, as the joe-test tenant; the
+# key is read from its env file and never printed): see proof-exec.sh.
 
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -30,6 +34,7 @@ cd "$(dirname "$0")"
 MCPHOST_URL="${MCPHOST_URL:-https://mcphost.dev/mcp}"
 # MCPHOST_PROVE_DRY=1: print the plan and exit 0 before any network call (the runner-contract test sets it).
 [[ -n "${MCPHOST_PROVE_DRY:-}" ]] && { echo "plan: database-in-a-minute proof against $MCPHOST_URL"; exit 0; }
+[[ "${1:-}" == "--exec-check" ]] && exec bash ./proof-exec.sh "$@"
 FAILURES=0
 START_EPOCH=$(python3 -c 'import time; print(time.time())')
 

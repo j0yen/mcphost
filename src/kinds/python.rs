@@ -2494,6 +2494,8 @@ pub const BRIDGE_MODULES: &[BridgeModule] = &[
             "mcphost.table.create(name, columns, primary_key=None) -- create a SQL table",
             "mcphost.table.append(table, rows) -- append rows to a SQL table",
             "mcphost.table.query(sql) -- run a read-only SQL query",
+            "mcphost.table.exec(sql) -- run one INSERT, UPDATE or DELETE (WHERE required on UPDATE/DELETE); returns {changed, table}",
+            "mcphost.table.find(table, where=None, limit=None, order=None) -- find rows by example, no SQL",
             "mcphost.table.list() -- list this tenant's SQL tables",
             "mcphost.table.drop(name) -- drop a SQL table",
             "mcphost.table.schema(table) -- describe a SQL table's columns",
@@ -2649,6 +2651,8 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
         shape: Envelope(&[("table", "str"), ("appended", "int"), ("ids", "list")]),
     },
     BridgeReturn { function: "mcphost.table.query", shape: Envelope(&[("rows", "list")]) },
+    BridgeReturn { function: "mcphost.table.exec", shape: Envelope(&[("changed", "int"), ("table", "str")]) },
+    BridgeReturn { function: "mcphost.table.find", shape: Envelope(&[("rows", "list"), ("total", "int"), ("data", "dict")]) },
     // `handle=True` materialises a result handle instead of returning rows
     // (PRD-mcphost-result-handles): a different envelope, so its own row.
     BridgeReturn {
@@ -3519,6 +3523,20 @@ def _table_query(sql, handle=False, ttl_s=None):
         kwargs["ttl_s"] = ttl_s
     return _table_call("query", **kwargs)
 
+# PRD-mcphost-table-sql-exec-and-grammar R6: mirrors host.table.exec/find.
+def _table_exec(sql):
+    return _table_call("exec", sql=sql)
+
+def _table_find(table, where=None, limit=None, order=None):
+    kwargs = {"table": table}
+    if where is not None:
+        kwargs["where"] = where
+    if limit is not None:
+        kwargs["limit"] = limit
+    if order is not None:
+        kwargs["order"] = order
+    return _table_call("find", **kwargs)
+
 def _table_list():
     return _table_call("list")
 
@@ -3590,6 +3608,8 @@ _mcphost_table_mod = _mcphost_types.ModuleType("mcphost.table")
 _mcphost_table_mod.create = _table_create
 _mcphost_table_mod.append = _table_append
 _mcphost_table_mod.query = _table_query
+_mcphost_table_mod.exec = _table_exec
+_mcphost_table_mod.find = _table_find
 _mcphost_table_mod.list = _table_list
 _mcphost_table_mod.drop = _table_drop
 _mcphost_table_mod.schema = _table_schema

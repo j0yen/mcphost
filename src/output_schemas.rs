@@ -314,6 +314,7 @@ pub const OPAQUE_FIELDS: &[(&str, &str)] = &[
     ("host.state.get", "/properties/value"),
     ("host.state.list", "/properties/keys/items/properties/value"),
     ("host.state.query", "/properties/rows/items"),
+    ("host.table.find", "/properties/rows/items"),
     ("host.table.query", "/properties/rows/items"),
     ("host.tool.run", "/properties/payload"),
     ("host.tool.test", "/properties/data"),
