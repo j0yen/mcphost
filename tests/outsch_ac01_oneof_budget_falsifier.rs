@@ -48,14 +48,90 @@ fn at_most_ten_percent_of_tools_need_a_oneof_of_more_than_three_branches() {
     );
 }
 
+// The coverage gate counts the COMMITTED corpus only. It used to count
+// `outsch_rows()`, which adds `target/outsch/`, and the harness fills that
+// directory only from suites that ran earlier in the same checkout. A CI core
+// shard runs a weight-chosen subset of the suites, so the same head passed or
+// failed depending on which suites shared its shard (PRD-mcphost-outsch-ac01-
+// coverage-diagnosable, PR 575, names the defect; this keeps its rule: 80 %
+// unchanged, committed rows only, the failure names the gap).
 #[test]
 fn the_corpus_covers_at_least_eighty_percent_of_registered_tools() {
+    match common::outsch_coverage_report(&registered_tools(), &common::outsch_committed_rows()) {
+        Ok(summary) => println!("{summary}"),
+        Err(e) => panic!("{e}"),
+    }
+}
+
+#[test]
+fn the_coverage_verdict_ignores_what_target_outsch_holds() {
+    let scratch = std::env::temp_dir().join(format!("outsch-ac01-capture-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let (empty, polluted) = (scratch.join("empty"), scratch.join("polluted"));
+    std::fs::create_dir_all(&empty).unwrap();
+    std::fs::create_dir_all(&polluted).unwrap();
     let tools = registered_tools();
-    let rows = common::outsch_rows();
-    let covered = tools.iter().filter(|t| rows.get(**t).is_some_and(|r| !r.is_empty())).count();
-    let uncovered: Vec<&&str> = tools.iter().filter(|t| rows.get(**t).is_none_or(|r| r.is_empty())).collect();
-    println!("coverage {covered}/{}; uncovered: {uncovered:?}", tools.len());
-    assert!(covered * 10 >= tools.len() * 8, "coverage {covered}/{} < 80 %: {uncovered:?}", tools.len());
+    for tool in &tools {
+        std::fs::write(polluted.join(format!("{tool}.jsonl")), "{}\n").unwrap();
+    }
+    let fixtures = common::outsch_fixture_dir();
+    let committed = common::outsch_coverage_report(&tools, &common::outsch_committed_rows_in(&fixtures));
+    // The union the gate used to count: a capture dir with a row for every
+    // tool reads as full coverage, an empty one as the committed share.
+    let union_polluted = common::outsch_coverage_report(&tools, &common::outsch_rows_in(&fixtures, &polluted));
+    let union_empty = common::outsch_coverage_report(&tools, &common::outsch_rows_in(&fixtures, &empty));
+    let _ = std::fs::remove_dir_all(&scratch);
+    assert_eq!(union_empty, committed, "an empty capture dir adds nothing");
+    let full = format!("{0}/{0} ", tools.len());
+    assert!(union_polluted.as_ref().is_ok_and(|s| s.starts_with(&full)), "the old union reads a polluted dir as full coverage: {union_polluted:?}");
+    assert_eq!(
+        common::outsch_coverage_report(&tools, &common::outsch_committed_rows()),
+        committed,
+        "the gate reads the committed corpus, never the capture dir"
+    );
+}
+
+#[test]
+fn the_coverage_report_names_the_counts_and_every_uncovered_tool() {
+    let tools = ["t.a", "t.b", "t.c", "t.d", "t.e", "t.f", "t.g", "t.h", "t.i", "t.j"];
+    let rows = |n: usize| -> std::collections::BTreeMap<String, Vec<Value>> {
+        tools[..n].iter().map(|t| (t.to_string(), vec![json!({})])).collect()
+    };
+    let err = common::outsch_coverage_report(&tools, &rows(7)).expect_err("7/10 is under 80 %");
+    assert!(err.starts_with("7/10 "), "the counts lead the text: {err}");
+    assert!(err.contains("need 8") && err.contains("under 80 %"), "{err}");
+    assert!(err.contains(r#"["t.h", "t.i", "t.j"]"#), "every uncovered tool, sorted: {err}");
+    assert!(!err.contains("\"t.a\""), "a covered tool is never listed: {err}");
+    let ok = common::outsch_coverage_report(&tools, &rows(8)).expect("8/10 is 80 %");
+    assert!(ok.starts_with("8/10 ") && ok.contains(r#"["t.i", "t.j"]"#), "{ok}");
+    let mut empty_rows = rows(8);
+    empty_rows.insert("t.h".to_string(), Vec::new());
+    let err = common::outsch_coverage_report(&tools, &empty_rows).expect_err("a file with no rows covers nothing");
+    assert!(err.starts_with("7/10 "), "{err}");
+    let mut unregistered = rows(7);
+    unregistered.insert("not.registered".to_string(), vec![json!({})]);
+    let err = common::outsch_coverage_report(&tools, &unregistered).expect_err("a row for an unregistered tool covers nothing");
+    assert!(err.starts_with("7/10 "), "{err}");
+    let names: Vec<String> = (0..50).map(|i| format!("t.{i:02}")).collect();
+    let many: Vec<&str> = names.iter().map(String::as_str).collect();
+    let thirty: std::collections::BTreeMap<String, Vec<Value>> = many[..30].iter().map(|t| (t.to_string(), vec![json!({})])).collect();
+    assert!(common::outsch_coverage_report(&many, &thirty).is_err_and(|e| e.starts_with("30/50 ")), "30/50 is 60 %");
+}
+
+#[test]
+fn an_invalid_captured_row_still_fails_schema_validation() {
+    // Rows from the capture dir are still VALIDATED (never counted): a row that
+    // breaks its tool's schema is rejected, wherever it came from.
+    let scratch = std::env::temp_dir().join(format!("outsch-ac01-invalid-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    std::fs::write(scratch.join("host.whoami.jsonl"), format!("{}\n", json!({"not": "a whoami"}))).unwrap();
+    let rows = common::outsch_rows_in(&common::outsch_fixture_dir(), &scratch);
+    let _ = std::fs::remove_dir_all(&scratch);
+    let schema = Value::Object((*output_schema_for("host.whoami").expect("registered")).clone());
+    let validator = jsonschema::validator_for(&schema).expect("valid schema");
+    let bad = rows["host.whoami"].iter().filter(|r| !validator.is_valid(r)).count();
+    assert_eq!(bad, 1, "exactly the planted row is rejected");
 }
 
 // ---- hotfix output-schema-nullable-and-optional-cursor ----
