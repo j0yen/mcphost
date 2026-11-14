@@ -57,6 +57,7 @@ A python tool's own code does `import mcphost` to reach this tenant's data witho
 - `mcphost.table` -- per-tenant SQL tables (same store host.table.* uses)
 - `mcphost.docs` -- read or search this tenant's stored documents (same store host.docs.* uses)
 - `mcphost.index` -- create, poll and list named indexes (same verbs host.index.* uses)
+- `mcphost.ts` -- append numbers to a time series and read them back bucketed (same verbs host.ts.* uses)
 - `mcphost.blob` -- read or store files of any type under this tenant (same store host.blob.* uses)
 - `mcphost.lineage` -- trace an artifact's lineage or estimate a change's blast radius (same report host.lineage.* uses)
 - `mcphost.drift` -- list drift review items (same list host.drift.reviews returns)
@@ -159,6 +160,7 @@ One line per family; `host.help.get(name)` describes a verb. Callable before you
 - `host.task.*` (5): claim, complete, dead_letters, get, post
 - `host.tool.*` (15): call (alias host.tool_call), diff (alias host.tool_diff), fork (alias host.tool_fork), history (alias host.tool_history), list (alias host.tool_list), list_shared (alias host.tool_list_shared), logs (alias host.tool_logs), publish (alias host.tool_publish), remove (alias host.tool_remove), rollback (alias host.tool_rollback), run (alias host.tool_run), share (alias host.tool_share), spec_shared (alias host.tool_spec_shared), test (alias host.tool_test), unshare (alias host.tool_unshare)
 - `host.trigger.*` (10): dead_letters, fire, get, list, pause, remove, replay, resume, set, test
+- `host.ts.*` (4): get, list, put, trim
 - `host.uptime.*` (1): create
 - `host.vault.*` (6): connect_link, disconnect, provider_remove, provider_set, providers, status
 - `host.webhook_inbox.*` (1): create
@@ -241,6 +243,7 @@ Ceilings the plan enforces, free then pro (a call over one is refused, never cli
 - `table_tables_max`: free 5 · pro 50
 - `tasks_open_max`: free 20 · pro 200
 - `tools_max`: free 50 · pro 50
+- `ts_points_max`: free 50000 · pro 2000000
 - `urgent_per_day`: free 3 · pro 100
 - `vault_providers_max`: free 2 · pro 20
 - `versions_max`: free 5 · pro 20

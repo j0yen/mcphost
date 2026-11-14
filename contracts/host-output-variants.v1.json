@@ -2586,6 +2586,26 @@
       ],
       "variants": []
     },
+    "host.ts.get": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.ts.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.ts.put": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.ts.trim": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
     "host.uptime.create": {
       "unreached": [
         {
@@ -4948,6 +4968,26 @@
         }
       ],
       "variants": []
+    },
+    "host_ts_get": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_ts_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_ts_put": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_ts_trim": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
     },
     "host_uptime_create": {
       "unreached": [

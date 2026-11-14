@@ -2518,6 +2518,16 @@ pub const BRIDGE_MODULES: &[BridgeModule] = &[
         ],
     },
     BridgeModule {
+        name: "ts",
+        purpose: "append numbers to a time series and read them back bucketed (same verbs host.ts.* uses)",
+        signatures: &[
+            "mcphost.ts.put(series, value, ts=None, tags=None) -- append one numeric point (ts is unix seconds, default now)",
+            "mcphost.ts.get(series, bucket, from_=\"-24h\", to=\"now\", tags=None) -- count/min/max/avg/p50/p95 per bucket (1m 5m 15m 1h 6h 1d)",
+            "mcphost.ts.list() -- every series with points, oldest_ts and newest_ts",
+            "mcphost.ts.trim(series, keep_last=None, before_ts=None) -- delete points; give exactly one cut",
+        ],
+    },
+    BridgeModule {
         name: "blob",
         purpose: "read or store files of any type under this tenant (same store host.blob.* uses)",
         signatures: &[
@@ -2709,6 +2719,16 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
         ]),
     },
     BridgeReturn { function: "mcphost.index.list", shape: Envelope(&[("indexes", "list")]) },
+    BridgeReturn { function: "mcphost.ts.put", shape: Envelope(&[("series", "str"), ("points", "int"), ("oldest_ts", "int")]) },
+    BridgeReturn {
+        function: "mcphost.ts.get",
+        shape: Envelope(&[("series", "str"), ("bucket_s", "int"), ("from", "int"), ("to", "int"), ("buckets", "list")]),
+    },
+    BridgeReturn { function: "mcphost.ts.list", shape: Envelope(&[("series", "list"), ("truncated", "bool")]) },
+    BridgeReturn {
+        function: "mcphost.ts.trim",
+        shape: Envelope(&[("series", "str"), ("deleted", "int"), ("points", "int"), ("oldest_ts", "int")]),
+    },
     BridgeReturn { function: "mcphost.blob.get", shape: Plain("bytes (the file's exact content)") },
     BridgeReturn {
         function: "mcphost.blob.put",
@@ -3745,6 +3765,58 @@ _mcphost_index_mod.status = _index_status
 _mcphost_index_mod.list = _index_list
 _mcphost_index_mod.IndexOpError = McphostDocsError
 
+# ---- mcphost.ts (PRD-mcphost-timeseries-buckets R7) ------------------------
+#
+# Rides the docs channel (ops `ts_put`/`ts_get`/`ts_list`/`ts_trim`): the host
+# answers with exactly the JSON the `host.ts.*` verbs return.
+def _ts_put(series, value, ts=None, tags=None):
+    """Append one numeric point to a series.
+
+    writes: host.ts.put (control plane).
+    """
+    kwargs = {"series": series, "value": value}
+    if ts is not None:
+        kwargs["ts"] = ts
+    if tags is not None:
+        kwargs["tags"] = tags
+    return _docs_call("ts_put", **kwargs)
+
+def _ts_get(series, bucket, from_="-24h", to="now", tags=None):
+    """One series bucketed over a range; the host.ts.get object.
+
+    `from` is a Python keyword, so the argument is `from_`.
+    """
+    kwargs = {"series": series, "bucket": bucket, "from": from_, "to": to}
+    if tags is not None:
+        kwargs["tags"] = tags
+    return _docs_call("ts_get", **kwargs)
+
+def _ts_list():
+    """Every series with points, oldest_ts and newest_ts; the host.ts.list object."""
+    return _docs_call("ts_list")
+
+def _ts_trim(series, keep_last=None, before_ts=None):
+    """Delete points from a series; give exactly one cut.
+
+    writes: host.ts.trim (control plane).
+    """
+    kwargs = {"series": series}
+    if keep_last is not None:
+        kwargs["keep_last"] = keep_last
+    if before_ts is not None:
+        kwargs["before_ts"] = before_ts
+    return _docs_call("ts_trim", **kwargs)
+
+_mcphost_ts_mod = _mcphost_types.ModuleType(
+    "mcphost.ts",
+    "Append numbers to a time series and read them back bucketed (put, get, list, trim).",
+)
+_mcphost_ts_mod.put = _ts_put
+_mcphost_ts_mod.get = _ts_get
+_mcphost_ts_mod.list = _ts_list
+_mcphost_ts_mod.trim = _ts_trim
+_mcphost_ts_mod.TsError = McphostDocsError
+
 # ---- mcphost.blob (PRD-mcphost-blob-put-get-signed-url R6) -----------------
 #
 # Rides the docs channel above (`__mcphost_docs__`, ops `blob_get`/`blob_put`):
@@ -4088,6 +4160,7 @@ _mcphost_mod.table = _mcphost_table_mod
 _mcphost_mod.docs = _mcphost_docs_mod
 _mcphost_mod.blob = _mcphost_blob_mod
 _mcphost_mod.index = _mcphost_index_mod
+_mcphost_mod.ts = _mcphost_ts_mod
 _mcphost_mod.lineage = _mcphost_lineage_mod
 _mcphost_mod.drift = _mcphost_drift_mod
 _mcphost_mod.channel = _mcphost_channel_mod
@@ -4130,6 +4203,7 @@ sys.modules["mcphost.table"] = _mcphost_table_mod
 sys.modules["mcphost.docs"] = _mcphost_docs_mod
 sys.modules["mcphost.blob"] = _mcphost_blob_mod
 sys.modules["mcphost.index"] = _mcphost_index_mod
+sys.modules["mcphost.ts"] = _mcphost_ts_mod
 sys.modules["mcphost.lineage"] = _mcphost_lineage_mod
 sys.modules["mcphost.drift"] = _mcphost_drift_mod
 sys.modules["mcphost.channel"] = _mcphost_channel_mod

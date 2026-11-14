@@ -20,13 +20,21 @@ members = [
 [profile.dev]
 debug = "line-tables-only"  # 2026-10-13 red leg 78: full debuginfo made every test binary 830-900 MB (34 artifacts > 300 MB = 22.8 G per worktree) and saturated the build host's NVMe; line tables keep file:line in backtraces and panics
 
+# PRD-mcphost-timeseries-buckets AC5: the bundled SQLite is C compiled by `cc` at the
+# profile's opt-level. At 0 the window-function query behind `host.ts.get` takes ~290 ms
+# over 50,000 points (53 ms at 3) against a 200 ms budget measured in the test profile.
+# Only this one C library is optimised; the crate, every other dependency and
+# `[profile.release]` keep their settings.
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3
+
 [profile.release]
 strip = true
 
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.130.14"
+version = "0.130.18"
 edition = "2024"
 rust-version = "1.95"
 description = "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working."
