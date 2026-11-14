@@ -13,8 +13,12 @@ MAX_TARGETS = 20
 # Requirement 1: 10 s per-URL timeout.
 FETCH_TIMEOUT_S = 10
 NOTIFY_TIMEOUT_S = 5
-# Requirement 2: `checks` rows older than this are deleted every run.
+# Points older than this are trimmed from both series every run.
 RETENTION_S = 24 * 60 * 60
+# PRD-mcphost-timeseries-buckets R6: one point per target per run in each
+# series, tagged with the url. `status` reads them back with `host.ts.get`.
+UP_SERIES = "up"
+LATENCY_SERIES = "latency_ms"
 
 
 def _is_up(code):
@@ -83,35 +87,34 @@ def _notify_owner(url, code):
         pass
 
 
+def _was_up(url):
+    """The last recorded state of `url`, from the newest minute bucket of its
+    `up` series. A target with no history is assumed up, so a target that is
+    down from its very first check still flips (and notifies) rather than
+    needing a second, confirming failure."""
+    buckets = mcphost.ts.get(UP_SERIES, "1m", from_="-24h", tags={"url": url})["buckets"]
+    return True if not buckets else buckets[-1]["max"] >= 1
+
+
 def main(args):
-    all_targets = mcphost.state.query(table="targets", order_by="added_at asc")["rows"]
+    all_targets = mcphost.state.get("targets", default=[])
     total_targets = len(all_targets)
     capped = total_targets > MAX_TARGETS
     targets = all_targets[:MAX_TARGETS]
 
-    now = time.time()
-    checks = []
-    for t in targets:
-        url = t["url"]
-        # A target with no prior history is assumed up, so a target that
-        # is down from its very first check still flips (and notifies)
-        # rather than needing a second, confirming failure.
-        prev_rows = mcphost.state.query(
-            table="checks", where=f"url = '{url}'", order_by="at desc", limit=1
-        )["rows"]
-        prev_up = True if not prev_rows else _is_up(prev_rows[0]["code"])
-
+    for url in targets:
+        prev_up = _was_up(url)
         code, ms = _fetch(url)
-        checks.append({"url": url, "code": code, "ms": ms, "at": now})
-
-        if _is_up(code) != prev_up:
+        up = _is_up(code)
+        mcphost.ts.put(UP_SERIES, 1 if up else 0, tags={"url": url})
+        mcphost.ts.put(LATENCY_SERIES, ms, tags={"url": url})
+        if up != prev_up:
             _notify_owner(url, code)
-
-    if checks:
-        mcphost.state.insert(table="checks", rows=checks)
 
     # Requirement 2/AC4: retention runs every call, regardless of how many
     # targets exist this run.
-    mcphost.state.delete_rows(table="checks", where=f"at < {now - RETENTION_S}")
+    cutoff = int(time.time() - RETENTION_S)
+    for series in (UP_SERIES, LATENCY_SERIES):
+        mcphost.ts.trim(series, before_ts=cutoff)
 
     return {"probed": len(targets), "total_targets": total_targets, "capped": capped}

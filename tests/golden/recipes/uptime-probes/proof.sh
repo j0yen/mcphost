@@ -4,11 +4,16 @@
 #   1. host.uptime.create
 #   2. host.tool_call
 # proof.sh -- runnable end-to-end proof of "Uptime probes with no server"
-# (see www/llms.txt). One fresh tenant against $MCPHOST_URL: two tables,
-# two targets (one healthy URL, one that returns 503), `probe` published
-# and scheduled, `host.trigger.fire` twice instead of waiting 5 minutes,
-# asserting two `checks` rows per target and that `status` marks the 503
-# target down with a `down_since` while the healthy one shows 100%.
+# (see www/llms.txt) on the time-series route (PRD-mcphost-timeseries-buckets
+# R6). One fresh tenant against $MCPHOST_URL: three targets (two healthy, one
+# that returns 503) in the `targets` key, `probe` published and scheduled,
+# `host.trigger.fire` twice instead of waiting 5 minutes, asserting that each
+# target now holds two points in each of the `up` and `latency_ms` series
+# (`host.ts.get`), then planting the result a reachable network would have
+# produced (one `up` point per target, 0 for the 503 one) and asserting that
+# `status` -- which reads `host.ts.get` and nothing else -- reports exactly
+# that one target down. The last line is
+# `status: down=<n> up=<n> via host.ts.get`.
 #
 # Requires: bash, curl, python3. Deliberately has no jq dependency.
 #
@@ -16,14 +21,15 @@
 #   MCPHOST_URL     the endpoint to run the recipe against.
 #                   Default: https://mcphost.dev/mcp
 #   HEALTHY_URL     a URL that returns 2xx. Default: https://httpbin.org/status/200
+#   SECOND_URL      a second URL that returns 2xx. Default: https://httpbin.org/status/204
 #   DOWN_URL        a URL that returns a non-2xx status. Default: https://httpbin.org/status/503
 #   PROBE_NETWORK   the `network` the probe tool is published with.
 #                   Default: none (works on the free plan). `public` is
 #                   `plan: pro`: a free tenant is refused with
 #                   `plan_required`; on pro the probe really reaches
-#                   HEALTHY_URL / DOWN_URL and the healthy target shows 100%.
-#                   With `none` the probe cannot reach either URL, so BOTH
-#                   targets record code 0 and show down.
+#                   the URLs. With `none` the probe cannot reach any of them,
+#                   so it records `up` 0 for every target; the planted points
+#                   (newer, same minute) are what `status` then reports.
 #
 # Exit code 0 iff every check below passes.
 
@@ -35,6 +41,7 @@ MCPHOST_URL="${MCPHOST_URL:-https://mcphost.dev/mcp}"
 [[ -n "${MCPHOST_PROVE_DRY:-}" ]] && { echo "plan: uptime-probes proof against $MCPHOST_URL"; exit 0; }
 PROBE_NETWORK="${PROBE_NETWORK:-none}"
 HEALTHY_URL="${HEALTHY_URL:-https://httpbin.org/status/200}"
+SECOND_URL="${SECOND_URL:-https://httpbin.org/status/204}"
 DOWN_URL="${DOWN_URL:-https://httpbin.org/status/503}"
 FAILURES=0
 START_EPOCH=$(python3 -c 'import time; print(time.time())')
@@ -194,19 +201,12 @@ KEY=$(json_str "$signup_struct" "key")
 check "tenant_signed_up" "$([[ -n "$KEY" ]] && echo 1 || echo 0)"
 echo "NS=${NS}"
 
-# 2. The two tables.
-targets_resp=$(mcp_call "host.state.table_create" '{"name": "targets", "schema": {"url": "text", "added_at": "real"}, "primary_key": "url"}' "$KEY")
-check "targets_table_create" "$(has_error "$targets_resp" && echo 0 || echo 1)"
+# 2. Three targets in the `targets` key: two healthy, one that returns 503.
+targets_args=$(python3 -c 'import json,sys; print(json.dumps({"key": "targets", "value": sys.argv[1:]}))' "$HEALTHY_URL" "$SECOND_URL" "$DOWN_URL")
+targets_resp=$(mcp_call "host.state.set" "$targets_args" "$KEY")
+check "targets_set" "$(has_error "$targets_resp" && echo 0 || echo 1)"
 
-checks_resp=$(mcp_call "host.state.table_create" '{"name": "checks", "schema": {"url": "text", "code": "integer", "ms": "real", "at": "real"}}' "$KEY")
-check "checks_table_create" "$(has_error "$checks_resp" && echo 0 || echo 1)"
-
-# 3. Two targets: one healthy, one that returns 503.
-insert_args=$(python3 -c 'import json,sys,time; print(json.dumps({"table": "targets", "rows": [{"url": sys.argv[1], "added_at": time.time()}, {"url": sys.argv[2], "added_at": time.time()}]}))' "$HEALTHY_URL" "$DOWN_URL")
-insert_resp=$(mcp_call "host.state.insert" "$insert_args" "$KEY")
-check "targets_inserted" "$(has_error "$insert_resp" && echo 0 || echo 1)"
-
-# 4. Publish probe (python, network: $PROBE_NETWORK -- `none` on the free
+# 3. Publish probe (python, network: $PROBE_NETWORK -- `none` on the free
 #    plan, `public` is plan: pro) and status (python).
 PROBE_SRC=$(cat tools/probe.py)
 publish_args=$(python3 -c 'import json,sys; print(json.dumps({"name":"probe","kind":"python","spec":{"source": sys.argv[1], "network": sys.argv[2]}}))' "$PROBE_SRC" "$PROBE_NETWORK")
@@ -219,7 +219,10 @@ publish_args=$(python3 -c 'import json,sys; print(json.dumps({"name":"status","k
 publish_resp=$(mcp_call "host.tool_publish" "$publish_args" "$KEY")
 check "publish_status" "$(has_error "$publish_resp" && echo 0 || echo 1)"
 
-# 5. Schedule probe every 5 minutes (the free plan's floor), then fire it
+# status reads host.ts.get and nothing else: no state.query / state.insert in it.
+check "status_source_has_no_state_query" "$([[ "$(grep -cE 'state\.(query|insert)' tools/status.py)" == "0" ]] && echo 1 || echo 0)"
+
+# 4. Schedule probe every 5 minutes (the free plan's floor), then fire it
 #    twice instead of waiting 10 minutes -- a real user just waits.
 set_resp=$(mcp_call "host.trigger.set" '{"tool": "probe", "kind": "schedule", "schedule": "*/5 * * * *"}' "$KEY")
 check "trigger_set" "$(has_error "$set_resp" && echo 0 || echo 1)"
@@ -234,35 +237,40 @@ for i in 1 2; do
   check "probe_fire_${i}_succeeds" "$([[ "$run_status" == "done" ]] && echo 1 || echo 0)"
 done
 
-# 6. Two checks rows per target -- AC2.
-healthy_query_args=$(python3 -c 'import json,sys; print(json.dumps({"table": "checks", "where": "url = \x27%s\x27" % sys.argv[1]}))' "$HEALTHY_URL")
-healthy_checks=$(structured_of "$(mcp_call "host.state.query" "$healthy_query_args" "$KEY")")
-healthy_row_count=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(len(d.get("rows") or []))' "$healthy_checks")
-check "healthy_target_has_two_checks" "$([[ "$healthy_row_count" == "2" ]] && echo 1 || echo 0)"
+# points_of <series> <url> -- how many points the series holds for the url
+# over the last 24 h, counted from host.ts.get (one day-wide bucket per call).
+points_of() {
+  local args resp
+  args=$(python3 -c 'import json,sys; print(json.dumps({"series": sys.argv[1], "bucket": "1d", "from": "-24h", "tags": {"url": sys.argv[2]}}))' "$1" "$2")
+  resp=$(structured_of "$(mcp_call "host.ts.get" "$args" "$KEY")")
+  python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(sum(b.get("count", 0) for b in d.get("buckets") or []))' "$resp"
+}
 
-down_query_args=$(python3 -c 'import json,sys; print(json.dumps({"table": "checks", "where": "url = \x27%s\x27" % sys.argv[1], "order_by": "at asc"}))' "$DOWN_URL")
-down_checks=$(structured_of "$(mcp_call "host.state.query" "$down_query_args" "$KEY")")
-down_row_count=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(len(d.get("rows") or []))' "$down_checks")
-check "down_target_has_two_checks" "$([[ "$down_row_count" == "2" ]] && echo 1 || echo 0)"
-FIRST_DOWN_AT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); rows=d.get("rows") or []; print(rows[0].get("at","") if rows else "")' "$down_checks")
+# 5. Two points per target in each series -- the probe wrote them, not rows.
+for u in "$HEALTHY_URL" "$SECOND_URL" "$DOWN_URL"; do
+  check "target_has_two_up_points" "$([[ "$(points_of up "$u")" == "2" ]] && echo 1 || echo 0)"
+  check "target_has_two_latency_points" "$([[ "$(points_of latency_ms "$u")" == "2" ]] && echo 1 || echo 0)"
+done
 
-# 7. status marks the 503 target down with down_since == its first check;
-#    the healthy target is 100% up with no down_since -- AC3.
+# 6. Plant the outcome a reachable network gives: one newer `up` point per
+#    target, 1 for the healthy ones and 0 for the one that returns 503.
+for pair in "${HEALTHY_URL}|1" "${SECOND_URL}|1" "${DOWN_URL}|0"; do
+  put_args=$(python3 -c 'import json,sys; u,v=sys.argv[1].rsplit("|",1); print(json.dumps({"series": "up", "value": int(v), "tags": {"url": u}}))' "$pair")
+  put_resp=$(mcp_call "host.ts.put" "$put_args" "$KEY")
+  check "planted_up_point" "$(has_error "$put_resp" && echo 0 || echo 1)"
+done
+
+# 7. status, answered from host.ts.get alone: the 503 target is down with a
+#    down_since, the other two are up.
 status_resp=$(mcp_call "${NS}.status" '{}' "$KEY")
 status_struct=$(structured_of "$status_resp")
-DOWN_UP_PCT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); t=[x for x in d.get("targets") or [] if x.get("url")==sys.argv[2]]; print(t[0].get("up_pct_24h","") if t else "")' "$status_struct" "$DOWN_URL")
-check "down_target_up_pct_is_0" "$([[ "$DOWN_UP_PCT" == "0" ]] && echo 1 || echo 0)"
+read -r STATUS_DOWN STATUS_UP < <(python3 -c 'import json,sys; ts=json.loads(sys.argv[1]).get("targets") or []; print(sum(1 for t in ts if t.get("up") is False), sum(1 for t in ts if t.get("up") is True))' "$status_struct")
+STATUS_DOWN="${STATUS_DOWN:-0}"; STATUS_UP="${STATUS_UP:-0}"
+DOWN_ENTRY_UP=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); t=[x for x in d.get("targets") or [] if x.get("url")==sys.argv[2]]; print(t[0].get("up") if t else "")' "$status_struct" "$DOWN_URL")
+check "planted_down_url_is_down" "$([[ "$DOWN_ENTRY_UP" == "False" ]] && echo 1 || echo 0)"
 DOWN_SINCE=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); t=[x for x in d.get("targets") or [] if x.get("url")==sys.argv[2]]; print(t[0].get("down_since","") if t else "")' "$status_struct" "$DOWN_URL")
-check "down_target_down_since_matches_first_check" "$([[ -n "$DOWN_SINCE" && "$DOWN_SINCE" == "$FIRST_DOWN_AT" ]] && echo 1 || echo 0)"
-
-HEALTHY_UP_PCT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); t=[x for x in d.get("targets") or [] if x.get("url")==sys.argv[2]]; print(t[0].get("up_pct_24h","") if t else "")' "$status_struct" "$HEALTHY_URL")
-HEALTHY_WANT_PCT=100
-[[ "$PROBE_NETWORK" == "none" ]] && HEALTHY_WANT_PCT=0
-check "healthy_target_up_pct_is_${HEALTHY_WANT_PCT}" "$([[ "$HEALTHY_UP_PCT" == "$HEALTHY_WANT_PCT" ]] && echo 1 || echo 0)"
-HEALTHY_HAS_DOWN_SINCE=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); t=[x for x in d.get("targets") or [] if x.get("url")==sys.argv[2]]; print(1 if (t and "down_since" in t[0]) else 0)' "$status_struct" "$HEALTHY_URL")
-HEALTHY_WANT_DOWN_SINCE=0
-[[ "$PROBE_NETWORK" == "none" ]] && HEALTHY_WANT_DOWN_SINCE=1
-check "healthy_target_down_since_matches_network" "$([[ "$HEALTHY_HAS_DOWN_SINCE" == "$HEALTHY_WANT_DOWN_SINCE" ]] && echo 1 || echo 0)"
+check "down_url_has_down_since" "$([[ -n "$DOWN_SINCE" ]] && echo 1 || echo 0)"
+check "status_reports_down_1_up_2" "$([[ "$STATUS_DOWN" == "1" && "$STATUS_UP" == "2" ]] && echo 1 || echo 0)"
 
 END_EPOCH=$(python3 -c 'import time; print(time.time())')
 WALL_MS=$(python3 -c "print(int((${END_EPOCH} - ${START_EPOCH}) * 1000))")
@@ -270,8 +278,10 @@ echo "WALL_TIME_MS=${WALL_MS}"
 
 if [[ "$FAILURES" -eq 0 ]]; then
   echo "RESULT: PASS"
-  exit 0
+  RC=0
 else
   echo "RESULT: FAIL (${FAILURES} check(s) failed)"
-  exit 1
+  RC=1
 fi
+echo "status: down=${STATUS_DOWN:-0} up=${STATUS_UP:-0} via host.ts.get"
+exit "$RC"

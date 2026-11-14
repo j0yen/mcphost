@@ -15,7 +15,7 @@
 //! for this recipe's real workload (`mcphost_uptime_probes_ac0{2,3,...}`)
 //! sidesteps that by signing up IN Rust and upgrading the plan before
 //! publishing, via `tests/support/uptime_probes.rs`'s own
-//! `create_tables`/`publish_probe`/`set_probe_schedule`/`fire_and_wait`
+//! `set_targets`/`publish_probe`/`set_probe_schedule`/`fire_and_wait`
 //! helpers and `grant_egress`'s local forward proxy -- so this leg drives
 //! those same helpers directly (the identical call sequence `proof.sh`
 //! itself makes) rather than racing a bash subprocess's own signup against
@@ -141,14 +141,7 @@ async fn uptime_probes_recipe_workload_stays_under_budget() {
     let client = McpClient::with_bearer(&server.base_url, &key);
     let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
-    uptime_probes::create_tables(&client).await;
-    client
-        .tools_call(
-            "host.state.insert",
-            json!({"table": "targets", "rows": [{"url": healthy_url, "added_at": 1.0}]}),
-        )
-        .await
-        .expect("insert target");
+    uptime_probes::set_targets(&client, &[healthy_url.clone()]).await;
     uptime_probes::publish_probe(&client).await;
     uptime_probes::publish_status(&client).await;
     let trigger_id = uptime_probes::set_probe_schedule(&client).await;

@@ -40,3 +40,5 @@ mod retshape_ac06_quickstart_carries_bridge_returns;
 mod retshape_ac07_handle_query_shape_in_table;
 #[path = "tfd_ac02_prompt_is_generated_contract_only.rs"]
 mod tfd_ac02_prompt_is_generated_contract_only;
+#[path = "tsb_ac07_python_bridge_ts_put_then_get.rs"]
+mod tsb_ac07_python_bridge_ts_put_then_get;
