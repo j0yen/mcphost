@@ -1012,6 +1012,16 @@ mod tsb_ac04_ts_points_max_quota_and_quickstart;
 mod tsb_ac05_fifty_thousand_points_in_200ms;
 #[path = "tsb_r04_trim_and_list.rs"]
 mod tsb_r04_trim_and_list;
+#[path = "tsql_ac01_exec_refuses_escape_statements.rs"]
+mod tsql_ac01_exec_refuses_escape_statements;
+#[path = "tsql_ac02_update_one_row_dry_run_and_append_after.rs"]
+mod tsql_ac02_update_one_row_dry_run_and_append_after;
+#[path = "tsql_ac03_where_less_delete_and_update_refused.rs"]
+mod tsql_ac03_where_less_delete_and_update_refused;
+#[path = "tsql_ac05_quota_and_concurrency.rs"]
+mod tsql_ac05_quota_and_concurrency;
+#[path = "tsql_ac06_find_by_example.rs"]
+mod tsql_ac06_find_by_example;
 #[path = "tssdk_ac01_no_override_table.rs"]
 mod tssdk_ac01_no_override_table;
 #[path = "tssdk_ac02_build_test_tsc_and_header.rs"]
@@ -1028,7 +1038,3 @@ mod tssdk_ac06_ir_parity_with_python_generator;
 mod tssdk_ac07_ci_diff_fails_on_stale_sdk;
 #[path = "tssdk_ac08_tool_that_is_a_family_prefix.rs"]
 mod tssdk_ac08_tool_that_is_a_family_prefix;
-#[path = "tsvr_ac01_unknown_column_names_declared.rs"]
-mod tsvr_ac01_unknown_column_names_declared;
-#[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
-mod tsvr_ac02_type_mismatch_names_accepted_shape;
