@@ -374,6 +374,8 @@ const MIGRATION_0140: &str = include_str!("../migrations/0140_synthetic_tenant_p
 const MIGRATION_0141: &str = include_str!("../migrations/0141_slo_targets.sql");
 /// PRD-mcphost-org-export-and-offboard-v2 R4/R5: `orgs.offboarded_unix`.
 const MIGRATION_0142: &str = include_str!("../migrations/0142_org_offboard.sql");
+/// PRD-mcphost-tenant-templates R2/R3/R6: `template_objects`.
+const MIGRATION_0143: &str = include_str!("../migrations/0143_template_objects.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -1338,6 +1340,19 @@ pub struct ShareMeta {
     pub rate_per_hour: Option<i64>,
     pub unshared_unix: Option<i64>,
     pub forked_from: Option<String>,
+}
+
+/// PRD-mcphost-tenant-templates: one `template_objects` row -- an object a
+/// template created, tagged `template: <name>`. `kind` is `tool`, `table` or
+/// `trigger`; `version` is the tool version the apply left active; `object_id`
+/// is a trigger's id, or the tool a trigger fires.
+#[derive(Debug, Clone)]
+pub struct TemplateObject {
+    pub template: String,
+    pub kind: String,
+    pub name: String,
+    pub version: Option<i64>,
+    pub object_id: Option<String>,
 }
 
 /// A single immutable published version of a tool (PRD-mcphost-tool-versions
@@ -3667,6 +3682,8 @@ impl Db {
         // `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0141)?;
         Self::migrate_0142_org_offboard(&conn)?;
+        // `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0143)?;
         Ok(())
     }
 
@@ -15576,6 +15593,52 @@ impl Db {
     }
 
     /// `host.trigger.remove`. Returns `true` if a row was actually deleted.
+    /// PRD-mcphost-tenant-templates R2: tag one object as created by a template
+    /// (re-tagging an object replaces its row).
+    pub async fn template_object_put(&self, tenant_id: i64, obj: TemplateObject) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR REPLACE INTO template_objects \
+                 (tenant_id, template, obj_kind, obj_name, version, object_id, applied_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![tenant_id, obj.template, obj.kind, obj.name, obj.version, obj.object_id, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Every object `template` tagged for this tenant, oldest first.
+    pub async fn template_objects(&self, tenant_id: i64, template: String) -> Result<Vec<TemplateObject>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT template, obj_kind, obj_name, version, object_id FROM template_objects \
+                 WHERE tenant_id = ?1 AND template = ?2 ORDER BY rowid",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, template], |r| {
+                    Ok(TemplateObject { template: r.get(0)?, kind: r.get(1)?, name: r.get(2)?, version: r.get(3)?, object_id: r.get(4)? })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Drop one tag row (the object itself is removed by its own verb).
+    pub async fn template_object_delete(&self, tenant_id: i64, obj: TemplateObject) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM template_objects \
+                 WHERE tenant_id = ?1 AND template = ?2 AND obj_kind = ?3 AND obj_name = ?4",
+                params![tenant_id, obj.template, obj.kind, obj.name],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn remove_trigger(&self, tenant_id: i64, id: String) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
             let affected = conn.execute(

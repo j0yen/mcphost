@@ -40,6 +40,7 @@ async fn errenv_ac06() {
     }
     assert!(problems.is_empty(), "first failing verb: {}\n{}", problems[0], problems.join("\n"));
     assert!(checked > 200, "only {checked} verbs rejected the key; accepted: {accepted:?}");
-    // The public (unauthenticated) verbs: a handful, not the surface.
-    assert!(accepted.len() <= 8, "verbs that never reach the tenant-key check: {accepted:?}");
+    // The public (unauthenticated) verbs: a handful, not the surface. Nine since
+    // PRD-mcphost-tenant-templates added `host.template_list`.
+    assert!(accepted.len() <= 9, "verbs that never reach the tenant-key check: {accepted:?}");
 }

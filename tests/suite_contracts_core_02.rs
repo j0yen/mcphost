@@ -52,6 +52,8 @@ mod toolname_ac03_tools_list_alias_entries;
 mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
 #[path = "tsql_ac04_refusal_carries_position_and_generated_grammar.rs"]
 mod tsql_ac04_refusal_carries_position_and_generated_grammar;
+#[path = "ttpl_ac02_drift.rs"]
+mod ttpl_ac02_drift;
 #[path = "vaultst_ac09_deferral_is_justified.rs"]
 mod vaultst_ac09_deferral_is_justified;
 #[path = "vbd_ac01_validated_by_default_coverage.rs"]

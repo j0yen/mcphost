@@ -76,6 +76,8 @@ Regenerate with `scripts/generated-docs-check.sh --write`.
 | `host.task.post` | write | refused | `external_effect` |
 | `host.channel.post` | write | refused | `external_effect` |
 | `host.uptime.create` | write | refused | `external_effect` |
+| `host.template_apply` | write | refused | `external_effect` |
+| `host.template_remove` | remove | refused | `irreversible_by_design` |
 | `host.webhook_inbox.create` | write | refused | `external_effect` |
 | `host.connect.revoke` | revoke | refused | `external_effect` |
 | `host.sync.create` | write | refused | `external_effect` |
