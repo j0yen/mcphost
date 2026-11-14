@@ -27,30 +27,30 @@ pub fn status_source() -> String {
     .expect("read examples/uptime-probes/tools/status.py")
 }
 
-/// Requirement 1: the `targets`/`checks` tables the recipe's own
-/// `www/llms.txt` section shows.
-pub async fn create_tables(client: &McpClient) {
+/// PRD-mcphost-timeseries-buckets R6: the example keeps its target list in the
+/// `targets` state key (a JSON list of urls) and writes what it measures to the
+/// `up` and `latency_ms` series, tagged with the url.
+pub async fn set_targets(client: &McpClient, urls: &[String]) {
     client
-        .tools_call(
-            "host.state.table_create",
-            json!({
-                "name": "targets",
-                "schema": {"url": "text", "added_at": "real"},
-                "primary_key": "url",
-            }),
-        )
+        .tools_call("host.state.set", json!({"key": "targets", "value": urls}))
         .await
-        .expect("targets table_create");
-    client
-        .tools_call(
-            "host.state.table_create",
-            json!({
-                "name": "checks",
-                "schema": {"url": "text", "code": "integer", "ms": "real", "at": "real"},
-            }),
-        )
-        .await
-        .expect("checks table_create");
+        .expect("set targets");
+}
+
+/// Points the `series` holds for `url` over the last 24 h, counted from
+/// `host.ts.get` (one day-wide bucket per call, so the counts add).
+#[allow(dead_code)] // each including test file uses only part of this helper set
+pub async fn series_points(client: &McpClient, series: &str, url: &str) -> i64 {
+    let got = extract_structured(
+        &client
+            .tools_call(
+                "host.ts.get",
+                json!({"series": series, "bucket": "1d", "from": "-24h", "tags": {"url": url}}),
+            )
+            .await
+            .expect("ts.get"),
+    );
+    got["buckets"].as_array().expect("buckets").iter().map(|b| b["count"].as_i64().expect("count")).sum()
 }
 
 pub async fn publish_probe(client: &McpClient) {

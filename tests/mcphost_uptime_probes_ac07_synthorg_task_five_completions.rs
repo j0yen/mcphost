@@ -129,14 +129,7 @@ async fn run_task_once(gold: &Gold, envs_dir: &TempDataDir, upstream_url: &str) 
     let client = McpClient::with_bearer(&server.base_url, &key).with_client_info(SYNTHORG_CLIENT_NAME, "1.0.0");
     let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
-    uptime_probes::create_tables(&client).await;
-    client
-        .tools_call(
-            "host.state.insert",
-            json!({"table": "targets", "rows": [{"url": upstream_url, "added_at": 1.0}]}),
-        )
-        .await
-        .expect("insert target");
+    uptime_probes::set_targets(&client, &[upstream_url.to_string()]).await;
 
     let probe_source = uptime_probes::probe_source();
     client
