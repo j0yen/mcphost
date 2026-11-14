@@ -38980,6 +38980,648 @@
       "since": "0.58.0"
     },
     {
+      "description": "Read one series bucketed over a time range: one SQL statement returns, per bucket, count, min, max, avg, p50 and p95 (nearest-rank). Buckets start at from and are bucket_s wide; a bucket with no points is omitted; an empty series answers buckets: []. bucket is one of 1m, 5m, 15m, 1h, 6h, 1d. from and to take <unix seconds>, now, -<n>s, -<n>m, -<n>h, -<n>d (defaults -24h and now). tags filters by equality. A refusal carries allowed_buckets and time_forms.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "description": "Bucket width.",
+            "enum": [
+              "1m",
+              "5m",
+              "15m",
+              "1h",
+              "6h",
+              "1d"
+            ],
+            "type": "string",
+            "x-mcphost-refusal-data": {
+              "allowed_buckets": [
+                "1m",
+                "5m",
+                "15m",
+                "1h",
+                "6h",
+                "1d"
+              ],
+              "time_forms": [
+                "<unix seconds>",
+                "now",
+                "-<n>s",
+                "-<n>m",
+                "-<n>h",
+                "-<n>d"
+              ]
+            }
+          },
+          "from": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "pattern": "^(now|[0-9]+|-[0-9]+[smhd])$",
+                "type": "string"
+              }
+            ],
+            "description": "Range start: unix seconds, now, or -<n>s|m|h|d. Default -24h.",
+            "x-mcphost-refusal-data": {
+              "allowed_buckets": [
+                "1m",
+                "5m",
+                "15m",
+                "1h",
+                "6h",
+                "1d"
+              ],
+              "time_forms": [
+                "<unix seconds>",
+                "now",
+                "-<n>s",
+                "-<n>m",
+                "-<n>h",
+                "-<n>d"
+              ]
+            }
+          },
+          "series": {
+            "description": "Series name.",
+            "pattern": "^[a-z][a-z0-9_]{0,40}$",
+            "type": "string"
+          },
+          "tags": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Only points carrying every one of these string tags.",
+            "maxProperties": 8,
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "pattern": "^(now|[0-9]+|-[0-9]+[smhd])$",
+                "type": "string"
+              }
+            ],
+            "description": "Range end, same forms. Default now.",
+            "x-mcphost-refusal-data": {
+              "allowed_buckets": [
+                "1m",
+                "5m",
+                "15m",
+                "1h",
+                "6h",
+                "1d"
+              ],
+              "time_forms": [
+                "<unix seconds>",
+                "now",
+                "-<n>s",
+                "-<n>m",
+                "-<n>h",
+                "-<n>d"
+              ]
+            }
+          }
+        },
+        "required": [
+          "series",
+          "bucket"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.ts.get",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "bucket_s": {
+            "description": "Bucket width in seconds.",
+            "type": "integer"
+          },
+          "buckets": {
+            "description": "One entry per bucket holding points, oldest first; empty when the range holds none.",
+            "items": {
+              "properties": {
+                "avg": {
+                  "description": "Mean value.",
+                  "type": "number"
+                },
+                "count": {
+                  "description": "Points in the bucket.",
+                  "type": "integer"
+                },
+                "max": {
+                  "description": "Largest value.",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "Smallest value.",
+                  "type": "number"
+                },
+                "p50": {
+                  "description": "Median (nearest-rank).",
+                  "type": "number"
+                },
+                "p95": {
+                  "description": "95th percentile (nearest-rank).",
+                  "type": "number"
+                },
+                "ts": {
+                  "description": "Unix seconds the bucket starts.",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "avg",
+                "count",
+                "max",
+                "min",
+                "p50",
+                "p95",
+                "ts"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "from": {
+            "description": "Resolved range start, unix seconds; buckets start here.",
+            "type": "integer"
+          },
+          "series": {
+            "description": "The series read.",
+            "type": "string"
+          },
+          "to": {
+            "description": "Resolved range end, unix seconds.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket_s",
+          "buckets",
+          "from",
+          "series",
+          "to"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.12"
+    },
+    {
+      "description": "List the series this tenant holds points for, by name (the first 500; truncated says if there are more), each with points, oldest_ts and newest_ts.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.ts.list",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "series": {
+            "description": "Every series with points, by name.",
+            "items": {
+              "properties": {
+                "newest_ts": {
+                  "description": "Unix seconds of the newest point.",
+                  "type": "integer"
+                },
+                "oldest_ts": {
+                  "description": "Unix seconds of the oldest point.",
+                  "type": "integer"
+                },
+                "points": {
+                  "description": "Points held.",
+                  "type": "integer"
+                },
+                "series": {
+                  "description": "Series name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "newest_ts",
+                "oldest_ts",
+                "points",
+                "series"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "description": "True when more than 500 series exist and only the first 500 by name are listed.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "series",
+          "truncated"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.12",
+      "unpaged_reason": "limit-only name-ordered window with a prefix filter; no keyset cursor is offered yet"
+    },
+    {
+      "description": "Append one numeric point to a time series (no declaration needed). series is lowercase letters, digits and underscores, starting with a letter, at most 41 characters. ts is unix seconds (default now); tags is up to 8 string pairs. Returns {series, points, oldest_ts}. A put past the plan's ts_points_max (points per series) is refused quota_exceeded.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "series": {
+            "description": "Series name.",
+            "pattern": "^[a-z][a-z0-9_]{0,40}$",
+            "type": "string"
+          },
+          "tags": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "String tags; host.ts.get filters by equality on them.",
+            "maxProperties": 8,
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Unix seconds of the point; default now.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "value": {
+            "description": "The number to record.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "series",
+          "value"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.ts.put",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "oldest_ts",
+              "points",
+              "series"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "oldest_ts": {
+            "description": "Unix seconds of the series' oldest point.",
+            "type": "integer"
+          },
+          "points": {
+            "description": "Points the series holds after this put.",
+            "type": "integer"
+          },
+          "series": {
+            "description": "The series the point went into.",
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.12"
+    },
+    {
+      "description": "Delete points from one series: keep_last keeps the newest n points, before_ts drops every point older than that unix second; give exactly one. Returns {series, deleted, points, oldest_ts}. Frees room under the plan's ts_points_max. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
+      "input_schema": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "keep_last"
+            ]
+          },
+          {
+            "required": [
+              "before_ts"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "keep_last"
+            ]
+          },
+          {
+            "required": [
+              "before_ts"
+            ]
+          }
+        ],
+        "properties": {
+          "before_ts": {
+            "description": "Delete points with ts below this unix second.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "confirm": {
+            "description": "The confirm token a dry_run: true call with the same arguments returned; required when the call affects at least the plan's confirm_rows_min rows.",
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "keep_last": {
+            "description": "Keep only the newest n points.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "series": {
+            "description": "Series name.",
+            "pattern": "^[a-z][a-z0-9_]{0,40}$",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "series"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.ts.trim",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "deleted",
+              "oldest_ts",
+              "points",
+              "series"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "deleted": {
+            "description": "Points deleted.",
+            "type": "integer"
+          },
+          "oldest_ts": {
+            "description": "Unix seconds of the oldest remaining point; null when none remain.",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "points": {
+            "description": "Points the series holds afterwards.",
+            "type": "integer"
+          },
+          "series": {
+            "description": "The series trimmed.",
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.12"
+    },
+    {
       "description": "Watch 1-20 URLs with no server and no plan upgrade: creates a table of targets, a host-side probe (3 s per target, same host rules as the http kind -- no sandbox egress), a status tool named `name` and one schedule at max(every_s, the plan's schedule_min_interval_s), then runs the probe once and returns {status_tool, schedule_id, every_s, next_fire_unix, first_result: {columns, rows, text}}. Call the status tool (host.tool_call name=<name>) for the latest table; `text` is an aligned table to show a human. An every_s below the plan floor is raised to it and the response carries data.clamped_to.",
       "input_schema": {
         "additionalProperties": false,
@@ -49617,6 +50259,267 @@
       },
       "name": "host_trigger_test",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.ts.get",
+      "description": "Read one series bucketed over a time range: one SQL statement returns, per bucket, count, min, max, avg, p50 and p95 (nearest-rank). Buckets start at from and are bucket_s wide; a bucket with no points is omitted; an empty series answers buckets: []. bucket is one of 1m, 5m, 15m, 1h, 6h, 1d. from and to take <unix seconds>, now, -<n>s, -<n>m, -<n>h, -<n>d (defaults -24h and now). tags filters by equality. A refusal carries allowed_buckets and time_forms.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "description": "Bucket width.",
+            "enum": [
+              "1m",
+              "5m",
+              "15m",
+              "1h",
+              "6h",
+              "1d"
+            ],
+            "type": "string",
+            "x-mcphost-refusal-data": {
+              "allowed_buckets": [
+                "1m",
+                "5m",
+                "15m",
+                "1h",
+                "6h",
+                "1d"
+              ],
+              "time_forms": [
+                "<unix seconds>",
+                "now",
+                "-<n>s",
+                "-<n>m",
+                "-<n>h",
+                "-<n>d"
+              ]
+            }
+          },
+          "from": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "pattern": "^(now|[0-9]+|-[0-9]+[smhd])$",
+                "type": "string"
+              }
+            ],
+            "description": "Range start: unix seconds, now, or -<n>s|m|h|d. Default -24h.",
+            "x-mcphost-refusal-data": {
+              "allowed_buckets": [
+                "1m",
+                "5m",
+                "15m",
+                "1h",
+                "6h",
+                "1d"
+              ],
+              "time_forms": [
+                "<unix seconds>",
+                "now",
+                "-<n>s",
+                "-<n>m",
+                "-<n>h",
+                "-<n>d"
+              ]
+            }
+          },
+          "series": {
+            "description": "Series name.",
+            "pattern": "^[a-z][a-z0-9_]{0,40}$",
+            "type": "string"
+          },
+          "tags": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Only points carrying every one of these string tags.",
+            "maxProperties": 8,
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "pattern": "^(now|[0-9]+|-[0-9]+[smhd])$",
+                "type": "string"
+              }
+            ],
+            "description": "Range end, same forms. Default now.",
+            "x-mcphost-refusal-data": {
+              "allowed_buckets": [
+                "1m",
+                "5m",
+                "15m",
+                "1h",
+                "6h",
+                "1d"
+              ],
+              "time_forms": [
+                "<unix seconds>",
+                "now",
+                "-<n>s",
+                "-<n>m",
+                "-<n>h",
+                "-<n>d"
+              ]
+            }
+          }
+        },
+        "required": [
+          "series",
+          "bucket"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_ts_get",
+      "since": "0.130.12"
+    },
+    {
+      "alias_of": "host.ts.list",
+      "description": "List the series this tenant holds points for, by name (the first 500; truncated says if there are more), each with points, oldest_ts and newest_ts.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_ts_list",
+      "since": "0.130.12"
+    },
+    {
+      "alias_of": "host.ts.put",
+      "description": "Append one numeric point to a time series (no declaration needed). series is lowercase letters, digits and underscores, starting with a letter, at most 41 characters. ts is unix seconds (default now); tags is up to 8 string pairs. Returns {series, points, oldest_ts}. A put past the plan's ts_points_max (points per series) is refused quota_exceeded.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "series": {
+            "description": "Series name.",
+            "pattern": "^[a-z][a-z0-9_]{0,40}$",
+            "type": "string"
+          },
+          "tags": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "String tags; host.ts.get filters by equality on them.",
+            "maxProperties": 8,
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Unix seconds of the point; default now.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "value": {
+            "description": "The number to record.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "series",
+          "value"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_ts_put",
+      "since": "0.130.12"
+    },
+    {
+      "alias_of": "host.ts.trim",
+      "description": "Delete points from one series: keep_last keeps the newest n points, before_ts drops every point older than that unix second; give exactly one. Returns {series, deleted, points, oldest_ts}. Frees room under the plan's ts_points_max. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
+      "input_schema": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "keep_last"
+            ]
+          },
+          {
+            "required": [
+              "before_ts"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "keep_last"
+            ]
+          },
+          {
+            "required": [
+              "before_ts"
+            ]
+          }
+        ],
+        "properties": {
+          "before_ts": {
+            "description": "Delete points with ts below this unix second.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "confirm": {
+            "description": "The confirm token a dry_run: true call with the same arguments returned; required when the call affects at least the plan's confirm_rows_min rows.",
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "keep_last": {
+            "description": "Keep only the newest n points.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "series": {
+            "description": "Series name.",
+            "pattern": "^[a-z][a-z0-9_]{0,40}$",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "series"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_ts_trim",
+      "since": "0.130.12"
     },
     {
       "alias_of": "host.uptime.create",

@@ -1002,6 +1002,16 @@ mod trigidem_ac05_verbs_accept_name;
 mod trigidem_ac06_migration_backfills_duplicate_names;
 #[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
 mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
+#[path = "tsb_ac01_aggregation_in_tool_code.rs"]
+mod tsb_ac01_aggregation_in_tool_code;
+#[path = "tsb_ac02_hourly_buckets_sum_to_points.rs"]
+mod tsb_ac02_hourly_buckets_sum_to_points;
+#[path = "tsb_ac04_ts_points_max_quota_and_quickstart.rs"]
+mod tsb_ac04_ts_points_max_quota_and_quickstart;
+#[path = "tsb_ac05_fifty_thousand_points_in_200ms.rs"]
+mod tsb_ac05_fifty_thousand_points_in_200ms;
+#[path = "tsb_r04_trim_and_list.rs"]
+mod tsb_r04_trim_and_list;
 #[path = "tssdk_ac01_no_override_table.rs"]
 mod tssdk_ac01_no_override_table;
 #[path = "tssdk_ac02_build_test_tsc_and_header.rs"]

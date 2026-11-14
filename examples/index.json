@@ -298,14 +298,14 @@
           "name": "probe",
           "kind": "python",
           "file": "tools/probe.py",
-          "sha256": "1a2aed3a229f3c7f1b50febb69cde6133dc70bca4264d9d60c8e58858e5dd5b9",
+          "sha256": "4c28f0a571d0b131d440156480a3ba42ab6eb191d34149cb952f61e00c2bb0c4",
           "network": "none"
         },
         {
           "name": "status",
           "kind": "python",
           "file": "tools/status.py",
-          "sha256": "aa876fcc7c40568f8f04d8a0e03ca3930c55a74792e5916cd8b5950e2228b53a"
+          "sha256": "e7137fa7c4022b81f781ad5893fb83fa041eccc4518c9081d76f6ce0b6cd8f1d"
         }
       ],
       "first_call": {

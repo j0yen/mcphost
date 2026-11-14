@@ -80,6 +80,7 @@ exactly the same modules.
 - `mcphost.table` -- per-tenant SQL tables (same store host.table.* uses)
 - `mcphost.docs` -- read or search this tenant's stored documents (same store host.docs.* uses)
 - `mcphost.index` -- create, poll and list named indexes (same verbs host.index.* uses)
+- `mcphost.ts` -- append numbers to a time series and read them back bucketed (same verbs host.ts.* uses)
 - `mcphost.blob` -- read or store files of any type under this tenant (same store host.blob.* uses)
 - `mcphost.lineage` -- trace an artifact's lineage or estimate a change's blast radius (same report host.lineage.* uses)
 - `mcphost.drift` -- list drift review items (same list host.drift.reviews returns)

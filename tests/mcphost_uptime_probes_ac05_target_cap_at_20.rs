@@ -31,14 +31,8 @@ async fn probe_caps_at_20_targets_and_reports_it() {
     let client = McpClient::with_bearer(&server.base_url, &key);
     let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
-    uptime_probes::create_tables(&client).await;
-    let rows: Vec<_> = (0..21)
-        .map(|i| json!({"url": format!("{}/t{i}", upstream.uri()), "added_at": i as f64}))
-        .collect();
-    client
-        .tools_call("host.state.insert", json!({"table": "targets", "rows": rows}))
-        .await
-        .expect("insert 21 targets");
+    let urls: Vec<String> = (0..21).map(|i| format!("{}/t{i}", upstream.uri())).collect();
+    uptime_probes::set_targets(&client, &urls).await;
 
     uptime_probes::publish_probe(&client).await;
     let result = extract_structured(

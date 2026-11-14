@@ -2,8 +2,8 @@
   "lib": 5.7,
   "suite_cargo_core_01": 0.55,
   "suite_contracts_core_01": 710.47,
-  "suite_contracts_core_02": 275.42,
-  "suite_contracts_sandbox_01": 37.54,
+  "suite_contracts_core_02": 17.96,
+  "suite_contracts_sandbox_01": 40.5,
   "suite_core_01": 0.75,
   "suite_core_02": 0.8,
   "suite_core_03": 1.0,
@@ -16,11 +16,11 @@
   "suite_core_10": 192.09,
   "suite_core_11": 217.81,
   "suite_core_12": 478.53,
-  "suite_core_13": 199.53,
+  "suite_core_13": 204.52,
   "suite_env_core_01": 451.18,
   "suite_env_sandbox_01": 22.81,
   "suite_sandbox_01": 0.95,
   "suite_sandbox_02": 131.46,
   "suite_sandbox_03": 135.61,
-  "suite_sandbox_04": 110.08
+  "suite_sandbox_04": 111.07
 }

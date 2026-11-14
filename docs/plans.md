@@ -89,6 +89,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `table_tables_max` | 5 | 50 |
 | `tasks_open_max` | 20 | 200 |
 | `tools_max` | 50 | 50 |
+| `ts_points_max` | 50000 | 2000000 |
 | `urgent_per_day` | 3 | 100 |
 | `vault_providers_max` | 2 | 20 |
 | `versions_max` | 5 | 20 |
