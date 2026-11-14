@@ -1,0 +1,33 @@
+title = "Webhook inbox"
+one_line = "A URL that stores every signed POST, and the tool that lists the last 50 events."
+plan_fit = "free"
+secrets_required = []
+
+[[params]]
+name = "name"
+type = "string"
+required = false
+default = "inbox"
+
+# Wraps host.webhook_inbox.create: the verb creates the reader tool and the webhook
+# trigger; only its `url` is passed through into `created`.
+[wrap]
+verb = "host.webhook_inbox.create"
+args = { name = "{{name}}" }
+
+[wrap.creates]
+tools = ["{{name}}"]
+tables = []
+triggers = ["webhook"]
+
+[demo]
+call = { tool = "host.tool_call", args = { name = "{{name}}" } }
+expect = { count = 0 }
+
+[[next]]
+tool = "host.msg.wait"
+note = "after a signed POST to created.url, returns one message per accepted delivery"
+
+[[next]]
+tool = "host.webhook_inbox.create"
+note = "the underlying verb: rotate the secret or pick another verify scheme"

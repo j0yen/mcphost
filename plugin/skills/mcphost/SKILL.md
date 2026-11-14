@@ -113,7 +113,7 @@ The `signup` arguments:
 
 One line per family; `host.help.get(name)` describes a verb. Callable before you hold a key: `billing.plans`, `host.errors`, `host.feedback.list`, `host.feedback.send`, `host.help.get`, `host.help.search`, `host.quickstart`, `host.redeem`, `host.resume`, `host.state.get`, `host.state.list`, `host.state.set`, `host.tool_call`, `host.tool_publish`, `host.tool_share`, `host.tool_test`, `host.whoami`, `signup`
 - `billing.*` (3): checkout, plans, status
-- `host.*` (14): call_trace, changelog, doctor, errors, estimate, export, import, progress, quickstart, redeem, resume, schedule_receipts, usage, whoami
+- `host.*` (17): call_trace, changelog, doctor, errors, estimate, export, import, progress, quickstart, redeem, resume, schedule_receipts, template_apply, template_list, template_remove, usage, whoami
 - `host.agent.*` (11): contact_accept, contact_deny, contact_request, contacts, contacts_import, lookup, mute, profile_set, search, unmute, whoami
 - `host.ask.*` (4): create, get, list, wait
 - `host.audit.*` (3): chain, export, verify
@@ -300,6 +300,7 @@ What to do next for each code the host returns (`host.errors` has the full rows)
 - `confirm_invalid` (agent_fault): Call the dry run again and repeat with the freshly returned confirm token.
 - `confirm_mismatch` (agent_fault): Pass the org's exact name as confirm (host.org.members names it); nothing was changed.
 - `confirm_required` (agent_fault): Call dry_run_first.tool with dry_run_first.args, read would, then repeat with the returned confirm token.
+- `conflict` (agent_fault): Another template call is running for this tenant; wait data.retry_after_s seconds and retry.
 - `conflicting_credentials` (agent_fault): Send one credential: drop the tenant_key argument or the Authorization header.
 - `connection_missing` (agent_fault): Connect the provider named in data.provider with host.connect.start, then create the sync again.
 - `contact_pending` (agent_fault): A request is already pending or recently denied; wait for the recipient to answer.

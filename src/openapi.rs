@@ -164,6 +164,13 @@ pub struct ErrorCatalog {
 
 #[derive(JsonSchema)]
 #[allow(dead_code)]
+pub struct TemplateCatalog {
+    pub templates: Vec<Value>,
+    pub count: i64,
+}
+
+#[derive(JsonSchema)]
+#[allow(dead_code)]
 pub struct Capabilities {
     pub version: String,
     /// Keyed by primitive name; each row carries `implemented`, `methods`, ...
@@ -248,6 +255,7 @@ pub fn schemas() -> BTreeMap<&'static str, Value> {
     map.insert("Plans", render::<Plans>());
     map.insert("EventKinds", render::<EventKinds>());
     map.insert("ErrorCatalog", render::<ErrorCatalog>());
+    map.insert("TemplateCatalog", render::<TemplateCatalog>());
     map.insert("Capabilities", render::<Capabilities>());
     map.insert("Catalog", render::<Catalog>());
     map.insert("Jwks", render::<Jwks>());
