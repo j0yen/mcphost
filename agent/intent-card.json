@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-plugin-skill-generated-from-registry.md",
-  "intent_slug": "mcphost-plugin-skill-generated-from-registry",
-  "root_motivation": "WHO: the coding agent in Claude Code reading the plugin skill first, and the maintainer who ships a verb and forgets the skill. WHAT: a skill whose verbs, plan ceilings, error remedies and local-loop commands are rendered from the host's own registries. WHY: the skill is hand-written, names six of 535 tool entries, states no ceiling and no error code, so an agent sends a call the host refuses.",
-  "user_persona": "A coding agent that reads plugin/skills/mcphost/SKILL.md, finds the family a verb lives in, reads the free ceilings before it calls, and looks up the remedy for an error code it hit; and the maintainer whose cargo test fails until `mcphost skill-gen --write` is run.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-timeseries-buckets.md",
+  "intent_slug": "mcphost-timeseries-buckets",
+  "root_motivation": "**Who:** the agent building a monitor, a cost tracker, or a latency dashboard for its user; the monitoring persona in truth-tier. **What:** append a number with a timestamp; read it back bucketed. **Why not today:** `examples/uptime-probes/proof.sh:187` creates `checks {url, code, ms, at}` in `host.state`, `:223-228` queries it with the filter grammar, and `status.py` folds rows in Python; `host.state.query` returns at most the plan's row cap, so a probe every 5 min fills 10,000 free-plan rows (`state_rows_max`, `src/plans.rs:59`) in 35 days and the recipe silently stops recording. No verb on the host buckets by time; `host.table.query` can `GROUP BY` but has no percentile and no retention. **Premise (creative):** given a series verb with buckets, agents stop writing aggregation code and the probe recipe stops hitting the row quota. **Falsifier:** see frontmatter; AC 1 counts aggregation code in `status.py` and the last explore run's tool sources.",
+  "user_persona": "An org owner's agent that calls host.org.export, polls host.runs.get for the download_url, then calls host.org.offboard with the org name, and later host.org.restore if the owner changes their mind; and a member whose key answers tenant_disabled with org_offboard.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the registry, When `mcphost skill-gen --section verbs` renders, Then every dotted family has exactly one line with its count and verb names, the 11 anonymous starter verbs are named, no per-verb description appears, and the section is at most 60 lines.",
-      "test": "tests/skgn_ac01_verbs_one_line_per_family.rs"
+      "description": "Given `examples/uptime-probes/tools/status.py` and the tool sources of the latest explore run copied into `tests/fixtures/tsb_tool_sources/`, When a test greps them for `statistics.`, `sum(`, `max(`, `min(`, `len(` applied to rows from `mcphost.state.query` or `mcphost.table.query`, Then \u2265 1 hit exists and the test prints the count; if 0 the builder stops and records the falsifier as confirmed.",
+      "test": "tests/tsb_ac01_aggregation_in_tool_code.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the checked-in files, When `mcphost skill-gen` runs without `--write`, Then it exits 0; Given one line edited by hand inside a marked section, Then it exits 1 and names the line.",
-      "test": "tests/skgn_ac02_check_names_hand_edited_line.rs"
+      "description": "Given 1,000 `host.ts.put` points over 24 h in series `latency_ms`, When `host.ts.get(bucket=\"1h\", from=\"-24h\", to=\"now\")` runs, Then 24 buckets return with `count` summing to 1,000 and each bucket's `p95` \u2265 `p50` \u2265 `min`.",
+      "test": "tests/tsb_ac02_hourly_buckets_sum_to_points.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a new `Tool::new(\"host.example\")` added to `host_tools`, When `cargo test` runs, Then the drift test fails until `skill-gen --write` regenerates and the new verb appears under its family.",
-      "test": "tests/skgn_ac03_drift_test_fails_on_new_verb.rs"
+      "description": "Given `bucket=\"7s\"` or `from=\"yesterday\"`, When `host.ts.get` runs, Then the refusal carries `allowed_buckets` and `time_forms` equal to the consts the validator reads (one test parses both).",
+      "test": "tests/tsb_ac03_refusals_carry_the_validator_consts.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `ERROR_CODES` gains an entry, When `cargo test` runs, Then the drift test fails until the skill is regenerated, and a remedy that names a verb absent from `host_tools` fails the remedy test naming the code.",
-      "test": "tests/skgn_ac04_errors_from_registry_and_remedy_verbs.rs"
+      "description": "Given a plan with `ts_points_max = 10`, When the 11th put arrives, Then `quota_exceeded` names `ts_points_max` with `used: 10`, and `host.quickstart.limits.plan.ts_points_max` reads 10 with no code in `quickstart_limits` naming it.",
+      "test": "tests/tsb_ac04_ts_points_max_quota_and_quickstart.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the `limits` section, When rendered, Then every key of `plan.ceilings_json()` for `free` appears with its value and no number in the section is typed outside the generator (test: the section's numbers equal the JSON's).",
-      "test": "tests/skgn_ac05_limits_equal_plan_ceilings.rs"
+      "description": "Given 50,000 points and `bucket=\"1h\"` over 24 h on the gate box, When `host.ts.get` runs, Then it completes in \u2264 200 ms; Given an empty series, Then `buckets: []` and no error.",
+      "test": "tests/tsb_ac05_fifty_thousand_points_in_200ms.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a binary built without the `dev` or `push` subcommands, When `skill-gen` renders `devloop`, Then the section says `no local verbs in this build` for the absent verbs and names none of them.",
-      "test": "tests/skgn_ac06_devloop_omits_absent_verbs.rs"
+      "description": "Given `proof.sh` rewritten on R6, When it runs against a local host, Then `status` reports the planted down URL from `host.ts.get` alone and `grep -cE 'state\\.(query|insert)' examples/uptime-probes/tools/status.py` is 0.",
+      "test": "tests/tsb_ac06_proof_reports_the_planted_down_url.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given `--url <the mcp url of a running host> --section verbs` against a local test host, When rendered, Then the output is derived from that host's `tools/list` and differs from the registry render only by verbs not yet deployed.",
-      "test": "tests/skgn_ac07_url_renders_from_tools_list.rs"
+      "level": "SHOULD",
+      "description": "Given a python tool calling `mcphost.ts.put` then `mcphost.ts.get`, When called via `host.tool_call`, Then the bucket it wrote back is returned and `host.quickstart` sandbox help lists `mcphost.ts`.",
+      "test": "tests/tsb_ac07_python_bridge_ts_put_then_get.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod, When `diff <(curl -s https://mcphost.dev/skill.md | sed -n '/mcphost-verbs:start/,/mcphost-verbs:end/p') <(mcphost skill-gen --section verbs --url https://mcphost.dev/mcp | sed -n '/mcphost-verbs:start/,/mcphost-verbs:end/p')` runs, Then it prints nothing and exits 0 (Live; evidence: that command's exit code and empty stdout)",
-      "test": "deferred: Live (prod; evidence: that command's exit code and empty stdout)"
+      "description": "Given prod after deploy, When `examples/uptime-probes/proof.sh` runs against mcphost.dev with a fresh tenant, Then its final line is `status: down=1 up=2 via host.ts.get` (Live; evidence: `examples/uptime-probes/proof.sh` stdout tail pasted in the PR description)",
+      "test": "deferred -- operator-provisioned: examples/uptime-probes/proof.sh against mcphost.dev with a fresh tenant after deploy; its final line is `status: down=1 up=2 via host.ts.get`."
     }
   ],
   "scope": [

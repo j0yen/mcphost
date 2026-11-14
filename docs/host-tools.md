@@ -10,6 +10,8 @@ Regenerate with `scripts/generated-docs-check.sh --write`.
 | verb | kind | dry_run | no_dry_run_reason |
 |---|---|---|---|
 | `host.table.create` | write | supported | |
+| `host.ts.put` | write | supported | |
+| `host.ts.trim` | delete | supported | |
 | `host.table.append` | write | supported | |
 | `host.table.drop` | drop | supported | |
 | `host.table.handle_drop` | drop | supported | |
@@ -99,6 +101,7 @@ Regenerate with `scripts/generated-docs-check.sh --write`.
 
 ### Confirm rule
 
+- `host.ts.trim`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.table.drop`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.table.handle_drop`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.state.delete`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).

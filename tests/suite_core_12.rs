@@ -1002,6 +1002,16 @@ mod trigidem_ac05_verbs_accept_name;
 mod trigidem_ac06_migration_backfills_duplicate_names;
 #[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
 mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
+#[path = "tsb_ac01_aggregation_in_tool_code.rs"]
+mod tsb_ac01_aggregation_in_tool_code;
+#[path = "tsb_ac02_hourly_buckets_sum_to_points.rs"]
+mod tsb_ac02_hourly_buckets_sum_to_points;
+#[path = "tsb_ac04_ts_points_max_quota_and_quickstart.rs"]
+mod tsb_ac04_ts_points_max_quota_and_quickstart;
+#[path = "tsb_ac05_fifty_thousand_points_in_200ms.rs"]
+mod tsb_ac05_fifty_thousand_points_in_200ms;
+#[path = "tsb_r04_trim_and_list.rs"]
+mod tsb_r04_trim_and_list;
 #[path = "tssdk_ac01_no_override_table.rs"]
 mod tssdk_ac01_no_override_table;
 #[path = "tssdk_ac02_build_test_tsc_and_header.rs"]
@@ -1022,17 +1032,3 @@ mod tssdk_ac08_tool_that_is_a_family_prefix;
 mod tsvr_ac01_unknown_column_names_declared;
 #[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
 mod tsvr_ac02_type_mismatch_names_accepted_shape;
-#[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
-mod ttfs_ac01_onboarding_7d_reads_external_stamps;
-#[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]
-mod ttfs_ac02_whoami_activation_first_call_only;
-#[path = "ttfs_ac03_milestone_table_is_the_one_key_set.rs"]
-mod ttfs_ac03_milestone_table_is_the_one_key_set;
-#[path = "ttfs_ac04_onboarding_block_carries_no_identifiers.rs"]
-mod ttfs_ac04_onboarding_block_carries_no_identifiers;
-#[path = "ttfs_ac05_under_five_tenants_shows_n_and_nulls.rs"]
-mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
-#[path = "ttfs_ac06_admin_has_no_activation_and_unclassified_excluded.rs"]
-mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
-#[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
-mod ttfs_ac07_by_client_only_for_groups_of_five;

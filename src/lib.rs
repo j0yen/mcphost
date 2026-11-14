@@ -171,6 +171,7 @@ pub mod tables_model;
 pub mod tasks;
 pub mod timeline;
 pub mod tenant_state;
+pub mod timeseries;
 pub mod tool_aliases;
 pub mod push;
 pub mod tooldir;

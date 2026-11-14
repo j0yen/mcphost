@@ -63,6 +63,8 @@ const fn nd(name: &'static str, kind: Kind, reason: &'static str) -> WriteVerb {
 // scripts/generated-docs-check.sh parses these lines to render docs/host-tools.md.
 pub const WRITE_VERBS: &[WriteVerb] = &[
     sv("host.table.create", Kind::Write),
+    sv("host.ts.put", Kind::Write),
+    sv("host.ts.trim", Kind::Delete),
     sv("host.table.append", Kind::Write),
     sv("host.table.drop", Kind::Drop),
     sv("host.table.handle_drop", Kind::Drop),

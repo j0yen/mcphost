@@ -14010,6 +14010,176 @@
     ],
     "type": "object"
   },
+  "host.ts.get": {
+    "properties": {
+      "series": {
+        "type": "string",
+        "description": "The series read."
+      },
+      "bucket_s": {
+        "type": "integer",
+        "description": "Bucket width in seconds."
+      },
+      "from": {
+        "type": "integer",
+        "description": "Resolved range start, unix seconds; buckets start here."
+      },
+      "to": {
+        "type": "integer",
+        "description": "Resolved range end, unix seconds."
+      },
+      "buckets": {
+        "type": "array",
+        "description": "One entry per bucket holding points, oldest first; empty when the range holds none.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ts": {
+              "type": "integer",
+              "description": "Unix seconds the bucket starts."
+            },
+            "count": {
+              "type": "integer",
+              "description": "Points in the bucket."
+            },
+            "min": {
+              "type": "number",
+              "description": "Smallest value."
+            },
+            "max": {
+              "type": "number",
+              "description": "Largest value."
+            },
+            "avg": {
+              "type": "number",
+              "description": "Mean value."
+            },
+            "p50": {
+              "type": "number",
+              "description": "Median (nearest-rank)."
+            },
+            "p95": {
+              "type": "number",
+              "description": "95th percentile (nearest-rank)."
+            }
+          },
+          "required": [
+            "avg",
+            "count",
+            "max",
+            "min",
+            "p50",
+            "p95",
+            "ts"
+          ]
+        }
+      }
+    },
+    "required": [
+      "bucket_s",
+      "buckets",
+      "from",
+      "series",
+      "to"
+    ],
+    "type": "object"
+  },
+  "host.ts.put": {
+    "properties": {
+      "series": {
+        "type": "string",
+        "description": "The series the point went into."
+      },
+      "points": {
+        "type": "integer",
+        "description": "Points the series holds after this put."
+      },
+      "oldest_ts": {
+        "type": "integer",
+        "description": "Unix seconds of the series' oldest point."
+      }
+    },
+    "required": [
+      "oldest_ts",
+      "points",
+      "series"
+    ],
+    "type": "object"
+  },
+  "host.ts.list": {
+    "properties": {
+      "series": {
+        "type": "array",
+        "description": "Every series with points, by name.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "series": {
+              "type": "string",
+              "description": "Series name."
+            },
+            "points": {
+              "type": "integer",
+              "description": "Points held."
+            },
+            "oldest_ts": {
+              "type": "integer",
+              "description": "Unix seconds of the oldest point."
+            },
+            "newest_ts": {
+              "type": "integer",
+              "description": "Unix seconds of the newest point."
+            }
+          },
+          "required": [
+            "newest_ts",
+            "oldest_ts",
+            "points",
+            "series"
+          ]
+        }
+      },
+      "truncated": {
+        "type": "boolean",
+        "description": "True when more than 500 series exist and only the first 500 by name are listed."
+      }
+    },
+    "required": [
+      "series",
+      "truncated"
+    ],
+    "type": "object"
+  },
+  "host.ts.trim": {
+    "properties": {
+      "series": {
+        "type": "string",
+        "description": "The series trimmed."
+      },
+      "deleted": {
+        "type": "integer",
+        "description": "Points deleted."
+      },
+      "points": {
+        "type": "integer",
+        "description": "Points the series holds afterwards."
+      },
+      "oldest_ts": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "Unix seconds of the oldest remaining point; null when none remain."
+      }
+    },
+    "required": [
+      "deleted",
+      "oldest_ts",
+      "points",
+      "series"
+    ],
+    "type": "object"
+  },
   "host.uptime.create": {
     "properties": {
       "clamped_to": {

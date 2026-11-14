@@ -1077,6 +1077,34 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_ts_put<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::timeseries::put(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_ts_get<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::timeseries::get(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_ts_trim<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::timeseries::trim(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_ts_list<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, .. } = c;
+            crate::timeseries::list(&self.state, tenant).await
+        })
+    }
+
     pub(crate) fn arm_host_table_handles<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;
