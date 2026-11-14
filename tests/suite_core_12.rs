@@ -27,8 +27,6 @@ mod tcpn;
 mod timp;
 #[path = "support/tssdk.rs"]
 mod tssdk;
-#[path = "support/ttpl.rs"]
-mod ttpl;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
@@ -418,6 +416,14 @@ mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
 mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
 #[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
 mod sjrc_ac07_limit_ceiling_and_empty_tool;
+#[path = "skgn_ac04_errors_from_registry_and_remedy_verbs.rs"]
+mod skgn_ac04_errors_from_registry_and_remedy_verbs;
+#[path = "skgn_ac05_limits_equal_plan_ceilings.rs"]
+mod skgn_ac05_limits_equal_plan_ceilings;
+#[path = "skgn_ac06_devloop_omits_absent_verbs.rs"]
+mod skgn_ac06_devloop_omits_absent_verbs;
+#[path = "skgn_ac07_url_renders_from_tools_list.rs"]
+mod skgn_ac07_url_renders_from_tools_list;
 #[path = "skillsrc_ac01_gen_docs_writes_skill_md_byte_equal.rs"]
 mod skillsrc_ac01_gen_docs_writes_skill_md_byte_equal;
 #[path = "skillsrc_ac02_gen_docs_check_names_stale_skill_md.rs"]
@@ -1030,15 +1036,3 @@ mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
 mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
 #[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
 mod ttfs_ac07_by_client_only_for_groups_of_five;
-#[path = "ttpl_ac01_scheduled_job_two_calls.rs"]
-mod ttpl_ac01_scheduled_job_two_calls;
-#[path = "ttpl_ac03_plan_ceiling_refused_before_any_create.rs"]
-mod ttpl_ac03_plan_ceiling_refused_before_any_create;
-#[path = "ttpl_ac04_failed_create_rolls_back_every_object.rs"]
-mod ttpl_ac04_failed_create_rolls_back_every_object;
-#[path = "ttpl_ac05_reapply_updates_in_place_and_applies_serialize.rs"]
-mod ttpl_ac05_reapply_updates_in_place_and_applies_serialize;
-#[path = "ttpl_ac06_list_verb_and_templates_json_agree.rs"]
-mod ttpl_ac06_list_verb_and_templates_json_agree;
-#[path = "ttpl_ac07_remove_keeps_what_the_user_changed.rs"]
-mod ttpl_ac07_remove_keeps_what_the_user_changed;
