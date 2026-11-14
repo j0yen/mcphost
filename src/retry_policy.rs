@@ -216,6 +216,7 @@ pub const RETRY_POLICY: &[RetryRow] = &[
     yes("events_rate_limited", exp(1000, 30_000), 3, AFTER),
     yes("rate_limited_host", exp(1000, 30_000), 3, AFTER),
     yes("invite_rate_limited", exp(1000, 60_000), 3, AFTER),
+    yes("conflict", Backoff::Fixed(2000), 3, AFTER),
 ];
 
 /// The row for `code`; an unknown code resolves to [`DEFAULT_UNKNOWN`] and

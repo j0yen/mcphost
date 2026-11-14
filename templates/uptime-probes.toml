@@ -1,0 +1,43 @@
+title = "Uptime probes"
+one_line = "Watch 1-20 URLs on a schedule with no server: a targets table, a probe, a status tool."
+plan_fit = "free"
+secrets_required = []
+
+[[params]]
+name = "name"
+type = "string"
+required = false
+default = "site_status"
+
+[[params]]
+name = "urls"
+type = "array"
+required = true
+
+[[params]]
+name = "every_s"
+type = "integer"
+required = false
+
+# Wraps host.uptime.create (the table, the probe, the status tool and one schedule). The
+# template does not run the first probe: the demo call does.
+[wrap]
+verb = "host.uptime.create"
+args = { name = "{{name}}", urls = "{{urls}}", every_s = "{{every_s}}" }
+
+[wrap.creates]
+tools = ["{{name}}", "{{name}}_probe"]
+tables = ["{{name}}_targets"]
+triggers = ["schedule"]
+
+[demo]
+call = { tool = "host.tool_call", args = { name = "{{name}}_probe" } }
+expect = { columns = ["url", "ok", "status", "latency_ms", "checked_at"] }
+
+[[next]]
+tool = "host.tool_call"
+note = "call {{name}} for the latest stored table; its text field is an aligned table for a human"
+
+[[next]]
+tool = "host.uptime.create"
+note = "the underlying verb, for a different set of URLs"

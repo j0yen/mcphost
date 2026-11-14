@@ -263,6 +263,8 @@ pub const TOOLS_LIST_OPS: &[ToolsListOp] = &[
     // Verbs that publish or remove tools through `control::tool_publish` /
     // `Db::remove_tool` on the caller's behalf.
     ToolsListOp { verb: "host.tool_from_description", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+    ToolsListOp { verb: "host.template_remove", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+    ToolsListOp { verb: "host.template_apply", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
     ToolsListOp { verb: "host.uptime.create", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
     ToolsListOp { verb: "host.webhook_inbox.create", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
     ToolsListOp { verb: "host.secret.leak_test", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },

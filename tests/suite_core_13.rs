@@ -13,6 +13,8 @@ mod assertion;
 mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/ttpl.rs"]
+mod ttpl;
 #[path = "support/uprg.rs"]
 mod uprg;
 #[path = "support/vbd_calls.rs"]
@@ -22,20 +24,18 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
-#[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
-mod ttfs_ac01_onboarding_7d_reads_external_stamps;
-#[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]
-mod ttfs_ac02_whoami_activation_first_call_only;
-#[path = "ttfs_ac03_milestone_table_is_the_one_key_set.rs"]
-mod ttfs_ac03_milestone_table_is_the_one_key_set;
-#[path = "ttfs_ac04_onboarding_block_carries_no_identifiers.rs"]
-mod ttfs_ac04_onboarding_block_carries_no_identifiers;
-#[path = "ttfs_ac05_under_five_tenants_shows_n_and_nulls.rs"]
-mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
-#[path = "ttfs_ac06_admin_has_no_activation_and_unclassified_excluded.rs"]
-mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
-#[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
-mod ttfs_ac07_by_client_only_for_groups_of_five;
+#[path = "ttpl_ac01_scheduled_job_two_calls.rs"]
+mod ttpl_ac01_scheduled_job_two_calls;
+#[path = "ttpl_ac03_plan_ceiling_refused_before_any_create.rs"]
+mod ttpl_ac03_plan_ceiling_refused_before_any_create;
+#[path = "ttpl_ac04_failed_create_rolls_back_every_object.rs"]
+mod ttpl_ac04_failed_create_rolls_back_every_object;
+#[path = "ttpl_ac05_reapply_updates_in_place_and_applies_serialize.rs"]
+mod ttpl_ac05_reapply_updates_in_place_and_applies_serialize;
+#[path = "ttpl_ac06_list_verb_and_templates_json_agree.rs"]
+mod ttpl_ac06_list_verb_and_templates_json_agree;
+#[path = "ttpl_ac07_remove_keeps_what_the_user_changed.rs"]
+mod ttpl_ac07_remove_keeps_what_the_user_changed;
 #[path = "txnhelp_ac01_lint_zero.rs"]
 mod txnhelp_ac01_lint_zero;
 #[path = "txnhelp_ac02_lock_parity.rs"]

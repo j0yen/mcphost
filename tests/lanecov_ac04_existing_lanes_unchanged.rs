@@ -308,6 +308,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "skill-gen",
             "spmsg-live-script",
             "tblurlp-live-script",
+            "templates",
             "timeout-clamp-live-script",
             "tool-naming",
             "vendor",

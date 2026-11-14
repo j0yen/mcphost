@@ -1984,7 +1984,7 @@
     "host.table.model_set": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "table_not_found",
           "state": "after_create"
         },
         {
@@ -2112,6 +2112,18 @@
           "state": "fresh"
         }
       ],
+      "variants": []
+    },
+    "host.template_apply": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.template_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.template_remove": {
+      "unreached": [],
       "variants": []
     },
     "host.tool.call": {
@@ -4564,7 +4576,7 @@
     "host_table_model_set": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "table_not_found",
           "state": "after_create"
         },
         {
@@ -4692,6 +4704,18 @@
           "state": "fresh"
         }
       ],
+      "variants": []
+    },
+    "host_template_apply": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_template_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_template_remove": {
+      "unreached": [],
       "variants": []
     },
     "host_tool_call": {
