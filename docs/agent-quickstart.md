@@ -29,9 +29,12 @@ own tool is **42.4s**.
    `onboarding.memory_hint` names where agents conventionally keep it.
    Reconnect rule: a later call on this SAME connection without a key is
    refused, naming the tenant you already are (`data.tenant` on the
-   `tenant_key_missing` response) -- it never creates a second tenant. Use
-   `onboarding.url` for every call from here on.
-4. Publish a tool, reconnected through `onboarding.url`. `host.quickstart()`'s
+   `tenant_key_missing` response) -- it never creates a second tenant. From
+   here on, either reconnect through `onboarding.url`, or stay on this
+   connection and pass the tenant's key as the `tenant_key` argument on each
+   call (the first response carries it as `onboarding.tenant_key` when your
+   client holds no session).
+4. Publish a tool, over `onboarding.url` or with `tenant_key` passed. `host.quickstart()`'s
    own `starter_tool` is a ready-to-publish `python` spec; its
    `publish_call` is exactly:
    ```
