@@ -13,7 +13,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::execw;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -84,7 +85,7 @@ fn copy_dir(src: &Path, dst: &Path) {
 }
 
 fn run_check(scratch: &Path) -> std::process::Output {
-    Command::new(scratch.join("scripts/gen-test-suites.sh"))
+    execw::script(&scratch.join("scripts/gen-test-suites.sh"))
         .arg("--check")
         .current_dir(scratch)
         .output()
@@ -92,7 +93,7 @@ fn run_check(scratch: &Path) -> std::process::Output {
 }
 
 fn run_write(scratch: &Path) -> std::process::Output {
-    Command::new(scratch.join("scripts/gen-test-suites.sh"))
+    execw::script(&scratch.join("scripts/gen-test-suites.sh"))
         .current_dir(scratch)
         .output()
         .expect("run gen-test-suites.sh")

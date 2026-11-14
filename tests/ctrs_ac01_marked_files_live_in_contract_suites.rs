@@ -5,7 +5,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::execw;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -69,7 +70,7 @@ fn scratch_copy() -> PathBuf {
 }
 
 fn run_check(dir: &Path) -> std::process::Output {
-    Command::new(dir.join("scripts/gen-test-suites.sh"))
+    execw::script(&dir.join("scripts/gen-test-suites.sh"))
         .arg("--check")
         .current_dir(dir)
         .output()

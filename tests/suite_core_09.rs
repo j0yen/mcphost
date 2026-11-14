@@ -26,6 +26,8 @@ mod dimp;
 mod docs_qa;
 #[path = "support/dryspt_lint.rs"]
 mod dryspt_lint;
+#[path = "support/execw.rs"]
+mod execw;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/slotkind.rs"]
