@@ -10,6 +10,12 @@ mod common;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "spmsg_ac06_driver_compiles_plans_and_fails_closed.rs"]
+mod spmsg_ac06_driver_compiles_plans_and_fails_closed;
+#[path = "spmsg_ac07_driver_passes_on_test_server.rs"]
+mod spmsg_ac07_driver_passes_on_test_server;
+#[path = "sreg_ac01_registry_single_source.rs"]
+mod sreg_ac01_registry_single_source;
 #[path = "statusfeed_ac11_deferral_is_justified.rs"]
 mod statusfeed_ac11_deferral_is_justified;
 #[path = "suite_ac2_check_catches_unregistered_file.rs"]

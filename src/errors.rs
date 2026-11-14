@@ -1073,7 +1073,7 @@ crate::err_code! {
 crate::err_code! {
     pub REQUEST_BODY_TOO_LARGE => "request_body_too_large",
     Call, AgentFault, false,
-    "Send less than data.limit_bytes per call; store a large payload with host.blob_put and pass its blob id.",
+    "Send less than data.limit_bytes per call; store a large payload with host.blob.put and pass its blob id.",
     data_keys: &["limit_bytes", "content_length", "hint"],
 }
 
@@ -2701,7 +2701,7 @@ crate::err_code! {
 crate::err_code! {
     pub CHANNEL_NOT_FOUND,
     code: "channel_not_found", family: Share, class: AgentFault, retryable: false,
-    remedy: "Check data.key against host.channel.list and use a channel id or name that exists.",
+    remedy: "Check data.key against the channels you opened with host.channel.open and use an id or name that exists.",
 }
 
 crate::err_code! {

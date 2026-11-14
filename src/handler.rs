@@ -1131,6 +1131,13 @@ fn starter_tools(kinds: &KindRegistry) -> Vec<Tool> {
     tools
 }
 
+/// PRD-mcphost-plugin-skill-generated-from-registry R2: the names of the
+/// anonymous starter listing ([`starter_tools`]), read by `skill_gen` so the
+/// skill's "no key needed" line is the registry's own set, never a copy.
+pub fn starter_tool_names(kinds: &KindRegistry) -> Vec<String> {
+    starter_tools(kinds).into_iter().map(|t| t.name.to_string()).collect()
+}
+
 /// PRD-mcphost-end-user-identity requirement 5: the `end_user` argument
 /// every scoped `host.state.*` op shares -- `"self"` resolves to the
 /// call's own verified identity (errors `end_user_required` if absent);
