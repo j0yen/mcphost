@@ -82,6 +82,8 @@ fn fixtures() -> Vec<Fx> {
         fx("host.table.append", tbl(), d(json!({"table": "t1", "rows": [{"a": "x"}]})), vec![("host.table.query", json!({"sql": "SELECT COUNT(*) AS n FROM t1"}))]),
         fx("host.table.drop", tbl_rows(), d(json!({"name": "t1"})), vec![("host.table.list", json!({})), ("host.table.query", json!({"sql": "SELECT COUNT(*) AS n FROM t1"}))]),
         fx("host.table.handle_drop", { let mut v = tbl_rows(); v.push(("host.table.query", json!({"sql": "SELECT * FROM t1", "handle": true}))); v }, d(json!({"handle": "{last.handle}"})), vec![("host.table.handles", json!({})), ("host.table.list", json!({}))]),
+        fx("host.ts.put", vec![], d(json!({"series": "s1", "value": 1})), vec![("host.ts.get", json!({"series": "s1", "bucket": "1d", "from": 1700000000, "to": 2100000000}))]),
+        fx("host.ts.trim", vec![("host.ts.put", json!({"series": "s1", "value": 1, "ts": 100})), ("host.ts.put", json!({"series": "s1", "value": 2, "ts": 200}))], d(json!({"series": "s1", "keep_last": 1})), vec![("host.ts.list", json!({}))]),
         fx("host.table.model_set", tbl(), d(json!({"table": "t1", "key": "description", "value": "x"})), vec![("host.table.models", json!({}))]),
         fx("host.state.set", vec![], d(json!({"key": "k1", "value": "v"})), vec![("host.state.get", json!({"key": "k1"})), ("host.state.list", json!({}))]),
         fx("host.state.insert", st_tbl(), d(json!({"table": "st1", "rows": [{"a": "x"}]})), st_reads()),

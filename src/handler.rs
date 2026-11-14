@@ -2914,6 +2914,67 @@ fn host_tools_part_04() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.ts.put",
+            "Append one numeric point to a time series (no declaration needed). series is \
+             lowercase letters, digits and underscores, starting with a letter, at most 41 \
+             characters. ts is unix seconds (default now); tags is up to 8 string pairs. Returns \
+             {series, points, oldest_ts}. A put past the plan's ts_points_max (points per \
+             series) is refused quota_exceeded.",
+            host_schema_checked(
+                json!({
+                    "series": {"type": "string", "pattern": crate::timeseries::SERIES_PATTERN, "description": "Series name."},
+                    "value": {"type": "number", "description": "The number to record."},
+                    "ts": {"type": "integer", "minimum": 0, "description": "Unix seconds of the point; default now."},
+                    "tags": {"type": "object", "maxProperties": crate::timeseries::TAGS_MAX, "description": "String tags; host.ts.get filters by equality on them.", "additionalProperties": {"type": "string"}},
+                }),
+                &["series", "value"],
+            ),
+        ),
+        Tool::new(
+            "host.ts.get",
+            format!(
+                "Read one series bucketed over a time range: one SQL statement returns, per \
+                 bucket, count, min, max, avg, p50 and p95 (nearest-rank). Buckets start at \
+                 from and are bucket_s wide; a bucket with no points is omitted; an empty \
+                 series answers buckets: []. bucket is one of {}. from and to take {} (defaults \
+                 -24h and now). tags filters by equality. A refusal carries allowed_buckets and \
+                 time_forms.",
+                crate::timeseries::allowed_bucket_names().join(", "),
+                crate::timeseries::TIME_FORMS.join(", "),
+            ),
+            host_schema_checked(
+                json!({
+                    "series": {"type": "string", "pattern": crate::timeseries::SERIES_PATTERN, "description": "Series name."},
+                    "bucket": {"type": "string", "enum": crate::timeseries::allowed_bucket_names(), "description": "Bucket width.", (crate::host_args::REFUSAL_DATA_KEY): crate::timeseries::refusal_data()},
+                    "from": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "string", "pattern": crate::timeseries::TIME_PATTERN}], "description": "Range start: unix seconds, now, or -<n>s|m|h|d. Default -24h.", (crate::host_args::REFUSAL_DATA_KEY): crate::timeseries::refusal_data()},
+                    "to": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "string", "pattern": crate::timeseries::TIME_PATTERN}], "description": "Range end, same forms. Default now.", (crate::host_args::REFUSAL_DATA_KEY): crate::timeseries::refusal_data()},
+                    "tags": {"type": "object", "maxProperties": crate::timeseries::TAGS_MAX, "description": "Only points carrying every one of these string tags.", "additionalProperties": {"type": "string"}},
+                }),
+                &["series", "bucket"],
+            ),
+        ),
+        Tool::new(
+            "host.ts.trim",
+            "Delete points from one series: keep_last keeps the newest n points, before_ts drops \
+             every point older than that unix second; give exactly one. Returns {series, deleted, \
+             points, oldest_ts}. Frees room under the plan's ts_points_max.",
+            host_schema_extra(
+                json!({
+                    "series": {"type": "string", "pattern": crate::timeseries::SERIES_PATTERN, "description": "Series name."},
+                    "keep_last": {"type": "integer", "minimum": 0, "description": "Keep only the newest n points."},
+                    "before_ts": {"type": "integer", "minimum": 0, "description": "Delete points with ts below this unix second."},
+                }),
+                &["series"],
+                import_one_of(&["keep_last", "before_ts"]),
+            ),
+        ),
+        Tool::new(
+            "host.ts.list",
+            "List the series this tenant holds points for, by name (the first 500; truncated says if \
+             there are more), each with points, oldest_ts and newest_ts.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
             "host.table.drop",
             "Drop a declared table and every row it holds. Refused as lineage_blocked when a \
              tool, chain, chart, or handle would break, unless confirm: true.",
@@ -7294,6 +7355,12 @@ impl DocsBackend for TenantDocsBridge {
             "index_create" => crate::index::index_create(&self.state, &self.tenant, &args).await,
             "index_status" => crate::index::index_status(&self.state, &self.tenant, &args).await,
             "index_list" => crate::index::index_list(&self.state, &self.tenant, &args).await,
+            // PRD-mcphost-timeseries-buckets R7: `mcphost.ts` rides this channel,
+            // calling the same functions the `host.ts.*` verbs do.
+            "ts_put" => crate::timeseries::put(&self.state, &self.tenant, &args).await,
+            "ts_get" => crate::timeseries::get(&self.state, &self.tenant, &args).await,
+            "ts_list" => crate::timeseries::list(&self.state, &self.tenant).await,
+            "ts_trim" => crate::timeseries::trim(&self.state, &self.tenant, &args).await,
             "quota" => control::data_quota_for(&self.state, &self.tenant)
                 .await
                 .map(|q| q.unwrap_or(Value::Null)),

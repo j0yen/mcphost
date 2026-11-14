@@ -1,7 +1,9 @@
 //! PRD-mcphost-uptime-probes
 //! AC3 — Given one target returning 503, When `status` is called, Then
-//! that target has `up_pct_24h` 0 and a `down_since` equal to its first
-//! check; the healthy target has 100 and no `down_since`.
+//! that target has `up_pct_24h` 0 and a `down_since` at its first check; the
+//! healthy target has 100 and no `down_since`. (PRD-mcphost-timeseries-buckets
+//! R6: `status` answers from `host.ts.get` buckets, so `down_since` is the
+//! start of the whole minute holding the first failed probe.)
 
 use crate::common;
 use crate::uptime_probes;
@@ -40,21 +42,12 @@ async fn status_reports_up_pct_and_down_since() {
     let client = McpClient::with_bearer(&server.base_url, &key);
     let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
-    uptime_probes::create_tables(&client).await;
-    client
-        .tools_call(
-            "host.state.insert",
-            json!({"table": "targets", "rows": [
-                {"url": url_healthy, "added_at": 1.0},
-                {"url": url_down, "added_at": 2.0},
-            ]}),
-        )
-        .await
-        .expect("insert targets");
+    uptime_probes::set_targets(&client, &[url_healthy.clone(), url_down.clone()]).await;
 
     uptime_probes::publish_probe(&client).await;
     uptime_probes::publish_status(&client).await;
 
+    let before = now_unix();
     poll_until_ready(&client, &format!("{ns}.probe"), json!({}), Duration::from_secs(20))
         .await
         .unwrap_or_else(|e| panic!("probe call must succeed: {} {}", e.code, e.message));
@@ -82,15 +75,14 @@ async fn status_reports_up_pct_and_down_since() {
         .unwrap_or_else(|| panic!("no entry for the down target: {targets:?}"));
     assert_eq!(down_entry["up_pct_24h"], json!(0), "{down_entry:?}");
 
-    let checks_down = extract_structured(
-        &client
-            .tools_call(
-                "host.state.query",
-                json!({"table": "checks", "where": format!("url = '{url_down}'"), "order_by": "at asc"}),
-            )
-            .await
-            .expect("query down checks"),
-    );
-    let first_at = checks_down["rows"][0]["at"].clone();
-    assert_eq!(down_entry["down_since"], first_at, "{down_entry:?}");
+    // `down_since` is a whole-minute bucket start that holds the first failed probe.
+    let down_since = down_entry["down_since"].as_i64().unwrap_or_else(|| panic!("no down_since: {down_entry:?}"));
+    assert_eq!(down_since % 60, 0, "a minute bucket start: {down_entry:?}");
+    assert!(down_since >= before - 60 && down_since <= now_unix(), "down_since {down_since} near the probe ({before}): {down_entry:?}");
+    assert_eq!(down_entry["up"], json!(false), "{down_entry:?}");
+    assert_eq!(healthy_entry["up"], json!(true), "{healthy_entry:?}");
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("system clock").as_secs() as i64
 }
