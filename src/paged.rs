@@ -671,6 +671,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.enduser.list", UNPAGED_LEGACY),
     ("host.example.list", UNPAGED_BOUNDED),
     ("host.errors", UNPAGED_STATIC),
+    ("host.template_list", UNPAGED_STATIC),
     ("host.feedback.list", UNPAGED_BOUNDED),
     ("host.group.list", UNPAGED_BOUNDED),
     ("host.help.search", UNPAGED_RANKED),

@@ -1042,6 +1042,13 @@ async fn errors_json_route(State(state): State<Arc<AppState>>) -> Response {
         .into_response()
 }
 
+/// `GET /templates.json` (PRD-mcphost-tenant-templates R4): the same list
+/// `host.template_list` returns. Anonymous; cacheable for five minutes (it only
+/// changes with a release).
+async fn templates_json_route() -> Response {
+    (StatusCode::OK, [("cache-control", "public, max-age=300")], Json(crate::templates::list_json())).into_response()
+}
+
 /// PRD-mcphost-contract-version-reported R5: `GET /contract.json`,
 /// anonymous. The body is pre-serialized at boot; `ETag` is the quoted
 /// contract sha and a matching `If-None-Match` gets an empty 304.

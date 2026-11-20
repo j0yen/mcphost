@@ -65,6 +65,7 @@ impl McpHostHandler {
     pub(crate) fn arm_host_help_get<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> { self.answered_before_dispatch(c) }
     pub(crate) fn arm_host_help_search<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> { self.answered_before_dispatch(c) }
     pub(crate) fn arm_host_quickstart<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> { self.answered_before_dispatch(c) }
+    pub(crate) fn arm_host_template_list<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> { self.answered_before_dispatch(c) }
     pub(crate) fn arm_host_redeem<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> { self.answered_before_dispatch(c) }
 
     pub(crate) fn arm_host_whoami<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
@@ -611,6 +612,20 @@ impl McpHostHandler {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;
             crate::org_digest::send(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_template_apply<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::templates::apply(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_template_remove<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::templates::remove(&self.state, tenant, &args).await
         })
     }
 

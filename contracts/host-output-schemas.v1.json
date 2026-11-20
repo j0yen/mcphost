@@ -12562,6 +12562,207 @@
     ],
     "type": "object"
   },
+  "host.template_apply": {
+    "properties": {
+      "created": {
+        "properties": {
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "triggers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "demo": {
+        "properties": {
+          "call": {
+            "type": "object"
+          },
+          "expect": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "call",
+          "expect"
+        ],
+        "type": "object"
+      },
+      "next": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "template": {
+        "type": "string"
+      },
+      "updated": {
+        "properties": {
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "triggers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "required": [
+      "created",
+      "demo",
+      "next",
+      "template"
+    ],
+    "type": "object"
+  },
+  "host.template_list": {
+    "properties": {
+      "count": {
+        "type": "integer"
+      },
+      "templates": {
+        "items": {
+          "properties": {
+            "creates": {
+              "properties": {
+                "tables": {
+                  "type": "integer"
+                },
+                "tools": {
+                  "type": "integer"
+                },
+                "triggers": {
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "one_line": {
+              "type": "string"
+            },
+            "params": {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "plan_fit": {
+              "type": "string"
+            },
+            "secrets_required": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "count",
+      "templates"
+    ],
+    "type": "object"
+  },
+  "host.template_remove": {
+    "properties": {
+      "kept": {
+        "properties": {
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "triggers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "removed": {
+        "properties": {
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "triggers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "template": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "kept",
+      "removed",
+      "template"
+    ],
+    "type": "object"
+  },
   "host.tool.call": {
     "properties": {
       "call_id": {

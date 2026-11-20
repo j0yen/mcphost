@@ -1,0 +1,30 @@
+title = "Database in a minute"
+one_line = "A declared table ready for host.table.append and host.table.query."
+plan_fit = "free"
+secrets_required = []
+
+[[params]]
+name = "name"
+type = "string"
+required = false
+default = "notes"
+
+[[tables]]
+name = "{{name}}"
+
+[tables.columns]
+id = "integer"
+title = "text"
+body = "text"
+
+[demo]
+call = { tool = "host.table.query", args = { sql = "SELECT COUNT(*) AS n FROM {{name}}" } }
+expect = { rows = [{ n = 0 }] }
+
+[[next]]
+tool = "host.table.append"
+note = "add rows to {{name}}: rows = [{id: 1, title: ..., body: ...}]"
+
+[[next]]
+tool = "host.table.query"
+note = "ask {{name}} a question in SQL"
