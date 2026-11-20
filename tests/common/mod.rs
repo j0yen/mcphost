@@ -673,6 +673,11 @@ pub struct TestServer {
     pub state: Arc<AppState>,
 }
 
+tokio::task_local! {
+    /// Set by `TestServer::start_without_executor` for the duration of its start.
+    static SKIP_EXECUTOR: bool;
+}
+
 impl TestServer {
     /// PRD-mcphost-data-quota-in-every-response: a server over
     /// [`bare_app_state`] whose plan catalog `mutate` edits first -- the
@@ -767,6 +772,14 @@ impl TestServer {
         });
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         Self { base_url: format!("http://{addr}"), data_dir, state }
+    }
+
+    /// Like [`Self::start`] but without `runs::spawn_executor`, so a queued
+    /// run stays open (no lease, no terminal write, no run-bound key
+    /// revocation). Scoped to this call's task via a task-local, so
+    /// concurrent tests in the same binary keep the executor.
+    pub async fn start_without_executor() -> Self {
+        SKIP_EXECUTOR.scope(true, Self::start()).await
     }
 
     /// Start a server with the standard test admin key.
@@ -1472,7 +1485,10 @@ impl TestServer {
         // executor too, same as production -- a test that publishes a
         // python tool and calls it with `async: true` sees it actually
         // execute, not just sit `queued` forever.
-        mcphost::runs::spawn_executor((*state).clone());
+        // Skipped only inside `start_without_executor`'s task-local scope.
+        if !SKIP_EXECUTOR.try_with(|skip| *skip).unwrap_or(false) {
+            mcphost::runs::spawn_executor((*state).clone());
+        }
         // PRD-mcphost-schedules: same for the scheduler tick -- a test can
         // also call `mcphost::triggers::tick_once` directly for a
         // deterministic single tick instead of waiting on this loop's own
