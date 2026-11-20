@@ -1,8 +1,10 @@
 //! PRD-mcphost-registry-entry-one-source AC2 (P0) -- Given the registry stub
 //! times out, When `--live` runs, Then it prints `drift=unknown` with the
-//! reason and exits 2 within 11 s.
+//! reason and exits 2 within the bound below.
 
 use std::time::Duration;
+
+use mcphost::registry_manifest::LIVE_TIMEOUT_SECS;
 
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -18,11 +20,14 @@ async fn regone_ac02() {
         .mount(&registry)
         .await;
 
-    // The 11 s bound is enforced by the timeout itself (a hang fails the
-    // test) rather than by asserting on a measured elapsed time.
-    let (code, out) = tokio::time::timeout(Duration::from_secs(11), run_live(&registry, &endpoint, &[]))
+    // The production timeout (LIVE_TIMEOUT_SECS, applied once to both
+    // concurrent probes) plus 5 s of slack for process spawn and host io load.
+    // The bound stays under 2x the timeout, so a timeout applied twice
+    // (connect then request) still fails, and a hang fails the test.
+    let bound = Duration::from_secs(LIVE_TIMEOUT_SECS + 5);
+    let (code, out) = tokio::time::timeout(bound, run_live(&registry, &endpoint, &[]))
         .await
-        .expect("--live must finish within 11 s");
+        .unwrap_or_else(|_| panic!("--live must finish within {bound:?}"));
 
     assert!(out.contains("drift=unknown"), "stdout: {out}");
     assert!(out.contains("reason=") && out.contains("registry"), "reason missing: {out}");
