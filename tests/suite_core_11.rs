@@ -9,6 +9,8 @@
 mod common;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
+#[path = "support/execw.rs"]
+mod execw;
 #[path = "support/fake_as.rs"]
 mod fake_as;
 #[path = "support/mrefu.rs"]
