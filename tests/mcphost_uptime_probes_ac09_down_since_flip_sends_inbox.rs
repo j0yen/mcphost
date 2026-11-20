@@ -32,14 +32,7 @@ async fn probe_sends_one_inbox_message_when_a_target_first_goes_down() {
     let client = McpClient::with_bearer(&server.base_url, &key);
     let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
-    uptime_probes::create_tables(&client).await;
-    client
-        .tools_call(
-            "host.state.insert",
-            json!({"table": "targets", "rows": [{"url": url_down, "added_at": 1.0}]}),
-        )
-        .await
-        .expect("insert target");
+    uptime_probes::set_targets(&client, &[url_down.clone()]).await;
 
     // The hand-off's own self-call: `probe` authenticates its own
     // `host.msg.send` notification with this tenant's own key, published

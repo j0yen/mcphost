@@ -22,6 +22,12 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// taxonomy (`invalid_tool_name`, `invalid_params`, clamped limits, ...).
 pub const VALIDATED_KEY: &str = "x-mcphost-validated";
 
+/// PRD-mcphost-timeseries-buckets R5: a property schema carrying this key names
+/// an object merged into the `data` of the `args_invalid` the validator raises
+/// for that property, so a refusal from the descriptor lists the same consts
+/// (`allowed_buckets`, `time_forms`) the handler's own refusal does.
+pub const REFUSAL_DATA_KEY: &str = "x-mcphost-refusal-data";
+
 /// PRD-mcphost-host-args-validated-by-default R2: the tools that keep their
 /// handler's own refusal instead of validating by their descriptor, as
 /// `(tool, reason)` where the reason names the `tests/` file pinning that
@@ -141,6 +147,8 @@ pub const SHAPE_CHECKS: &[ShapeCheck] = &[
     ShapeCheck { pattern: crate::notify::LINK_PATTERN, check: None, accepts: &["https://example.com/a"], orphan: false },
     ShapeCheck { pattern: crate::drafter::TOOL_NAME_REGEX, check: Some(crate::state::is_valid_tool_name), accepts: &["ab", "my_tool_2"], orphan: false },
     ShapeCheck { pattern: crate::index::NAME_PATTERN, check: None, accepts: &["docs", "a-b_c", "0x"], orphan: false },
+    ShapeCheck { pattern: crate::timeseries::SERIES_PATTERN, check: Some(crate::timeseries::is_valid_series), accepts: &["latency_ms", "a", "x9_y"], orphan: false },
+    ShapeCheck { pattern: crate::timeseries::TIME_PATTERN, check: Some(crate::timeseries::is_time_form), accepts: &["now", "1699999999", "-24h", "-5m"], orphan: false },
     // `signup` is the unauthenticated tool, outside `host_tool_descriptors`/`admin_tool_descriptors`.
     ShapeCheck { pattern: crate::state::SOURCE_PATTERN, check: Some(crate::state::is_valid_signup_source), accepts: &["docs.quickstart", "a", "x-y_z"], orphan: true },
 ];
@@ -355,6 +363,12 @@ fn schema_refusal(compiled: &Compiled, tool: &str, args: &Value) -> Option<AppEr
         obj.insert("constraint".into(), json!(constraint));
         obj.insert("expected".into(), expected);
         obj.insert("docs".into(), json!(docs));
+        let property = path.trim_start_matches('/').split('/').next().unwrap_or_default();
+        if let Some(Value::Object(extra)) =
+            compiled.schema.pointer(&format!("/properties/{property}/{REFUSAL_DATA_KEY}"))
+        {
+            obj.extend(extra.clone());
+        }
     }
     Some(AppError::Structured {
         code: ARGS_INVALID,

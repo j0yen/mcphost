@@ -22,6 +22,10 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "tsvr_ac01_unknown_column_names_declared.rs"]
+mod tsvr_ac01_unknown_column_names_declared;
+#[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
+mod tsvr_ac02_type_mismatch_names_accepted_shape;
 #[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
 mod ttfs_ac01_onboarding_7d_reads_external_stamps;
 #[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]

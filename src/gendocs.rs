@@ -681,7 +681,7 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
 /// as an argument list -- one bullet per property (sorted by name) with its
 /// type, whether it is required, and every `enum`, `pattern`, `minimum`,
 /// `maximum`, `minItems`, `maxItems`, `minLength` and `maxLength` the schema carries
-/// (nested `items`, `oneOf` branches and object properties included, under a dotted path), plus one bullet per
+/// (nested `items`, `oneOf`/`anyOf` branches and object properties included, under a dotted path), plus one bullet per
 /// top-level `anyOf` naming its alternatives. Rendered from the same
 /// descriptor `tools/list` and the contract dump read, so the three cannot
 /// drift.
@@ -747,6 +747,11 @@ pub fn render_arguments_block(schema: &serde_json::Map<String, serde_json::Value
         if let Some(branches) = node.get("oneOf").and_then(Value::as_array) {
             for (i, branch) in branches.iter().enumerate() {
                 walk(&format!("{path}<oneOf {i}>"), branch, out);
+            }
+        }
+        if let Some(branches) = node.get("anyOf").and_then(Value::as_array) {
+            for (i, branch) in branches.iter().enumerate() {
+                walk(&format!("{path}<anyOf {i}>"), branch, out);
             }
         }
         for key in ["propertyNames"] {

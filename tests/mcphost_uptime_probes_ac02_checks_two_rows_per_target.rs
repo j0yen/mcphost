@@ -1,7 +1,8 @@
 //! PRD-mcphost-uptime-probes
-//! AC2 — Given two targets and `host.trigger.fire` twice, When `checks`
-//! is queried, Then each target has exactly 2 rows with `code`, `ms`,
-//! `at`.
+//! AC2 — Given two targets and `host.trigger.fire` twice, When the `up` and
+//! `latency_ms` series are read with `host.ts.get`, Then each target has exactly
+//! 2 points in each (PRD-mcphost-timeseries-buckets R6 moved the example from a
+//! `checks` table to series).
 
 use crate::common;
 use crate::uptime_probes;
@@ -39,17 +40,7 @@ async fn checks_has_two_rows_per_target_after_two_fires() {
     let client = McpClient::with_bearer(&server.base_url, &key);
     let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
-    uptime_probes::create_tables(&client).await;
-    client
-        .tools_call(
-            "host.state.insert",
-            json!({"table": "targets", "rows": [
-                {"url": url_a, "added_at": 1.0},
-                {"url": url_b, "added_at": 2.0},
-            ]}),
-        )
-        .await
-        .expect("insert targets");
+    uptime_probes::set_targets(&client, &[url_a.clone(), url_b.clone()]).await;
 
     uptime_probes::publish_probe(&client).await;
     let trigger_id = uptime_probes::set_probe_schedule(&client).await;
@@ -60,21 +51,16 @@ async fn checks_has_two_rows_per_target_after_two_fires() {
     }
 
     for url in [&url_a, &url_b] {
-        let result = extract_structured(
-            &client
-                .tools_call(
-                    "host.state.query",
-                    json!({"table": "checks", "where": format!("url = '{url}'")}),
-                )
-                .await
-                .expect("query checks"),
-        );
-        let rows = result["rows"].as_array().expect("rows array");
-        assert_eq!(rows.len(), 2, "{url}: {rows:?}");
-        for row in rows {
-            assert!(row.get("code").is_some(), "{row:?}");
-            assert!(row.get("ms").is_some(), "{row:?}");
-            assert!(row.get("at").is_some(), "{row:?}");
+        for series in ["up", "latency_ms"] {
+            assert_eq!(uptime_probes::series_points(&client, series, url).await, 2, "{series} points of {url}");
         }
+        // Both fires reached a 200: the `up` series holds two 1s in one bucket.
+        let up = extract_structured(
+            &client
+                .tools_call("host.ts.get", json!({"series": "up", "bucket": "1d", "from": "-24h", "tags": {"url": url}}))
+                .await
+                .expect("ts.get up"),
+        );
+        assert_eq!(up["buckets"][0]["min"], json!(1.0), "{url}: {up}");
     }
 }
