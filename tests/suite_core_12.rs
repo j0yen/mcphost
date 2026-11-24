@@ -9,8 +9,6 @@
 mod common;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
-#[path = "support/dryspt_lint.rs"]
-mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
@@ -32,6 +30,20 @@ mod tssdk;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "qsbc_ac01_detection_keys_on_known_names.rs"]
+mod qsbc_ac01_detection_keys_on_known_names;
+#[path = "qsbc_ac02_quickstart_client_cursor.rs"]
+mod qsbc_ac02_quickstart_client_cursor;
+#[path = "qsbc_ac03_quickstart_client_user_agent.rs"]
+mod qsbc_ac03_quickstart_client_user_agent;
+#[path = "qsbc_ac04_quickstart_client_unknown.rs"]
+mod qsbc_ac04_quickstart_client_unknown;
+#[path = "qsbc_ac05_quickstart_client_chatgpt.rs"]
+mod qsbc_ac05_quickstart_client_chatgpt;
+#[path = "qsbc_ac06_connect_go_json_matches_quickstart.rs"]
+mod qsbc_ac06_connect_go_json_matches_quickstart;
+#[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
+mod qsbc_ac07_quickstart_writes_client_name;
 #[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
 mod refrow_ac01_args_invalid_writes_refused_row;
 #[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
@@ -404,6 +416,14 @@ mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
 mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
 #[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
 mod sjrc_ac07_limit_ceiling_and_empty_tool;
+#[path = "skgn_ac04_errors_from_registry_and_remedy_verbs.rs"]
+mod skgn_ac04_errors_from_registry_and_remedy_verbs;
+#[path = "skgn_ac05_limits_equal_plan_ceilings.rs"]
+mod skgn_ac05_limits_equal_plan_ceilings;
+#[path = "skgn_ac06_devloop_omits_absent_verbs.rs"]
+mod skgn_ac06_devloop_omits_absent_verbs;
+#[path = "skgn_ac07_url_renders_from_tools_list.rs"]
+mod skgn_ac07_url_renders_from_tools_list;
 #[path = "skillsrc_ac01_gen_docs_writes_skill_md_byte_equal.rs"]
 mod skillsrc_ac01_gen_docs_writes_skill_md_byte_equal;
 #[path = "skillsrc_ac02_gen_docs_check_names_stale_skill_md.rs"]
@@ -982,6 +1002,16 @@ mod trigidem_ac05_verbs_accept_name;
 mod trigidem_ac06_migration_backfills_duplicate_names;
 #[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
 mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
+#[path = "tsql_ac01_exec_refuses_escape_statements.rs"]
+mod tsql_ac01_exec_refuses_escape_statements;
+#[path = "tsql_ac02_update_one_row_dry_run_and_append_after.rs"]
+mod tsql_ac02_update_one_row_dry_run_and_append_after;
+#[path = "tsql_ac03_where_less_delete_and_update_refused.rs"]
+mod tsql_ac03_where_less_delete_and_update_refused;
+#[path = "tsql_ac05_quota_and_concurrency.rs"]
+mod tsql_ac05_quota_and_concurrency;
+#[path = "tsql_ac06_find_by_example.rs"]
+mod tsql_ac06_find_by_example;
 #[path = "tssdk_ac01_no_override_table.rs"]
 mod tssdk_ac01_no_override_table;
 #[path = "tssdk_ac02_build_test_tsc_and_header.rs"]
@@ -1002,39 +1032,3 @@ mod tssdk_ac08_tool_that_is_a_family_prefix;
 mod tsvr_ac01_unknown_column_names_declared;
 #[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
 mod tsvr_ac02_type_mismatch_names_accepted_shape;
-#[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
-mod ttfs_ac01_onboarding_7d_reads_external_stamps;
-#[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]
-mod ttfs_ac02_whoami_activation_first_call_only;
-#[path = "ttfs_ac03_milestone_table_is_the_one_key_set.rs"]
-mod ttfs_ac03_milestone_table_is_the_one_key_set;
-#[path = "ttfs_ac04_onboarding_block_carries_no_identifiers.rs"]
-mod ttfs_ac04_onboarding_block_carries_no_identifiers;
-#[path = "ttfs_ac05_under_five_tenants_shows_n_and_nulls.rs"]
-mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
-#[path = "ttfs_ac06_admin_has_no_activation_and_unclassified_excluded.rs"]
-mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
-#[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
-mod ttfs_ac07_by_client_only_for_groups_of_five;
-#[path = "txnhelp_ac01_lint_zero.rs"]
-mod txnhelp_ac01_lint_zero;
-#[path = "txnhelp_ac02_lock_parity.rs"]
-mod txnhelp_ac02_lock_parity;
-#[path = "txnhelp_ac03_is_writable_probe.rs"]
-mod txnhelp_ac03_is_writable_probe;
-#[path = "txnhelp_ac04_migration_0116_atomic.rs"]
-mod txnhelp_ac04_migration_0116_atomic;
-#[path = "txnhelp_ac05_append_real_then_dry_run.rs"]
-mod txnhelp_ac05_append_real_then_dry_run;
-#[path = "umeta_ac01_meta_usage_matches_refusal_and_status.rs"]
-mod umeta_ac01_meta_usage_matches_refusal_and_status;
-#[path = "umeta_ac02_golden_echo_result_unchanged.rs"]
-mod umeta_ac02_golden_echo_result_unchanged;
-#[path = "umeta_ac03_host_usage_plan_block.rs"]
-mod umeta_ac03_host_usage_plan_block;
-#[path = "umeta_ac04_unlimited_plan_renders_null_limit.rs"]
-mod umeta_ac04_unlimited_plan_renders_null_limit;
-#[path = "umeta_ac05_no_extra_select_on_hot_path.rs"]
-mod umeta_ac05_no_extra_select_on_hot_path;
-#[path = "umeta_ac06_caller_limit_in_meta_usage.rs"]
-mod umeta_ac06_caller_limit_in_meta_usage;

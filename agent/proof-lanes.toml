@@ -499,3 +499,11 @@ globs = ["scripts/live/timeout-clamp.sh"]
 required_commands = [
   "cargo test --workspace stclp_ac",
 ]
+
+[[lane]]
+id = "skill-gen"
+description = "PRD-mcphost-plugin-skill-generated-from-registry: scripts/skill-gen-check.sh, the CI drift check for the plugin skill's generated sections (rendered by `mcphost skill-gen`, src/skill_gen.rs, which rust-source already covers). Added project-locally: no existing lane globs this script, same gap class as connections-doc-check.sh in rust-source."
+globs = ["scripts/skill-gen-check.sh"]
+required_commands = [
+  "scripts/skill-gen-check.sh",
+]

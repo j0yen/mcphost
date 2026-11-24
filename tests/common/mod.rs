@@ -93,6 +93,8 @@ pub fn doc_check_scratch(label: &str) -> PathBuf {
         "scripts/host-tools-doc-check.sh",
         // the script also checks the generated signup argument block.
         "scripts/signup-args-doc-check.sh",
+        // PRD-mcphost-plugin-skill-generated-from-registry: the plugin skill's generated sections.
+        "scripts/skill-gen-check.sh",
         "www/skill.md",
         "scripts/protocol-frames-check.sh",
         "src/protocol/frames.rs",

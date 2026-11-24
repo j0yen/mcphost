@@ -9,7 +9,7 @@
 #   - README.md's `quickstart-recipe:sub_agent_key` block
 #   - docs/protocol/prompts.md
 #   - scripts/protocol-frames-check.sh, scripts/host-tools-doc-check.sh,
-#     scripts/signup-args-doc-check.sh
+#     scripts/signup-args-doc-check.sh, scripts/skill-gen-check.sh
 #   - the OAuth entry-path check over seven client files
 #
 # Usage:
@@ -328,6 +328,9 @@ if [ "$MODE" = "write" ]; then
   # signup argument block in SKILL.md / www/skill.md, generated from
   # control::SIGNUP_ARGS (the descriptor's own source).
   "$(dirname "$0")/signup-args-doc-check.sh" --write || exit $?
+  # PRD-mcphost-plugin-skill-generated-from-registry: the verbs/limits/errors/
+  # local-loop sections of the plugin skill, rendered by `mcphost skill-gen`.
+  "$(dirname "$0")/skill-gen-check.sh" --write || exit $?
   # PRD-mcphost-sse-frame-contract-generated: frames.md/frames.json and the
   # llms.txt Transport block, generated from FRAME_SEQUENCES.
   "$(dirname "$0")/protocol-frames-check.sh" --write || exit $?
@@ -408,6 +411,13 @@ fi
 # and www/skill.md.
 if ! "$(dirname "$0")/signup-args-doc-check.sh" >/dev/null; then
   "$(dirname "$0")/signup-args-doc-check.sh" >&2
+  FAILURES=$((FAILURES + 1))
+fi
+
+# PRD-mcphost-plugin-skill-generated-from-registry: generated sections of the
+# plugin skill and www/skill.md.
+if ! "$(dirname "$0")/skill-gen-check.sh" >/dev/null 2>&1; then
+  "$(dirname "$0")/skill-gen-check.sh" >&2
   FAILURES=$((FAILURES + 1))
 fi
 

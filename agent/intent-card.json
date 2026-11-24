@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-org-export-and-offboard-v2.md",
-  "intent_slug": "mcphost-org-export-and-offboard-v2",
-  "root_motivation": "WHO: the owner closing a team's account or moving hosts, and the member who wants their tools back. WHAT: one signed download of the whole team, one confirmed switch-off of every member key, one undo, and nothing deleted. WHY: export and offboard are per tenant and per key today, so a leaving team needs N humans to each run two tools and a mistaken offboard needs an operator.",
-  "user_persona": "An org owner's agent that calls host.org.export, polls host.runs.get for the download_url, then calls host.org.offboard with the org name, and later host.org.restore if the owner changes their mind; and a member whose key answers tenant_disabled with org_offboard.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-sql-exec-and-grammar.md",
+  "intent_slug": "mcphost-table-sql-exec-and-grammar",
+  "root_motivation": "WHO: the agent keeping a user's table current, and the owner who says 'mark order 17 shipped'. WHAT: one DML verb, one by-example verb, and refusals that name the position and the allowed grammar. WHY: the only write today is host.table.append, so correcting one row means a duplicate or a drop and recreate, and a refusal names nothing the agent may send instead.",
+  "user_persona": "An agent that already writes GROUP BY for a recipe and sends host.table.exec(sql='UPDATE orders SET status=... WHERE id=17'), or a SQL-averse persona calling host.table.find(table, where), or a python tool calling mcphost.table.exec.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,57 +14,57 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an org of 3 members with 2 tools each, whose member keys the test rotated and discarded, When the owner runs host.org.export and the job completes, Then one signed download_url serves a tar.gz whose members/<ns>.tar.gz parts list each member's own tools as host.export does, org_manifest.members has 3 rows with matching sha256, and grep -c key_hash src/org_export.rs prints 0.",
-      "test": "tests/orgx_ac01_one_bundle_holds_every_members_own_archive.rs"
+      "description": "Given `host.table.exec` statements containing `ATTACH`, `PRAGMA`, `load_extension(...)`, `readfile(...)`, a `CREATE TRIGGER`, or an INSERT whose subquery is not a plain SELECT, When each runs, Then each is refused `table_exec_rejected` and the tenant's file, schema and pragmas are unchanged.",
+      "test": "tests/tsql_ac01_exec_refuses_escape_statements.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given DISABLED_REASONS in src/auth_shape.rs, When the drift test scans src/ for disabled_reason writes and calls admin.tenants with each value and with bogus, Then no write spells a literal outside the const, each value filters its tenants, bogus is args_invalid, and SYNTHETIC_PURGE_REASONS still equals [idle_expired, self_offboard].",
-      "test": "tests/orgx_ac02_disabled_reasons_one_source.rs"
+      "description": "Given a table with 3 rows, When `host.table.exec(sql=\"UPDATE t SET a=1 WHERE id=2\")` runs, Then the response is `{changed: 1, table: \"t\"}`, a following `host.table.query` shows the change, `bump_change_counter` ran with `rewrite=true`, a `dry_run` call changes nothing, and a `host.table.append` right after succeeds (`query_only` not left on).",
+      "test": "tests/tsql_ac02_update_one_row_dry_run_and_append_after.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a member caller, When it calls host.org.export, host.org.offboard or host.org.restore, Then it gets not_owner and nothing is written.",
-      "test": "tests/orgx_ac03_member_gets_not_owner_and_nothing_is_written.rs"
+      "description": "Given `DELETE FROM t` without WHERE, When exec runs, Then it is refused `table_exec_rejected` with `data.allowed` containing `DELETE FROM <table> WHERE \u2026` and no row is deleted.",
+      "test": "tests/tsql_ac03_where_less_delete_and_update_refused.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the owner, When it calls host.org.offboard {confirm: wrong}, Then confirm_mismatch and every member stays enabled; with confirm equal to the org name, Then every live member, the owner included, is disabled = 1, disabled_reason = org_offboard, each member's next call answers tenant_disabled with that reason, and a repeat call answers already_offboarded.",
-      "test": "tests/orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key.rs"
+      "description": "Given `SELEC * FROM t`, When `host.table.query` runs, Then the refusal carries `data.line = 1`, `data.column = 1` and `data.allowed` equal to `allowed_statement_forms()`; a test parses each `allowed` form back to a statement kind and asserts the set equals the validator's accepted set.",
+      "test": "tests/tsql_ac04_refusal_carries_position_and_generated_grammar.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an org offboarded at any age, When the synthetic and external expire and purge stages run and the owner then calls host.org.restore, Then no tenant, tool or state row was deleted, every member disabled by that offboard is enabled with a NULL reason and their tools answer, and one tenant_audit row org.restore exists per member.",
-      "test": "tests/orgx_ac05_restore_undoes_an_offboard_at_any_age.rs"
+      "description": "Given a plan with `table_rows_max` reached, When exec runs an INSERT, Then `quota_exceeded` names `table_rows_max` with the same `data` keys `table_append` uses; Given two concurrent exec calls on the same row, Then both complete and `changed` sums to 2.",
+      "test": "tests/tsql_ac05_quota_and_concurrency.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a fixture org, When every tool in each member part's manifest.json is re-published into a fresh org with host.tool_publish and the fresh org is exported, Then the two org_manifest.json files agree on member count and, member by member, on tools[].name, kind and spec_sha256.",
-      "test": "tests/orgx_ac06_exported_tools_republish_to_the_same_hashes.rs"
+      "description": "Given `host.table.find(table=\"t\", where={\"amount\": {\">\": 500}, \"status\": \"open\"})`, When it runs, Then rows match the parameterised SELECT and `data.sql` shows it; Given an unknown operator `\"~\"`, Then the refusal lists `allowed_operators` and the table's columns.",
+      "test": "tests/tsql_ac06_find_by_example.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given an org export already running, When the owner calls host.org.export again, Then the answer is, field for field, what host.export answers for its own duplicate on the same tree, and names the running run_id.",
-      "test": "tests/orgx_ac07_duplicate_org_export_answers_like_host_export.rs"
+      "level": "MUST",
+      "description": "Given a python tool calling `mcphost.table.exec(\"INSERT INTO t (id,a) VALUES (9,1)\")`, When called via `host.tool_call`, Then the row exists and `host.table.query_log` shows `statement_kind: insert, changed: 1`.",
+      "test": "tests/tsql_ac07_python_exec.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this lands, When llms.txt is fetched, Then it documents host.org.export, host.org.offboard and host.org.restore (Live; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)",
-      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/llms.txt | grep -oE 'host\\.org\\.(export|offboard|restore)' | sort -u | wc -l prints 3)"
+      "description": "Given prod after deploy, When the joe-test tenant runs `host.table.exec` with a one-row UPDATE through the MCP endpoint, Then `changed` is 1 and `host.table.query_log(limit=1)` returns that statement (Live; evidence: `examples/database-in-a-minute/proof.sh --exec-check`, a mode this PRD's builder adds, key read from the tenant env file, never printed) [deferred: Live, operator-provisioned prod run]",
+      "test": "examples/database-in-a-minute/proof.sh"
     }
   ],
   "scope": [
-    "src/org_export.rs (host.org.export job, org_manifest.json); src/org_offboard.rs (host.org.offboard, host.org.restore, their Db methods); src/export.rs (build_tenant_archive, store_and_sign, ORG_EXPORT_TOOL_NAME in the download route); src/auth_shape.rs (DISABLED_REASONS, DISABLED_PASSES); src/org.rs (TOOLS, owned_org, org_live_members); migrations/0142_org_offboard.sql (orgs.offboarded_unix); descriptors, dispatch arms, write_verbs rows, output schemas and the generated contracts, docs, SDKs and llms.txt."
+    "src/table/exec.rs (allowed_statement_forms, validate_exec_structure, table_exec); src/table/find.rs (by-example compile, table_find); src/tables.rs (table_exec_rejected, positioned refusals, query-log statement_kind/changed); src/handler.rs, src/handler/arms.rs, src/dispatch_table.rs, src/write_verbs.rs (host.table.exec dry run), src/kinds/python.rs (mcphost.table.exec/find); descriptors, output schemas, generated contracts, docs, SDKs, llms.txt; examples/database-in-a-minute/proof.sh --exec-check."
   ],
   "non_goals": [
-    "Deleting any data or any prune or retention stage for offboarded orgs; importing an org bundle into another host; exporting secret values; re-creating a cancelled subscription; an approvals list in the bundle; changing the behaviour of host.export or host.self.offboard; the AC 8 prod read (operator-provisioned, deferred)."
+    "DDL through SQL; multi-statement batches; cross-tenant joins; transactions spanning calls; the llms.txt recipe example; the AC 8 prod run (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -74,55 +74,54 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "no_member_credentials": "src/org_export.rs never reads a Tenant credential field; the member archive is built from the Tenant row by id and the owner's row signs the URL.",
-      "one_reason_list": "DISABLED_REASONS in src/auth_shape.rs is the only list of tenants.disabled_reason values; writers use its constants.",
-      "nothing_deleted": "org_offboard tenants are never purged and no stage deletes a tenant, tool or state row of an offboarded org."
+      "one_grammar": "allowed_statement_forms() is the only list of exec statement forms; the validator, the refusal data.allowed and the tests read it.",
+      "query_only_restored": "QueryOnlyGuard restores PRAGMA query_only on every exit path."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a team not leave in one step today?",
-      "a": "host.export and host.self.offboard act on one tenant with its own key."
+      "q": "Why does an agent duplicate or recreate a table to fix a row?",
+      "a": "host.table.append only inserts whole rows and refuses a duplicate key."
     },
     {
       "why": 2,
-      "q": "Why is that per key?",
-      "a": "The archive builder and the disable flip were written for the tenant itself, not for an owner acting over members."
+      "q": "Why is there no update or delete?",
+      "a": "validate_query_structure accepts only Statement::Query, so the read guard doubled as the only write policy."
     },
     {
       "why": 3,
-      "q": "Why can an owner-side job run the builder without a member key?",
-      "a": "The builder takes a Tenant row and reads by tenant id; no key is part of what it reads."
+      "q": "Why not widen the query verb?",
+      "a": "query runs under query_only with read guards; DML needs its own gate, quota check and change counter."
     },
     {
       "why": 4,
-      "q": "Why a new disabled reason and a restore verb?",
-      "a": "org_offboard must be distinguishable from self_offboard so it is restorable and never purged; deleting nothing keeps the undo free."
+      "q": "Why do refusals not teach the agent?",
+      "a": "query_rejected carries a reason string with no position and no allowed set."
     },
     {
       "why": 5,
-      "q": "Why one generated reason list?",
-      "a": "tenants.disabled_reason is plain TEXT, so writers, the admin filter and the purge list drift unless one const names them all."
+      "q": "Why generate the grammar from the allowlist?",
+      "a": "a hand-written allowed list drifts from the validator, so one function feeds both and a test parses each form back."
     }
   ],
-  "created_at": "2026-11-12T00:00:00Z",
+  "created_at": "2026-11-13T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a member keep host.export alone while org-offboarded?",
-      "resolution": "No: every member key is dark until host.org.restore; only the org verbs pass the disabled-tenant refusal, per (verb, reason)."
+      "question": "Upsert spelling: INSERT OR REPLACE as well as ON CONFLICT?",
+      "resolution": "Both are accepted, as SQLite accepts both."
     },
     {
-      "question": "Which members get an org.offboard or org.restore audit row?",
-      "resolution": "Those the call changed: members already disabled for another reason are neither flipped nor restored and get no row."
+      "question": "Does find return the SQL it compiled?",
+      "resolution": "Yes: data.sql and data.params, plus total."
     },
     {
-      "question": "Does restore reset last_seen_unix?",
-      "resolution": "Yes, to the restore time, so no expiry sweep reads the offboarded interval as idleness."
+      "question": "When is the table_rows_max ceiling checked for exec?",
+      "resolution": "After execution inside one BEGIN IMMEDIATE transaction, rolling back on excess."
     },
     {
-      "question": "What bounds the bundle size?",
-      "resolution": "The owner's plan export_bytes_max, checked on the running sum of member parts and on the finished bundle (export_too_large)."
+      "question": "Which error family does table_exec_rejected use?",
+      "resolution": "Storage, so shp_ac01 does not flag it as an unlisted Args refusal."
     }
   ]
 }

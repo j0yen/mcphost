@@ -9,6 +9,8 @@
 mod common;
 #[path = "support/assertion.rs"]
 mod assertion;
+#[path = "support/dryspt_lint.rs"]
+mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/uprg.rs"]
@@ -20,6 +22,42 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
+mod ttfs_ac01_onboarding_7d_reads_external_stamps;
+#[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]
+mod ttfs_ac02_whoami_activation_first_call_only;
+#[path = "ttfs_ac03_milestone_table_is_the_one_key_set.rs"]
+mod ttfs_ac03_milestone_table_is_the_one_key_set;
+#[path = "ttfs_ac04_onboarding_block_carries_no_identifiers.rs"]
+mod ttfs_ac04_onboarding_block_carries_no_identifiers;
+#[path = "ttfs_ac05_under_five_tenants_shows_n_and_nulls.rs"]
+mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
+#[path = "ttfs_ac06_admin_has_no_activation_and_unclassified_excluded.rs"]
+mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
+#[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
+mod ttfs_ac07_by_client_only_for_groups_of_five;
+#[path = "txnhelp_ac01_lint_zero.rs"]
+mod txnhelp_ac01_lint_zero;
+#[path = "txnhelp_ac02_lock_parity.rs"]
+mod txnhelp_ac02_lock_parity;
+#[path = "txnhelp_ac03_is_writable_probe.rs"]
+mod txnhelp_ac03_is_writable_probe;
+#[path = "txnhelp_ac04_migration_0116_atomic.rs"]
+mod txnhelp_ac04_migration_0116_atomic;
+#[path = "txnhelp_ac05_append_real_then_dry_run.rs"]
+mod txnhelp_ac05_append_real_then_dry_run;
+#[path = "umeta_ac01_meta_usage_matches_refusal_and_status.rs"]
+mod umeta_ac01_meta_usage_matches_refusal_and_status;
+#[path = "umeta_ac02_golden_echo_result_unchanged.rs"]
+mod umeta_ac02_golden_echo_result_unchanged;
+#[path = "umeta_ac03_host_usage_plan_block.rs"]
+mod umeta_ac03_host_usage_plan_block;
+#[path = "umeta_ac04_unlimited_plan_renders_null_limit.rs"]
+mod umeta_ac04_unlimited_plan_renders_null_limit;
+#[path = "umeta_ac05_no_extra_select_on_hot_path.rs"]
+mod umeta_ac05_no_extra_select_on_hot_path;
+#[path = "umeta_ac06_caller_limit_in_meta_usage.rs"]
+mod umeta_ac06_caller_limit_in_meta_usage;
 #[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
 mod unkfield_ac04_trigger_set_unknown_argument;
 #[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]

@@ -260,6 +260,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // "timeout-clamp-live-script" lane (routes scripts/live/timeout-clamp.sh
     // to the stclp_ac proof tests) -- an intended addition since the
     // baseline, not drift.
+    // PRD-mcphost-plugin-skill-generated-from-registry added its own
+    // "skill-gen" lane (routes scripts/skill-gen-check.sh to its check mode)
+    // -- an intended addition since the baseline, not drift.
     assert_eq!(
         added,
         vec![
@@ -302,6 +305,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "sdk-python",
             "sharing-docs",
             "signup-args-doc-check",
+            "skill-gen",
             "spmsg-live-script",
             "tblurlp-live-script",
             "timeout-clamp-live-script",

@@ -204,6 +204,8 @@ mod tooltest_ac13_publish_error_parity;
 mod tooltest_ac1_python_two_invocations;
 #[path = "tooltest_ac2_python_exception_other_still_runs.rs"]
 mod tooltest_ac2_python_exception_other_still_runs;
+#[path = "tsql_ac07_python_exec.rs"]
+mod tsql_ac07_python_exec;
 #[path = "tsvr_ac03_python_bridge_carries_payload.rs"]
 mod tsvr_ac03_python_bridge_carries_payload;
 #[path = "umeta_ac07_tool_test_and_run_carry_no_usage.rs"]

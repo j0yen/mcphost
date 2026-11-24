@@ -1073,7 +1073,7 @@ crate::err_code! {
 crate::err_code! {
     pub REQUEST_BODY_TOO_LARGE => "request_body_too_large",
     Call, AgentFault, false,
-    "Send less than data.limit_bytes per call; store a large payload with host.blob_put and pass its blob id.",
+    "Send less than data.limit_bytes per call; store a large payload with host.blob.put and pass its blob id.",
     data_keys: &["limit_bytes", "content_length", "hint"],
 }
 
@@ -1192,7 +1192,7 @@ impl AppError {
                 // caller-input-quota class as `state_quota_exceeded` above.
                 // PRD-mcphost-paged-trait-on-every-list-verb requirement 2: a
                 // cursor this process did not mint is a bad parameter.
-                "invites_quota_exceeded" | "org_members_max" | "resources_max" | "listen_streams_max" | "org_member_already" | "org_name_taken"
+                "invites_quota_exceeded" | "org_members_max" | "resources_max" | "listen_streams_max" | "org_member_already" | "org_name_taken" | "org_tool_name_taken"
                 | "not_in_org" | "last_client" | "client_not_found" | "cursor_invalid" | "field_unknown" | "idempotency_conflict" => {
                     ErrorCode::INVALID_PARAMS
                 }
@@ -1308,7 +1308,7 @@ impl AppError {
                 // the same INVALID_PARAMS bucket the `state_*` group above
                 // already uses for the analogous KV-store rejections.
                 "table_schema_violation" | "table_not_found" | "table_column_not_found" | "table_query_rejected"
-                | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
+                | "table_exec_rejected" | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
                 c if c == crate::tables::TABLE_ROW_CONFLICT || c == NAMESPACE_RESERVED => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-document-store P0 requirements 2-5: a too-large
                 // put, an unsupported mime, or either quota overrun are all
@@ -2701,7 +2701,7 @@ crate::err_code! {
 crate::err_code! {
     pub CHANNEL_NOT_FOUND,
     code: "channel_not_found", family: Share, class: AgentFault, retryable: false,
-    remedy: "Check data.key against host.channel.list and use a channel id or name that exists.",
+    remedy: "Check data.key against the channels you opened with host.channel.open and use an id or name that exists.",
 }
 
 crate::err_code! {

@@ -984,6 +984,20 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_table_exec<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::table::exec::table_exec(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_table_find<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, end_user, args, .. } = c;
+            crate::table::find::table_find(&self.state, tenant, &args, end_user).await
+        })
+    }
+
     pub(crate) fn arm_host_table_query<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, end_user, args, .. } = c;

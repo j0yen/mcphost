@@ -51,7 +51,18 @@ async fn a_tenant_over_budget_is_rate_limited_without_starting_a_process() {
     // The first call: any nonzero CPU usage it reports pushes the tenant
     // over a 1ms/hour budget for every call after it.
     let qualified = format!("{ns}.budgeted");
-    let _ = poll_until_ready(&client, &qualified, json!({}), Duration::from_secs(10)).await;
+    // The env build can take far longer than 10s on a loaded builder; if
+    // the poll gave up still "building", no process had run and the budget
+    // was never charged, so the next call would legitimately succeed. Wait
+    // generously and require a completed first call.
+    let first = poll_until_ready(&client, &qualified, json!({}), Duration::from_secs(120))
+        .await
+        .expect("the first call must complete so its CPU is charged");
+    assert_ne!(
+        common::extract_structured(&first)["status"],
+        json!("building"),
+        "the first call must have run, not just reported building"
+    );
 
     // A budget-refused call must return immediately, without starting the
     // (2s-sleeping) sandboxed process.

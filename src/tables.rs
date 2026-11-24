@@ -385,19 +385,15 @@ fn already_exists(name: &str) -> AppError {
 
 /// requirement 2/AC3: every structural rejection of a submitted
 /// `host.table.query` string -- a parse failure, more than one statement,
-/// or a top-level statement that isn't a `SELECT`/CTE.
+/// or a top-level statement that isn't a `SELECT`/CTE. PRD-mcphost-table-sql-exec-and-grammar
+/// R2: it carries `data: {reason, line, column, allowed}`.
 fn query_rejected(reason: impl Into<String>) -> AppError {
-    let reason = reason.into();
-    AppError::Structured {
-        code: TABLE_QUERY_REJECTED,
-        message: format!("query rejected: {reason}"),
-        data: json!({"reason": reason}),
-    }
+    crate::table::exec::rejected(crate::table::exec::Verb::Query, reason, None)
 }
 
 /// requirement 6/AC6: a query that ran past [`ROW_CAP`] or
 /// [`QUERY_TIME_CAP`].
-fn bound_exceeded(bound: &'static str, limit: i64) -> AppError {
+pub(crate) fn bound_exceeded(bound: &'static str, limit: i64) -> AppError {
     AppError::Structured {
         code: TABLE_BOUND_EXCEEDED,
         message: format!("query exceeded bound '{bound}' (limit {limit})"),
@@ -490,6 +486,17 @@ pub(crate) fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connec
         conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN hint TEXT"), [])?;
         conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN result_bytes INTEGER"), [])?;
         conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN est_tokens INTEGER"), [])?;
+    }
+    // PRD-mcphost-table-sql-exec-and-grammar R7: `statement_kind`/`changed` (and the
+    // internal `verb`, NULL for a `host.table.query` row) are additive on an existing
+    // tenant's log -- same idempotent-`ALTER TABLE` guard.
+    let has_statement_kind: bool = conn
+        .prepare(&format!("SELECT 1 FROM pragma_table_info('{QUERY_LOG_TABLE}') WHERE name = 'statement_kind'"))?
+        .exists([])?;
+    if !has_statement_kind {
+        conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN statement_kind TEXT"), [])?;
+        conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN changed INTEGER"), [])?;
+        conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN verb TEXT"), [])?;
     }
     // PRD-mcphost-result-handles requirement 1: one row per live
     // `host.table.query {handle: true}` handle, alongside `META_TABLE` in
@@ -765,6 +772,7 @@ pub(crate) async fn table_create_declared(state: &AppState, tenant: &Tenant, arg
 pub const TABLE_WRITE_VERBS: &[&str] = &[
     "host.table.create",
     "host.table.append",
+    "host.table.exec",
     "host.table.drop",
     "host.table.handle_drop",
     "host.table.model_set",
@@ -1419,8 +1427,14 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 /// the parsed [`sqlparser::ast::Query`] so PRD-mcphost-row-policy's AST
 /// rewrite (below) can reuse this same parse rather than parsing twice.
 pub(crate) fn validate_query_structure(sql: &str) -> Result<Box<sqlparser::ast::Query>, AppError> {
-    let mut statements = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, sql)
-        .map_err(|e| query_rejected(format!("sql parse error: {e}")))?;
+    let mut statements =
+        sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, sql).map_err(|e| {
+            crate::table::exec::rejected(
+                crate::table::exec::Verb::Query,
+                format!("sql parse error: {e}"),
+                crate::table::exec::parser_location(&e),
+            )
+        })?;
     match statements.len() {
         0 => Err(query_rejected("empty statement")),
         1 => match statements.remove(0) {
@@ -1543,15 +1557,27 @@ fn truncate_sql_for_log(sql: &str) -> (String, bool) {
 /// `diagnosis`/`hint` (identifier-coverage diagnosis, computed by
 /// [`identifier_diagnosis`]) and `result_bytes`/`est_tokens` (the result's
 /// footprint) join the original fields here.
-struct QueryLogOutcome<'a> {
-    duration_ms: i64,
-    row_count: Option<i64>,
-    sample_hash: Option<&'a str>,
-    error: Option<&'a AppError>,
-    diagnosis: Option<&'a str>,
-    hint: Option<&'a str>,
-    result_bytes: Option<i64>,
-    est_tokens: Option<i64>,
+///
+/// PRD-mcphost-table-sql-exec-and-grammar R7: `exec` is `Some` for a `host.table.exec`
+/// call -- the row then records `statement_kind` and `changed` (and no `row_count`) --
+/// and `None` for a `host.table.query` call.
+pub(crate) struct QueryLogOutcome<'a> {
+    pub(crate) duration_ms: i64,
+    pub(crate) row_count: Option<i64>,
+    pub(crate) sample_hash: Option<&'a str>,
+    pub(crate) error: Option<&'a AppError>,
+    pub(crate) diagnosis: Option<&'a str>,
+    pub(crate) hint: Option<&'a str>,
+    pub(crate) result_bytes: Option<i64>,
+    pub(crate) est_tokens: Option<i64>,
+    pub(crate) exec: Option<ExecLog<'a>>,
+}
+
+/// What a `host.table.exec` log row adds to [`QueryLogOutcome`]: the statement's kind
+/// (`None` when it did not parse as one) and the rows it changed (`None` on a refusal).
+pub(crate) struct ExecLog<'a> {
+    pub(crate) statement_kind: Option<&'a str>,
+    pub(crate) changed: Option<i64>,
 }
 
 /// requirement 2/3: appends one row to this connection's query log,
@@ -1559,9 +1585,20 @@ struct QueryLogOutcome<'a> {
 /// requirement 2's "logging failure never fails the query" -- any error
 /// writing the log row is warned and swallowed here, never propagated to
 /// the caller of [`table_query`].
-fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
-    let QueryLogOutcome { duration_ms, row_count, sample_hash, error, diagnosis, hint, result_bytes, est_tokens } =
+pub(crate) fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
+    let QueryLogOutcome { duration_ms, row_count, sample_hash, error, diagnosis, hint, result_bytes, est_tokens, exec } =
         log_outcome;
+    // A query call's `statement_kind` is the kind the text opens with (a refused write sent
+    // to `host.table.query` is still logged as the write it was); `verb` stays NULL so
+    // `query_stats` and drift reruns read query rows only.
+    let (statement_kind, changed, verb) = match exec {
+        Some(ExecLog { statement_kind, changed }) => (statement_kind, changed, Some("exec")),
+        None => (
+            Some(crate::table::exec::StatementKind::from_leading_keyword(sql).map_or("select", |kind| kind.as_str())),
+            None,
+            None,
+        ),
+    };
     let (stored_sql, truncated) = truncate_sql_for_log(sql);
     // requirement 6/AC6: `bound_exceeded` gives every bound refusal the
     // same `table_bound_exceeded` top-level code (that's what the caller's
@@ -1581,8 +1618,8 @@ fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
             &format!(
                 "INSERT INTO {QUERY_LOG_TABLE} \
                  (created_unix, sql, truncated, row_count, duration_ms, error_code, error_message, \
-                  sample_hash, diagnosis, hint, result_bytes, est_tokens) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
+                  sample_hash, diagnosis, hint, result_bytes, est_tokens, statement_kind, changed, verb) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"
             ),
             params![
                 crate::state::now_unix(),
@@ -1597,6 +1634,9 @@ fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
                 hint,
                 result_bytes,
                 est_tokens,
+                statement_kind,
+                changed,
+                verb,
             ],
         )?;
         conn.execute(
@@ -1892,7 +1932,7 @@ const QUERY_DIAG_DISTINCT_VALUES_BOUND: i64 = crate::query_diag::DISTINCT_VALUES
 /// (`host.table.query_log`, `host.table.query_diagnose`,
 /// `host.table.query_stats`) so they can never drift from each other.
 const QUERY_LOG_COLS: &str = "id, created_unix, sql, truncated, row_count, duration_ms, error_code, \
-     error_message, diagnosis, hint, result_bytes, est_tokens";
+     error_message, diagnosis, hint, result_bytes, est_tokens, statement_kind, changed, verb";
 
 /// Parses one `QUERY_LOG_COLS`-ordered row into its wire JSON shape --
 /// `diagnosis` is stored as a JSON string and parsed back into a JSON
@@ -1901,6 +1941,9 @@ const QUERY_LOG_COLS: &str = "id, created_unix, sql, truncated, row_count, durat
 fn query_log_row_to_json(r: &rusqlite::Row) -> rusqlite::Result<Value> {
     let diagnosis_str: Option<String> = r.get(8)?;
     let diagnosis = diagnosis_str.and_then(|s| serde_json::from_str::<Value>(&s).ok());
+    let verb: Option<String> = r.get(14)?;
+    let statement_kind: Option<String> = r.get(12)?;
+    let statement_kind = statement_kind.or_else(|| verb.is_none().then(|| "select".to_string()));
     Ok(json!({
         "id": r.get::<_, i64>(0)?,
         "created_unix": r.get::<_, i64>(1)?,
@@ -1914,6 +1957,10 @@ fn query_log_row_to_json(r: &rusqlite::Row) -> rusqlite::Result<Value> {
         "hint": r.get::<_, Option<String>>(9)?,
         "result_bytes": r.get::<_, Option<i64>>(10)?,
         "est_tokens": r.get::<_, Option<i64>>(11)?,
+        // R7: a row written before this column existed (or by a query call that left it
+        // unset) is a select; an exec row whose text did not parse has no kind.
+        "statement_kind": statement_kind,
+        "changed": r.get::<_, Option<i64>>(13)?,
     }))
 }
 
@@ -2085,7 +2132,7 @@ pub async fn table_query_stats(state: &AppState, tenant: &Tenant, args: &Value) 
     with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let mut stmt = conn.prepare(&format!(
             "SELECT row_count, duration_ms, error_code, hint, est_tokens FROM {QUERY_LOG_TABLE} \
-             WHERE created_unix >= ?1"
+             WHERE created_unix >= ?1 AND verb IS NULL"
         ))?;
         // A named type alias, not an inline 5-tuple in the `let` binding
         // below, so clippy's `type_complexity` lint has nothing to flag --
@@ -2594,13 +2641,17 @@ async fn table_query_materialize(
 /// from here instead. Materialising calls (`table_query_materialize`) are
 /// not logged here -- out of this PRD's own scope, left for the
 /// query-log PRD to pick up if it wants handle creation logged too.
+///
+/// PRD-mcphost-table-sql-exec-and-grammar R4: `extra_bindings` (`":exN"` -> value) are
+/// the values of `host.table.find`'s compiled SELECT, bound beside any row-policy
+/// predicate values rather than spliced into `sql`.
 async fn table_query_select(
     state: &AppState,
     tenant: &Tenant,
-    sql: &str,
-    window: Window,
+    select: Select<'_>,
     end_user: Option<&EndUser>,
 ) -> Result<Value, AppError> {
+    let Select { sql, window, bindings: extra_bindings } = select;
     // PRD-mcphost-query-diagnosis requirement 1/2: the AST parse is pure
     // (no IO); the annotation read is the one piece of diagnosis context
     // that genuinely needs the main database, fetched here (async) before
@@ -2655,6 +2706,7 @@ async fn table_query_select(
                             hint: None,
                             result_bytes: None,
                             est_tokens: None,
+                            exec: None,
                         },
                     );
                     Ok(())
@@ -2671,6 +2723,7 @@ async fn table_query_select(
     match access {
         rowpolicy::Access::Unrestricted => {
             let sql_owned = sql.to_string();
+            let extra_owned = extra_bindings.to_vec();
             let (rows, count) = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
                 let started = std::time::Instant::now();
                 let mut referenced_handles: Vec<String> = Vec::new();
@@ -2692,7 +2745,7 @@ async fn table_query_select(
                             _ => return Err(handle_not_found(h)),
                         }
                     }
-                    run_query_sync(conn, &limit_wrap(&sql_owned, window))
+                    run_query_sync_with_bindings(conn, &limit_wrap(&sql_owned, window), &extra_owned)
                 })();
                 let duration_ms = started.elapsed().as_millis() as i64;
                 // `run_query_sync` leaves this connection's own `query_only`
@@ -2739,6 +2792,7 @@ async fn table_query_select(
                                 hint: hint.as_deref(),
                                 result_bytes: Some(bytes),
                                 est_tokens: Some(est_tokens),
+                                exec: None,
                             },
                         )
                     }
@@ -2754,11 +2808,12 @@ async fn table_query_select(
                             hint: hint.as_deref(),
                             result_bytes: None,
                             est_tokens: None,
+                            exec: None,
                         },
                     ),
                 }
                 let out = result.map_err(|e| missing_identifier_error(conn, &ctx, &e, diag.as_ref()).unwrap_or(e))?;
-                let count = count_filtered_sync(conn, &sql_owned, &[], ctx.from_table.as_deref()).ok();
+                let count = count_filtered_sync(conn, &sql_owned, &extra_owned, ctx.from_table.as_deref()).ok();
                 if !referenced_handles.is_empty() {
                     for h in &referenced_handles {
                         conn.execute(
@@ -2789,7 +2844,8 @@ async fn table_query_select(
 
             let outcome = rowpolicy::rewrite::apply(&mut query, &compiled)?;
             let rewritten_sql = outcome.sql;
-            let bindings = outcome.bindings;
+            let mut bindings = outcome.bindings;
+            bindings.extend(extra_bindings.iter().cloned());
 
             let primary =
                 table_names.first().and_then(|name| compiled.get(name).map(|c| (name.clone(), c.clone())));
@@ -2824,6 +2880,7 @@ async fn table_query_select(
                                     hint: hint.as_deref(),
                                     result_bytes: None,
                                     est_tokens: None,
+                                    exec: None,
                                 },
                             );
                             return Err(missing_identifier_error(conn, &ctx, &e, diag.as_ref()).unwrap_or(e));
@@ -2853,6 +2910,7 @@ async fn table_query_select(
                             hint: hint.as_deref(),
                             result_bytes: Some(bytes),
                             est_tokens: Some(est_tokens),
+                            exec: None,
                         },
                     );
                     let count = count_filtered_sync(conn, &rewritten_sql, &bindings, ctx.from_table.as_deref()).ok();
@@ -2894,6 +2952,14 @@ fn rows_with_total(rows: Vec<Value>, count: Option<crate::paged::Count>) -> Valu
         c.insert_into(&mut out);
     }
     Value::Object(out)
+}
+
+/// One SELECT to run: its text, the caller's window over the result, and the named
+/// values bound beside any row-policy predicate values.
+struct Select<'a> {
+    sql: &'a str,
+    window: Window,
+    bindings: &'a [(String, Value)],
 }
 
 /// The caller's `limit` and `offset` over a result.
@@ -2969,7 +3035,24 @@ pub async fn table_query(
             _ => return Err(AppError::InvalidArgs("offset: must be an integer >= 0".to_string())),
         },
     };
-    table_query_select(state, tenant, &sql, Window { limit, offset }, end_user).await
+    table_query_select(state, tenant, Select { sql: &sql, window: Window { limit, offset }, bindings: &[] }, end_user).await
+}
+
+/// PRD-mcphost-table-sql-exec-and-grammar R4: runs the SELECT `host.table.find`
+/// compiled -- its values bound by name, `limit` rows of it, the same row-policy
+/// rewrite, query log and total as `host.table.query` gives any SELECT.
+pub(crate) async fn table_query_bound(
+    state: &AppState,
+    tenant: &Tenant,
+    find: &crate::table::find::Compiled,
+    end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
+    let select = Select {
+        sql: &find.sql,
+        window: Window { limit: Some(find.limit), offset: None },
+        bindings: &find.bindings,
+    };
+    table_query_select(state, tenant, select, end_user).await
 }
 
 /// The `host.table.query` tool call (PRD-mcphost-response-size-budget-explicit-v2
@@ -3488,6 +3571,12 @@ crate::err_code! {
     remedy: "Fix the query; data.reason says why it was rejected.",
 }
 
+crate::err_code! {
+    pub TABLE_EXEC_REJECTED,
+    code: "table_exec_rejected", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Fix the statement; data.reason says why it was rejected and data.allowed lists the statement forms.",
+}
+
 /// Every `err_code!`-declared code the `mcphost.table` bridge
 /// (`kinds::python::TableSidecarBridge`) can return in `resp.code`, sorted,
 /// including the shared `not_found` / `quota_exceeded` the table functions pass
@@ -3505,6 +3594,7 @@ pub const TABLE_ERROR_CODES: &[&str] = &[
     TABLE_ALREADY_EXISTS,
     TABLE_BOUND_EXCEEDED,
     TABLE_COLUMN_NOT_FOUND,
+    TABLE_EXEC_REJECTED,
     TABLE_NOT_FOUND,
     TABLE_QUERY_REJECTED,
     TABLE_ROW_CONFLICT,

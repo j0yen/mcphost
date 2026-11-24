@@ -1139,7 +1139,7 @@ crate::err_code! {
 crate::err_code! {
     pub KEY_EXPIRED,
     code: "key_expired", family: Auth, class: AgentFault, retryable: false,
-    remedy: "Create a new sub-key with host.key.create.",
+    remedy: "Create a new sub-key with host.key.mint.",
 }
 
 crate::err_code! {

@@ -1131,6 +1131,13 @@ fn starter_tools(kinds: &KindRegistry) -> Vec<Tool> {
     tools
 }
 
+/// PRD-mcphost-plugin-skill-generated-from-registry R2: the names of the
+/// anonymous starter listing ([`starter_tools`]), read by `skill_gen` so the
+/// skill's "no key needed" line is the registry's own set, never a copy.
+pub fn starter_tool_names(kinds: &KindRegistry) -> Vec<String> {
+    starter_tools(kinds).into_iter().map(|t| t.name.to_string()).collect()
+}
+
 /// PRD-mcphost-end-user-identity requirement 5: the `end_user` argument
 /// every scoped `host.state.*` op shares -- `"self"` resolves to the
 /// call's own verified identity (errors `end_user_required` if absent);
@@ -2798,12 +2805,81 @@ fn host_tools_part_04() -> Vec<Tool> {
                 import_one_of(&["rows", "source_url", "csv_text"]),
             ),
         ),
+        // PRD-mcphost-table-sql-exec-and-grammar R1: the one write verb that
+        // takes SQL. The statement forms in its description are the same
+        // `allowed_statement_forms()` every refusal carries.
+        Tool::new(
+            "host.table.exec",
+            format!(
+                "Run one INSERT, UPDATE or DELETE on a declared table and return {{changed, table}}. \
+                 UPDATE and DELETE need a WHERE clause; an upsert is INSERT … ON CONFLICT(<column>) \
+                 DO UPDATE. Anything else (ATTACH, PRAGMA, DDL, triggers, file functions, a SELECT) \
+                 is refused table_exec_rejected with data.reason, data.line, data.column and \
+                 data.allowed. Accepted forms: {}. Past the plan's table_rows_max or table_bytes_max \
+                 the call is refused quota_exceeded and nothing is written. To read rows use \
+                 host.table.query.",
+                crate::table::exec::allowed_statement_forms().join(" | ")
+            ),
+            host_schema(
+                json!({
+                    "sql": {
+                        "type": "string",
+                        "description": "One INSERT, UPDATE (with WHERE) or DELETE (with WHERE) statement \
+                            over this tenant's own declared tables.",
+                    },
+                }),
+                &["sql"],
+            ),
+        ),
+        // PRD-mcphost-table-sql-exec-and-grammar R4: query by example, for an
+        // agent that avoids SQL.
+        Tool::new(
+            "host.table.find",
+            format!(
+                "Find rows of a declared table by example, without writing SQL: where is \
+                 {{\"column\": value}} for equality or {{\"column\": {{\"<operator>\": value}}}} with \
+                 operator one of {}; an array value means in. Compiled to one parameterised \
+                 SELECT, returned under data.sql with data.params, and run like host.table.query \
+                 (row policies, query log, total). limit defaults to {} (max {}); order is a \
+                 column name, \"column desc\", or an array of those. An unknown operator, column \
+                 or order is refused table_query_rejected with data.allowed_operators and \
+                 data.columns.",
+                crate::table::find::ALLOWED_OPERATORS.join(", "),
+                crate::table::find::FIND_LIMIT_DEFAULT,
+                crate::tables::ROW_CAP,
+            ),
+            host_schema(
+                json!({
+                    "table": {"type": "string", "description": "Name of the declared table to search."},
+                    "where": {
+                        "type": "object",
+                        "description": "Column to value (equality), column to an array (in), or column to \
+                            {operator: value}; entries are ANDed. Omit to match every row.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": crate::tables::ROW_CAP,
+                        "description": "Return at most this many rows; default 100.",
+                    },
+                    "order": {
+                        "type": ["string", "array"],
+                        "items": {"type": "string"},
+                        "description": "A column name, \"column desc\", or an array of those.",
+                    },
+                }),
+                &["table"],
+            ),
+        ),
         Tool::new(
             "host.table.query",
             "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own \
              tables. Structurally rejected (not by string matching): anything but exactly one \
              SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- \
-             each refusal names the rule or bound it hit. handle: true materialises the result \
+             each refusal names the rule or bound it hit; a refused statement also carries \
+             data.line and data.column (where the parser stopped, null when it has no \
+             position) and data.allowed (the statement forms; to write rows use \
+             host.table.exec). handle: true materialises the result \
              as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a \
              20-row sample, per-column stats over every row) naming a hdl_<id> you can later \
              reference in FROM or a CTE through this same tool. A table the tenant never \
@@ -2944,9 +3020,12 @@ fn host_tools_part_04() -> Vec<Tool> {
         Tool::new(
             "host.table.query_log",
             "List this tenant's own host.table.query call history, newest first: sql (as \
-             submitted, truncated to 4096 bytes with truncated: true past that), row_count \
-             (null on refusal), duration_ms, error_code and error_message (null on success). \
-             Keeps the newest 1,000 calls.",
+             submitted, truncated to 4096 bytes with truncated: true past that), \
+             statement_kind (select, insert, update or delete), row_count (null on refusal \
+             and on host.table.exec rows), changed (the rows a host.table.exec call changed; \
+             null otherwise), duration_ms, error_code and error_message (null on success). \
+             Lists host.table.exec calls beside host.table.query calls. Keeps the newest \
+             1,000 calls.",
             host_schema(
                 json!({
                     "limit": {"type": "integer", "description": "Max rows to return, 1-200; default 50."},
@@ -7170,6 +7249,12 @@ impl TableBackend for TenantTableBridge {
             "query" => {
                 tables::table_query(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
             }
+            // PRD-mcphost-table-sql-exec-and-grammar R6: the sandboxed caller receives the
+            // same object `host.table.exec` / `host.table.find` return.
+            "exec" => crate::table::exec::table_exec(&self.state, &self.tenant, &args).await,
+            "find" => {
+                crate::table::find::table_find(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
+            }
             "list" => tables::table_list(&self.state, &self.tenant, &args).await,
             "drop" => tables::table_drop(&self.state, &self.tenant, &args).await,
             "schema" => tables::table_schema(&self.state, &self.tenant, &args).await,
@@ -7212,6 +7297,16 @@ impl TableBackend for TenantTableBridge {
                 "op": "append",
                 "table": value.get("table").cloned().unwrap_or(Value::Null),
                 "rows": value.get("appended").cloned().unwrap_or(Value::Null),
+            }));
+        }
+        if op == "exec"
+            && let (Ok(value), Some(dry_run)) = (&result, &self.dry_run)
+        {
+            dry_run.record_write(json!({
+                "store": "table",
+                "op": "exec",
+                "table": value.get("table").cloned().unwrap_or(Value::Null),
+                "rows": value.get("changed").cloned().unwrap_or(Value::Null),
             }));
         }
         if result.is_ok() && matches!(op, "query" | "chart") {
@@ -7731,6 +7826,12 @@ impl McpHostHandler {
                     .await
                     .map(|v| v.into_iter().map(|(o, r)| format!("{}.{}", o.namespace, r.name)).collect())
                     .unwrap_or_default();
+                shared.extend(
+                    crate::sharing::visible_org_tools(&self.state, tenant)
+                        .await
+                        .map(|v| v.into_iter().map(|(_, r)| crate::sharing::org_tool_name(&r.name)).collect::<Vec<_>>())
+                        .unwrap_or_default(),
+                );
                 let local = requested.rsplit_once('.').map_or(requested, |(_, l)| l);
                 let catalog_matches = match self
                     .state
@@ -12879,10 +12980,30 @@ impl ServerHandler for McpHostHandler {
                 // per-caller hourly rate). Public shares are never injected. A
                 // sub-key's `permits` filter below applies to them like any
                 // other entry (R5).
-                let shared = crate::sharing::visible_shared_tools(&self.state, &tenant)
-                    .await
-                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
-                for (owner, row) in shared {
+                // PRD-mcphost-org-shared-tools-namespace-v2 R3: the caller's
+                // org tools follow, named `org.<tool>`, through the same
+                // membership rule the call path resolves with.
+                let mut shared: Vec<(Tenant, crate::db::ToolRow, String, &str)> =
+                    crate::sharing::visible_shared_tools(&self.state, &tenant)
+                        .await
+                        .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+                        .into_iter()
+                        .map(|(o, r)| {
+                            let name = format!("{}.{}", o.namespace, r.name);
+                            (o, r, name, "group")
+                        })
+                        .collect();
+                shared.extend(
+                    crate::sharing::visible_org_tools(&self.state, &tenant)
+                        .await
+                        .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+                        .into_iter()
+                        .map(|(o, r)| {
+                            let name = crate::sharing::org_tool_name(&r.name);
+                            (o, r, name, "org")
+                        }),
+                );
+                for (owner, row, listed_name, shared_vis) in shared {
                     if !crate::oauth::scope_satisfied(token_scope, &row.scopes) {
                         continue;
                     }
@@ -12899,7 +13020,7 @@ impl ServerHandler for McpHostHandler {
                     let mut meta = rmcp::model::MetaObject::new();
                     meta.0.insert("kind".to_string(), json!(row.kind));
                     meta.0.insert("shared_by".to_string(), json!(owner.namespace));
-                    meta.0.insert("shared_visibility".to_string(), json!("group"));
+                    meta.0.insert("shared_visibility".to_string(), json!(shared_vis));
                     meta.0.insert(
                         "share_scopes".to_string(),
                         json!(share.scopes.unwrap_or_else(crate::sharing::ShareScope::legacy_default)),
@@ -12908,7 +13029,7 @@ impl ServerHandler for McpHostHandler {
                         meta.0.insert("share_rate_per_hour".to_string(), json!(rate));
                     }
                     let mut shared_tool = Tool::new(
-                        format!("{}.{}", owner.namespace, row.name),
+                        listed_name,
                         descriptor.description,
                         value_to_json_object(descriptor.input_schema),
                     )
