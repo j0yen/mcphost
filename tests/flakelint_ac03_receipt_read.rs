@@ -14,7 +14,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::execw;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -50,22 +51,15 @@ fn scratch_with_fixture(tag: &str, name: &str, body: &str) -> PathBuf {
     scratch
 }
 
-/// Retries on `ExecutableFileBusy`: execing a just-chmod'd scratch script
-/// can transiently race the write it followed (observed on the runner
-/// box's overlay filesystem), not a real failure -- same shape as any
-/// other "the OS hasn't caught up yet" flake, not a lint bug.
+/// Runs flake-lint.sh through its shebang interpreter (see support/execw.rs):
+/// the scratch copy is only read, so it cannot hit ETXTBSY.
 fn run_lint(scratch: &Path) -> std::process::Output {
     let script = scratch.join("scripts/flake-lint.sh");
-    for attempt in 0..5 {
-        match Command::new(&script).arg("tests").current_dir(scratch).output() {
-            Ok(out) => return out,
-            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 4 => {
-                std::thread::sleep(std::time::Duration::from_millis(20 * (attempt + 1)));
-            }
-            Err(e) => panic!("run flake-lint.sh: {e}"),
-        }
-    }
-    unreachable!()
+    execw::script(&script)
+        .arg("tests")
+        .current_dir(scratch)
+        .output()
+        .expect("run flake-lint.sh")
 }
 
 #[test]
