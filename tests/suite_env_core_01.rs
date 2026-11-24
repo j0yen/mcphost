@@ -9,6 +9,8 @@
 mod common;
 #[path = "support/dimp.rs"]
 mod dimp;
+#[path = "support/execw.rs"]
+mod execw;
 #[path = "support/exprf.rs"]
 mod exprf;
 #[path = "support/serve.rs"]

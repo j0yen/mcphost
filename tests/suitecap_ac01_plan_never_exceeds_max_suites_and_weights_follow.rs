@@ -25,6 +25,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use crate::execw;
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -124,7 +126,7 @@ fn scratch(max_suites: u32) -> PathBuf {
 }
 
 fn run(dir: &Path, script: &str, args: &[&str]) -> Output {
-    Command::new(dir.join("scripts").join(script))
+    execw::script(&dir.join("scripts").join(script))
         .args(args)
         .current_dir(dir)
         .env("CORE_SHARDS", "2")
