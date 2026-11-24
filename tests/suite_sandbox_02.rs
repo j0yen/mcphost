@@ -229,6 +229,8 @@ mod hostdoc_ac02_error_summary_has_exception_line_and_source;
 mod hsrb_ac03_cli_help_search_json_equals_tool_json;
 #[path = "inbandsec_ac01_forged_session_id_never_reaches_the_waiter.rs"]
 mod inbandsec_ac01_forged_session_id_never_reaches_the_waiter;
+#[path = "inbandsec_ac02_posted_response_202_shim_is_scoped.rs"]
+mod inbandsec_ac02_posted_response_202_shim_is_scoped;
 #[path = "infer_ac01_ac02_ac03_python_schema.rs"]
 mod infer_ac01_ac02_ac03_python_schema;
 #[path = "infer_ac04_python_explicit_schema.rs"]

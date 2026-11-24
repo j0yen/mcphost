@@ -1,14 +1,13 @@
 //! contract: reads docs/sandbox-api.md
 //! PRD-mcphost-sandbox-bridge-discoverability
-//! AC7 (P1) -- Given `scripts/sandbox-api-doc-check.sh` at the landing
-//! commit, When run, Then it exits 0 and reports `modules=<n>
-//! docs_in_sync=3`; given a fixture doc with one module removed, Then it
-//! exits 1 naming the missing module and file.
+//! AC7 (P1) -- Given the tree at the landing commit, When
+//! `mcphost gen-docs kinds --check` runs (the sandbox-API block moved there
+//! from the regex script, PRD-mcphost-kind-docs-from-registry-b-v2 R2), Then
+//! it exits 0; given a fixture doc with one module removed, Then it exits 1
+//! naming the file and the `mcphost-sandbox-api` block.
 //!
-//! Runs the real script against a scratch copy of the files it touches
-//! (never the repo's own on-disk copies), same convention
-//! `tests/sharedcall_ac05_gen_docs_sharing_check.rs` uses for
-//! `gen-docs-sharing.sh`.
+//! Runs the real binary against a scratch copy of the files it reads (never
+//! the repo's own on-disk copies).
 
 use std::path::Path;
 use std::process::Command;
@@ -17,41 +16,7 @@ fn repo_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
 
-const TOUCHED: &[&str] = &[
-    "scripts/sandbox-api-doc-check.sh",
-    // PRD-mcphost-dry-run-on-write-verbs: the script also checks the
-    // generated write-verb table.
-    "scripts/host-tools-doc-check.sh",
-    // the script also checks the generated signup argument block.
-    "scripts/signup-args-doc-check.sh",
-    "www/skill.md",
-    "scripts/protocol-frames-check.sh",
-    "src/protocol/frames.rs",
-    "docs/protocol/frames.md",
-    "www/frames.json",
-    "src/write_verbs.rs",
-    "docs/host-tools.md",
-    "src/kinds/python.rs",
-    "docs/kinds/python.md",
-    "docs/kinds/js.md",
-    "www/llms.txt",
-    "docs/protocol/capabilities.md",
-    // PRD-mcphost-prompts-from-published-tools req 5: the script also checks
-    // docs/protocol/prompts.md.
-    "docs/protocol/prompts.md",
-    "plugin/skills/mcphost/SKILL.md",
-    "src/oauth.rs",
-    // PRD-mcphost-oauth-first-entry-url: the script also checks that every
-    // client page names the one OAUTH_ENTRY_PATH.
-    "README.md",
-    "llms-install.md",
-    "www/llms-install.md",
-    "www/llms-full.txt",
-    "www/index.html",
-    "docs/oauth-connect.md",
-    // seed SDB: the bridge-modules block in docs/sandbox-api.md is checked too.
-    "docs/sandbox-api.md",
-];
+const TOUCHED: &[&str] = &["www/llms.txt", "plugin/skills/mcphost/SKILL.md"];
 
 fn scratch_copy(label: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -59,7 +24,11 @@ fn scratch_copy(label: &str) -> std::path::PathBuf {
         std::process::id(),
         mcphost::state::now_unix_ms()
     ));
-    let _doc_files = crate::common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    std::fs::create_dir_all(dir.join("docs/kinds")).expect("create scratch docs/kinds");
+    for entry in std::fs::read_dir(repo_root().join("docs/kinds")).expect("read docs/kinds") {
+        let entry = entry.expect("dir entry");
+        std::fs::copy(entry.path(), dir.join("docs/kinds").join(entry.file_name())).expect("copy kind page");
+    }
     for rel in TOUCHED {
         let dest = dir.join(rel);
         std::fs::create_dir_all(dest.parent().expect("parent dir")).expect("create scratch subdir");
@@ -69,43 +38,24 @@ fn scratch_copy(label: &str) -> std::path::PathBuf {
 }
 
 fn run_check(dir: &Path) -> std::process::Output {
-    Command::new("bash")
-        .arg(dir.join("scripts/sandbox-api-doc-check.sh"))
+    Command::new(env!("CARGO_BIN_EXE_mcphost"))
+        .args(["gen-docs", "kinds", "--check"])
+        .current_dir(dir)
         .output()
-        .expect("run sandbox-api-doc-check.sh")
+        .expect("run mcphost gen-docs kinds --check")
 }
 
 #[test]
-fn landing_commit_passes_reporting_modules_and_docs_in_sync() {
+fn landing_commit_passes_gen_docs_kinds_check() {
     let dir = scratch_copy("clean");
     let output = run_check(&dir);
-    let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "sandbox-api-doc-check.sh must exit 0 on the committed files, stderr:\n{stderr}"
-    );
-    assert!(
-        stdout.contains("docs_in_sync=4"),
-        "must report docs_in_sync=4 for the four target docs: {stdout}"
-    );
-    let modules_line = stdout
-        .lines()
-        .find(|l| l.starts_with("modules="))
-        .unwrap_or_else(|| panic!("must report a modules=<n> line: {stdout}"));
-    let n: u32 = modules_line
-        .trim_start_matches("modules=")
-        .split_whitespace()
-        .next()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or_else(|| panic!("modules=<n> must be a number: {modules_line}"));
-    assert!(n > 0, "modules=<n> must be positive: {modules_line}");
-
+    assert!(output.status.success(), "gen-docs kinds --check must exit 0 on the committed files, stderr:\n{stderr}");
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
-fn a_fixture_doc_with_one_module_removed_fails_naming_it_and_the_file() {
+fn a_fixture_doc_with_one_module_removed_fails_naming_the_file_and_block() {
     let dir = scratch_copy("missing-module");
     let doc_path = dir.join("docs/kinds/python.md");
     let original = std::fs::read_to_string(&doc_path).expect("read scratch doc");
@@ -125,15 +75,9 @@ fn a_fixture_doc_with_one_module_removed_fails_naming_it_and_the_file() {
 
     let output = run_check(&dir);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!output.status.success(), "a doc missing a module must fail the check");
-    assert!(
-        stderr.contains("mcphost.lineage"),
-        "stderr must name the missing module: {stderr}"
-    );
-    assert!(
-        stderr.contains("docs/kinds/python.md"),
-        "stderr must name the file it's missing from: {stderr}"
-    );
+    assert_eq!(output.status.code(), Some(1), "a doc missing a module must fail the check: {stderr}");
+    assert!(stderr.contains("docs/kinds/python.md"), "stderr must name the file it's missing from: {stderr}");
+    assert!(stderr.contains("mcphost-sandbox-api"), "stderr must name the block: {stderr}");
 
     std::fs::remove_dir_all(&dir).ok();
 }

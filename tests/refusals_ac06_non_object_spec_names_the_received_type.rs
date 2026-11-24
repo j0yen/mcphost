@@ -121,11 +121,11 @@ async fn host_tool_publish_over_http_names_the_received_type() {
                 .await
                 .expect_err("a non-object spec is refused");
             assert_eq!(err.code, -32602, "{name} {word}: {err:?}");
-            assert_eq!(
-                err.message,
-                format!("invalid spec: spec: must be a JSON object, received {word}"),
-                "{name} {word}: {err:?}"
-            );
+            // The cause is the message's head (and `data.reason` exactly); the invalid-spec-message
+            // PRD appends `; minimal spec: ...; docs: ...` after it.
+            let cause = format!("invalid spec: spec: must be a JSON object, received {word}");
+            assert!(err.message.starts_with(&cause), "{name} {word}: {err:?}");
+            assert_eq!(err.data["reason"], cause, "{name} {word}: {:?}", err.data);
             assert_eq!(err.data["received_type"], word, "{name} {word}: {:?}", err.data);
             assert_eq!(err.error_code.as_deref(), Some("invalid_spec"));
         }

@@ -1,6 +1,6 @@
-//! contract: reads scripts/sandbox-api-doc-check.sh
+//! contract: reads scripts/generated-docs-check.sh
 //! PRD-mcphost-delegation-recipes-and-quickstart
-//! AC5 (P1) — Given `README.md`, When `scripts/sandbox-api-doc-check.sh` runs
+//! AC5 (P1) — Given `README.md`, When `scripts/generated-docs-check.sh` runs
 //! without `--write`, Then it exits non-zero iff the block between
 //! `<!-- quickstart-recipe:sub_agent_key -->` markers differs from the rendered recipe.
 
@@ -14,11 +14,11 @@ const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 fn check(readme: &Path) -> Output {
     Command::new("bash")
-        .arg(Path::new(ROOT).join("scripts/sandbox-api-doc-check.sh"))
+        .arg(Path::new(ROOT).join("scripts/generated-docs-check.sh"))
         .env("MCPHOST_BIN", env!("CARGO_BIN_EXE_mcphost"))
         .env("MCPHOST_README", readme)
         .output()
-        .expect("run sandbox-api-doc-check.sh")
+        .expect("run generated-docs-check.sh")
 }
 
 fn scratch(name: &str, content: &str) -> std::path::PathBuf {

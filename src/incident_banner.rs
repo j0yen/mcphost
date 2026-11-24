@@ -208,7 +208,7 @@ pub async fn evaluate_error_rate(state: &AppState, now: i64) -> Result<(), AppEr
         None if read.should_open() => {
             let code = read.dominant_code.clone().unwrap_or_else(|| "internal".to_string());
             let title = format!("{ERROR_RATE_TITLE_PREFIX} {code} {:.1}%", read.ratio() * 100.0);
-            crate::statusfeed::open_auto_incident_titled(state, &code, &title).await?;
+            crate::statusfeed::open_auto_incident_titled(state, &code, &title, true).await?;
         }
         Some(incident) if calm_for.is_some_and(|s| s >= ERROR_RATE_CLOSE_CALM_SECS) => {
             crate::statusfeed::close_auto_incident_with(

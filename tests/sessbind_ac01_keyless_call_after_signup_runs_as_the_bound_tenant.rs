@@ -8,7 +8,7 @@
 //! The session identity this AC turns on is minted by mcphost itself
 //! (`http::issue_session_id` + `session_bind::SessionBindings`), not by
 //! `rmcp`'s own session mode. The second test here is why: flipping
-//! `legacy_session_mode(true)` -- `rmcp` 3.3.0's only built-in
+//! `legacy_session_mode(true)` -- `rmcp`'s only built-in
 //! `Mcp-Session-Id` mechanism -- makes the transport *require* the header
 //! back on every follow-up request, and the Claude Agent SDK's own recorded
 //! wire sequence (`tests/compat_ac11_ac12_claude_sdk_replay.rs`) never sends
@@ -183,12 +183,15 @@ async fn post(
 
 /// Why the session id is minted by mcphost rather than by `rmcp`: builds the
 /// exact production router (`build_router_with_session_mode`) with
-/// `legacy_session_mode(true)` -- `rmcp` 3.3.0's only built-in session-id
+/// `legacy_session_mode(true)` -- `rmcp`'s only built-in session-id
 /// mechanism -- and replays the Claude Agent SDK wire sequence
 /// `compat_ac11_ac12_claude_sdk_replay.rs::ac12` proves succeeds today. The
-/// SDK never echoes `Mcp-Session-Id`, so `rmcp` reads its second request as
-/// an attempted `initialize` and rejects it with HTTP 422 before any handler
-/// sees it. `build_router` therefore still passes `false`, and
+/// SDK never echoes `Mcp-Session-Id`, so `rmcp` rejects its second request
+/// before any handler sees it: HTTP 400 "Session ID is required" from rmcp
+/// 3.6.0 (modelcontextprotocol/rust-sdk#1377, the MCP spec's SHOULD for a
+/// session-less non-initialize POST), HTTP 422 on rmcp <= 3.5. The status is
+/// rmcp's to choose; the guarantee pinned here is the rejection.
+/// `build_router` therefore still passes `false`, and
 /// `sessbind_ac01`'s first test proves the binding works anyway.
 #[tokio::test]
 async fn enabling_rmcps_own_session_mode_would_break_claude_sdk_replay() {
@@ -258,11 +261,11 @@ async fn enabling_rmcps_own_session_mode_would_break_claude_sdk_replay() {
 
     assert_eq!(
         list_resp.status(),
-        reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        reqwest::StatusCode::BAD_REQUEST,
         "with legacy_session_mode(true), a header-less follow-up request from the real \
-         Claude Agent SDK's own recorded sequence must be rejected (rmcp reads it as an \
-         attempted second `initialize`) -- this is why mcphost mints the session id \
-         itself instead: {}",
+         Claude Agent SDK's own recorded sequence must be rejected (rmcp answers a \
+         session-less non-initialize POST with 400, 422 before rmcp 3.6) -- this is why \
+         mcphost mints the session id itself instead: {}",
         list_resp.status()
     );
 }

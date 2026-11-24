@@ -83,6 +83,17 @@ impl DocAnchor {
         Self::first_of_path(path)
     }
 
+    /// The anchor of kind `kind`'s `## Spec fields` heading, the page
+    /// `gen-docs kinds` renders `docs/kinds/<kind>.md`'s `kind-fields` table
+    /// into; `None` when the kind has no page or the page lost the heading.
+    pub fn kind_spec_fields(kind: &str) -> Option<DocAnchor> {
+        let path = format!("docs/kinds/{kind}.md");
+        ENTRIES
+            .iter()
+            .position(|e| e.path == path && e.anchor.rsplit('#').next() == Some(KIND_SPEC_FIELDS_SLUG))
+            .map(|i| ALL[i])
+    }
+
     /// The first generated anchor whose document is `path`.
     pub fn first_of_path(path: &str) -> Option<DocAnchor> {
         ENTRIES.iter().position(|e| e.path == path).map(|i| ALL[i])
@@ -125,6 +136,9 @@ fn edit_distance(a: &str, b: &str) -> usize {
     }
     prev[b.len()]
 }
+
+/// The slug of the `## Spec fields` heading every kind page carries.
+const KIND_SPEC_FIELDS_SLUG: &str = "spec-fields";
 
 /// The slug `help.get` accepts for "the document's first section".
 const TOP_SLUG: &str = "#top";

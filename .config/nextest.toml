@@ -12,3 +12,10 @@ dir = "target/nextest"
 path = "junit.xml"
 store-success-output = false
 store-failure-output = true
+
+# PRD-mcphost-synthetic-tenant-purge AC1: the purge-under-load test measures a latency
+# percentile while it purges 6,000 tenants; it takes every test slot so nothing else
+# shares the host with it (plain `cargo test` honours MCPHOST_PERF_SKIP instead).
+[[profile.default.overrides]]
+filter = 'test(tenp_ac01_batched_purge_under_load_exactly_once)'
+threads-required = "num-test-threads"

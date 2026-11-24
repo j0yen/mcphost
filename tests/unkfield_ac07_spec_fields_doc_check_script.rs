@@ -1,88 +1,45 @@
 //! PRD-mcphost-spec-unknown-field-rejection
-//! AC7 — Given `scripts/spec-fields-doc-check.sh` at the landing commit,
-//! When run, Then it exits 0 and prints one `kind=<k> fields=<n>
-//! doc_in_sync=true` line per kind; given a fixture doc with an extra
-//! field, Then it exits 1 naming it.
+//! AC7 — Given the registry's kinds at the landing commit, When their pages
+//! are checked, Then every spec field a parser reads appears on its page
+//! and every top-level key of a kind's example is one of those fields;
+//! given an example with an extra field, Then the check names it.
+//!
+//! The regex script this AC began as is gone
+//! (PRD-mcphost-kind-docs-from-registry-b-v2 R3): the same two checks run
+//! over `KindDoc` (`example_keys_outside_spec_fields`) and the generated
+//! `kind-fields` block (`gen-docs kinds --check`).
 
-use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
+use mcphost::kinds::kinddoc::KindDoc;
+use mcphost::plans::PlanCatalog;
 
-fn crate_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn run_script(repo_root: Option<&std::path::Path>) -> (bool, String, String) {
-    let script = crate_root().join("scripts/spec-fields-doc-check.sh");
-    let mut cmd = Command::new("bash");
-    cmd.arg(&script);
-    if let Some(root) = repo_root {
-        cmd.arg(root);
-    }
-    let output = cmd.output().expect("run spec-fields-doc-check.sh");
-    (
-        output.status.success(),
-        String::from_utf8_lossy(&output.stdout).to_string(),
-        String::from_utf8_lossy(&output.stderr).to_string(),
-    )
+fn docs() -> Vec<KindDoc> {
+    let registry = mcphost::kinds::production_registry();
+    let plans = PlanCatalog::default_catalog();
+    registry.names().into_iter().filter_map(|n| registry.get(n)).map(|k| k.doc(&plans)).collect()
 }
 
 #[test]
 fn landing_commit_is_in_sync_for_every_kind() {
-    let (ok, stdout, stderr) = run_script(None);
-    assert!(ok, "script must exit 0 at the landing commit; stderr: {stderr}");
-    for kind in ["echo", "http", "js", "python", "wasm"] {
-        let needle = format!("kind={kind} ");
-        let line = stdout
-            .lines()
-            .find(|l| l.starts_with(&needle))
-            .unwrap_or_else(|| panic!("no output line for kind={kind}: {stdout:?}"));
-        assert!(
-            line.contains("doc_in_sync=true"),
-            "{kind} must report doc_in_sync=true: {line}"
-        );
-        assert!(
-            line.contains("fields="),
-            "{kind} must report a fields=<n> count: {line}"
-        );
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let registry = mcphost::kinds::production_registry();
+    let plans = PlanCatalog::default_catalog();
+    let stale = mcphost::gendocs::run_kinds(root, &registry, &plans, false).expect("check the pages");
+    assert!(stale.is_empty(), "kind pages differ from the registry: {stale:?}");
+    let docs = docs();
+    for kind in ["chain", "echo", "http", "jq", "js", "python", "wasm"] {
+        let doc = docs.iter().find(|d| d.name == kind).unwrap_or_else(|| panic!("no KindDoc for {kind}"));
+        assert_eq!(doc.example_keys_outside_spec_fields(), Vec::<String>::new(), "{kind}: example keys outside spec_fields");
+        let page = std::fs::read_to_string(root.join(format!("docs/kinds/{kind}.md"))).expect("kind page");
+        for field in &doc.spec_fields {
+            assert!(page.contains(&format!("| `{}` |", field.name)), "{kind}'s parser reads `{}`, its page never lists it", field.name);
+        }
     }
 }
 
 #[test]
 fn a_doc_with_an_extra_field_fails_naming_it() {
-    let dir = std::env::temp_dir().join(format!(
-        "mcphost-unkfield-ac07-{}-{}",
-        std::process::id(),
-        mcphost::state::now_unix()
-    ));
-    let src_kinds = dir.join("src/kinds");
-    let docs_kinds = dir.join("docs/kinds");
-    fs::create_dir_all(&src_kinds).unwrap();
-    fs::create_dir_all(&docs_kinds).unwrap();
-
-    fs::copy(
-        crate_root().join("src/kinds/echo.rs"),
-        src_kinds.join("echo.rs"),
-    )
-    .unwrap();
-    let doc = fs::read_to_string(crate_root().join("docs/kinds/echo.md")).unwrap();
-    let doc = doc.replacen(
-        "\"schema\": {",
-        "\"bogus_extra_field\": 1,\n  \"schema\": {",
-        1,
-    );
-    fs::write(docs_kinds.join("echo.md"), doc).unwrap();
-
-    let (ok, stdout, stderr) = run_script(Some(&dir));
-    assert!(!ok, "a doc with an extra field must fail; stdout: {stdout}");
-    assert!(
-        stdout.contains("kind=echo") && stdout.contains("doc_in_sync=false"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stderr.contains("bogus_extra_field"),
-        "stderr must name the offending field: {stderr}"
-    );
-
-    let _ = fs::remove_dir_all(&dir);
+    let mut docs = docs();
+    let echo = docs.iter_mut().find(|d| d.name == "echo").expect("echo kind");
+    echo.example.as_object_mut().expect("echo example is an object").insert("bogus_extra_field".into(), 1.into());
+    assert_eq!(echo.example_keys_outside_spec_fields(), vec!["bogus_extra_field".to_string()]);
 }

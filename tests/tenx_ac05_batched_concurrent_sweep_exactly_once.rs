@@ -1,10 +1,12 @@
 //! PRD-mcphost-synthetic-implicit-tenant-expiry
-//! AC5 (P0) — Given 6,000 subjects and 10 non-subjects, When `prune_once` runs
+//! AC5 (P0) — Given 6,000 subjects and 9 non-subjects, When `prune_once` runs
 //! twice concurrently and once more on an empty set, Then every subject is
 //! expired exactly once over more than one batch, a subject touched by
 //! `touch_last_seen` between batches is skipped, non-subjects are unchanged,
 //! each run writes one `prune_log` row with `expired`, `skipped_billing`,
 //! `would_expire` (0 and no error for the empty run), and no teardown ran twice.
+//! PRD-mcphost-synthetic-tenant-purge R1: the second of two concurrent runs finds the
+//! sweep lock held and logs `busy: true` instead of sharing the work.
 
 use crate::common::tenx::{self, DAY, Fx};
 use crate::common::{EnvGuard, TestServer};
@@ -107,12 +109,13 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
     add("paid", &|f| f.paid_unix = Some(now - DAY));
     add("synthetic-null", &|f| f.synthetic = None);
     add("billing-ref", &|f| f.billing_ref = Some("cus_test"));
-    add("before-floor", &|f| f.created_unix = now - 11 * DAY);
     add("explicit", &|f| f.signup_source = Some("explicit"));
     add("unclassified", &|f| f.origin = "unclassified");
     add("source-null", &|f| f.signup_source = None);
+    // R2: a row minted before the floor is a subject; its clock starts at the floor.
+    let pre_floor = tenx::insert(&tx, &Fx::subject("tenx-before-floor", now, 11, idle));
     tx.commit().unwrap();
-    assert_eq!(non_subjects.len(), 10);
+    assert_eq!(non_subjects.len(), 9);
     // The last-inserted subject: the claim walks rowids upward, so it is in the last batch.
     let target = *subjects.last().unwrap();
     victim.store(target, Ordering::SeqCst);
@@ -124,7 +127,8 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
     let ids = removed.lock().unwrap().clone();
     let unique: HashSet<i64> = ids.iter().copied().collect();
     assert_eq!(ids.len(), unique.len(), "no teardown ran twice");
-    assert_eq!(unique.len(), SUBJECTS - 1, "every subject but the touched one was torn down");
+    assert_eq!(unique.len(), SUBJECTS, "every subject but the touched one, and the pre-floor row, was torn down");
+    assert!(unique.contains(&pre_floor));
     assert!(!unique.contains(&target));
     for id in &subjects[..SUBJECTS - 1] {
         assert_eq!(tenx::state(&conn, *id), (true, Some("idle_expired".to_string())), "subject {id}");
@@ -134,19 +138,21 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
         assert_eq!(tenx::state(&conn, *id), (false, None), "non-subject {id} unchanged");
     }
 
+    // PRD-mcphost-synthetic-tenant-purge R1: the two runs share one sweep lock, so the
+    // second starter only logs `busy: true`; it disables and tears down nothing.
     let rows = log_rows(&conn);
     assert_eq!(rows.len(), 2, "one prune_log row per run");
     let key = |k: &str| format!("synthetic_implicit_tenants.{k}");
-    let expired: i64 = rows.iter().map(|(_, d)| d[&key("expired")].as_i64().unwrap()).sum();
-    assert_eq!(expired as usize, SUBJECTS - 1, "two runs split the work, each row claimed once");
-    assert!(
-        rows.iter().all(|(ok, d)| *ok && d[&key("skipped_billing")] == 1 && d[&key("would_expire")] == 1),
-        "{rows:?}"
-    );
-    assert!(
-        rows.iter().all(|(_, d)| d[&key("expired")].as_i64().unwrap() <= SUBJECTS as i64),
-        "bounded"
-    );
+    let (busy, worked): (Vec<_>, Vec<_>) =
+        rows.iter().partition(|(_, d)| d.get("synthetic_implicit_tenants").is_some_and(|b| b["busy"] == true));
+    assert_eq!((busy.len(), worked.len()), (1, 1), "one run held the lock, the other reported busy: {rows:?}");
+    assert!(busy[0].0 && !busy[0].1.contains_key(&key("expired")), "a busy run writes only its row");
+    let (ok, done) = worked[0];
+    assert!(*ok);
+    assert_eq!(done[&key("expired")].as_i64(), Some(SUBJECTS as i64), "every subject but the touched one, once");
+    // Not yet idle: the 1-hour-idle row and the subject touched between batches.
+    assert_eq!((done[&key("skipped_billing")].as_i64(), done[&key("would_expire")].as_i64()), (Some(1), Some(2)));
+    assert_eq!(done[&key("held_over")].as_i64(), Some(0), "the stage finished inside its budget");
 
     // An empty set: nothing left to claim, no backlog.
     conn.execute_batch("DELETE FROM tenants").expect("empty the table");
@@ -159,5 +165,5 @@ async fn tenx_ac05_concurrent_sweeps_expire_every_subject_exactly_once() {
         (last[&key("expired")].as_i64(), last[&key("skipped_billing")].as_i64(), last[&key("would_expire")].as_i64()),
         (Some(0), Some(0), Some(0))
     );
-    assert_eq!(removed.lock().unwrap().len(), SUBJECTS - 1, "the empty run tore nothing down");
+    assert_eq!(removed.lock().unwrap().len(), SUBJECTS, "the empty run tore nothing down");
 }

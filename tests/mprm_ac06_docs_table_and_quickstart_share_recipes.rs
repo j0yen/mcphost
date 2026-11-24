@@ -1,7 +1,7 @@
-//! contract: reads scripts/sandbox-api-doc-check.sh
+//! contract: reads scripts/generated-docs-check.sh
 //! AC6 (P0) -- PRD-mcphost-prompts-from-published-tools.
 //! `docs/protocol/prompts.md` equals `render_prompts_doc()` (built from
-//! `recipe_prompts()`) and `scripts/sandbox-api-doc-check.sh` passes only
+//! `recipe_prompts()`) and `scripts/generated-docs-check.sh` passes only
 //! then; `host.quickstart {kind}` returns each recipe's text from the same
 //! `RECIPES` table the prompts read.
 
@@ -18,11 +18,11 @@ const DOC: &str = "docs/protocol/prompts.md";
 
 fn run_check(dir: &Path) -> Output {
     Command::new("bash")
-        .arg(dir.join("scripts/sandbox-api-doc-check.sh"))
+        .arg(dir.join("scripts/generated-docs-check.sh"))
         .current_dir(dir)
         .env("MCPHOST_BIN", env!("CARGO_BIN_EXE_mcphost"))
         .output()
-        .expect("run sandbox-api-doc-check.sh")
+        .expect("run generated-docs-check.sh")
 }
 
 #[test]

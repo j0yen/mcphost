@@ -64,7 +64,22 @@ pub mod family {
     pub const UPSTREAM: &str = "upstream";
     pub const COMPOSE: &str = "compose";
     pub const TOOL_STATE: &str = "tool_state";
+    /// Kind-specific families: the codes a kind's own source defines.
+    pub const CHAIN_SPEC: &str = "chain_spec";
+    pub const HTTP_CALL: &str = "http_call";
+    pub const JS_SPEC: &str = "js_spec";
+    pub const PYTHON_CALL: &str = "python_call";
 }
+
+/// PRD-mcphost-kind-docs-from-registry-b-v2 R1: a `(kind, code, reason)` row
+/// for a code its kind's source defines that never reaches a caller as an
+/// error, so the kind's page does not list it. Every other code a kind's
+/// source defines is in its contract families (and so on its page).
+pub const KIND_PAGE_EXEMPT: &[(&str, &str, &str)] = &[(
+    "python",
+    super::python::TIMEOUT_CLAMPED,
+    "a notice, not an error: the publish response warns that the call already runs with the plan's ceiling",
+)];
 
 #[derive(Debug, Clone, Copy)]
 pub struct ErrorFamily {

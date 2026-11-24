@@ -44,6 +44,11 @@ pub const ENDUSER_EXPORT_TOOL_NAME: &str = "host.enduser.export";
 /// or end-user one, and [`download`] tells a CSV file apart from a
 /// `.tar.gz` one by which of the three this run's own `tool_name` is.
 pub const HANDLE_EXPORT_TOOL_NAME: &str = "host.table.handle_export";
+/// PRD-mcphost-org-export-and-offboard-v2 R1: a fourth distinct
+/// `runs.tool_name`, so an org export's own "one running at a time" check
+/// never meets a tenant export (the reasoning of [`ENDUSER_EXPORT_TOOL_NAME`]).
+/// [`download`] serves its bundle as a `.tar.gz`.
+pub const ORG_EXPORT_TOOL_NAME: &str = "host.org.export";
 pub(crate) const EXPORT_DIR: &str = "exports";
 /// AC2: a signed download URL is valid for this long.
 pub const EXPORT_URL_TTL_SECS: i64 = crate::signed_url::DEFAULT_TTL_SECS;
@@ -488,11 +493,11 @@ async fn build_enduser_archive(
     }))
 }
 
-fn to_json_bytes(value: &Value) -> Result<Vec<u8>, AppError> {
+pub(crate) fn to_json_bytes(value: &Value) -> Result<Vec<u8>, AppError> {
     serde_json::to_vec_pretty(value).map_err(|e| AppError::Internal(format!("json serialize: {e}")))
 }
 
-fn add_entry(
+pub(crate) fn add_entry(
     builder: &mut Builder<GzEncoder<Vec<u8>>>,
     path: &str,
     data: &[u8],
@@ -801,23 +806,21 @@ fn build_tar_gz(c: &ArchiveContents<'_>) -> Result<Vec<u8>, AppError> {
 /// `manifest.json`'s `version` for archives this build writes.
 pub const MANIFEST_VERSION: i64 = 2;
 
-/// Gathers this tenant's exportable data, builds the archive, writes it
-/// under this host's data dir (technical considerations: "the tenant's
-/// scratch quota"), and returns the `runs.get` result value (download URL,
-/// size, manifest).
-async fn build_archive(
+/// One tenant's finished archive: the `.tar.gz` bytes and the manifest's
+/// `tools` list (each entry exactly a `host.tool_publish` argument object).
+pub(crate) struct TenantArchive {
+    pub bytes: Vec<u8>,
+    pub manifest: Vec<Value>,
+}
+
+/// Gathers this tenant's exportable data and builds its archive in memory.
+/// Reads by the tenant's id only, so a job holding the `Tenant` row can run
+/// it for a member (`org_export.rs`) without that member's credentials.
+pub(crate) async fn build_tenant_archive(
     state: &AppState,
     tenant: &Tenant,
-    run_id: &str,
     tools_filter: Option<&[String]>,
-) -> Result<Value, AppError> {
-    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
-        AppError::Internal(format!(
-            "tenant's plan '{}' is not in the loaded plan catalog",
-            tenant.plan
-        ))
-    })?;
-
+) -> Result<TenantArchive, AppError> {
     let mut tools = state.db.list_tools(tenant.id).await?;
     // P1 requirement 5 / AC6: `{tools: ["a"]}` exports only tool `a`.
     if let Some(filter) = tools_filter {
@@ -876,7 +879,7 @@ async fn build_archive(
         .map(|t| json!({"name": t.name, "kind": t.kind, "spec": t.spec}))
         .collect();
 
-    let archive_bytes = build_tar_gz(&ArchiveContents {
+    let bytes = build_tar_gz(&ArchiveContents {
         manifest_tools: &manifest,
         tools: &tools,
         secret_names: &secret_names,
@@ -889,20 +892,40 @@ async fn build_archive(
         models: &models,
         docs: &docs,
     })?;
+    Ok(TenantArchive { bytes, manifest })
+}
 
+/// `export_too_large` for an archive or bundle of `size` bytes over `limit`.
+pub(crate) fn export_too_large_error(size: usize, limit: i64) -> AppError {
+    AppError::Structured {
+        code: EXPORT_TOO_LARGE,
+        message: format!("export archive is {size} bytes, over this plan's {limit} byte limit"),
+        data: json!({
+            "size_bytes": size,
+            "limit_bytes": limit,
+        }),
+    }
+}
+
+/// Writes a finished archive under this host's data dir (technical
+/// considerations: "the tenant's scratch quota"), signs its download URL
+/// with `tenant`'s own material (valid 24 h), and returns `{download_url,
+/// size_bytes, expires_unix}`. Shared by [`build_archive`] and the org job,
+/// which calls it with the owner's row.
+pub(crate) async fn store_and_sign(
+    state: &AppState,
+    tenant: &Tenant,
+    run_id: &str,
+    archive_bytes: &[u8],
+) -> Result<Value, AppError> {
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
     if archive_bytes.len() as i64 > plan.export_bytes_max {
-        return Err(AppError::Structured {
-            code: EXPORT_TOO_LARGE,
-            message: format!(
-                "export archive is {} bytes, over this plan's {} byte limit",
-                archive_bytes.len(),
-                plan.export_bytes_max
-            ),
-            data: json!({
-                "size_bytes": archive_bytes.len(),
-                "limit_bytes": plan.export_bytes_max,
-            }),
-        });
+        return Err(export_too_large_error(archive_bytes.len(), plan.export_bytes_max));
     }
 
     let exports_dir = state.db.data_dir().join(EXPORT_DIR);
@@ -910,7 +933,7 @@ async fn build_archive(
         .await
         .map_err(|e| AppError::Storage(format!("create exports dir: {e}")))?;
     let archive_path = exports_dir.join(format!("{run_id}.tar.gz"));
-    tokio::fs::write(&archive_path, &archive_bytes)
+    tokio::fs::write(&archive_path, archive_bytes)
         .await
         .map_err(|e| AppError::Storage(format!("write export archive: {e}")))?;
 
@@ -922,8 +945,21 @@ async fn build_archive(
         "download_url": download_url,
         "size_bytes": archive_bytes.len(),
         "expires_unix": expires_unix,
-        "manifest": manifest,
     }))
+}
+
+/// Builds one tenant's archive, stores it and returns the `runs.get` result
+/// value (download URL, size, manifest).
+async fn build_archive(
+    state: &AppState,
+    tenant: &Tenant,
+    run_id: &str,
+    tools_filter: Option<&[String]>,
+) -> Result<Value, AppError> {
+    let archive = build_tenant_archive(state, tenant, tools_filter).await?;
+    let mut result = store_and_sign(state, tenant, run_id, &archive.bytes).await?;
+    result["manifest"] = json!(archive.manifest);
+    Ok(result)
 }
 
 /// `GET /exports/{run_id}?expires=<unix>&sig=<hex>` (P0 requirement 2):
@@ -943,7 +979,10 @@ pub async fn download(
     // `.tar.gz`/`application/gzip` bundle `build_archive`/
     // `build_enduser_archive` write.
     let is_handle_export = run.tool_name == HANDLE_EXPORT_TOOL_NAME;
-    let is_export = run.tool_name == EXPORT_TOOL_NAME || run.tool_name == ENDUSER_EXPORT_TOOL_NAME || is_handle_export;
+    let is_export = run.tool_name == EXPORT_TOOL_NAME
+        || run.tool_name == ENDUSER_EXPORT_TOOL_NAME
+        || run.tool_name == ORG_EXPORT_TOOL_NAME
+        || is_handle_export;
     if !is_export || run.status != "done" {
         return (StatusCode::NOT_FOUND, "export not found").into_response();
     }

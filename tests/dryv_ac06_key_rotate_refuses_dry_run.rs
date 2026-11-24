@@ -1,9 +1,9 @@
-//! contract: reads scripts/sandbox-api-doc-check.sh
+//! contract: reads scripts/generated-docs-check.sh
 //! PRD-mcphost-dry-run-on-write-verbs
 //! AC6 -- Given `host.key.rotate {dry_run: true}`, When called, Then it fails
 //! with `args_invalid` and `data.no_dry_run_reason == "external_effect"`, and
 //! `docs/host-tools.md` contains that reason beside `host.key.rotate`
-//! (generated, checked by `scripts/sandbox-api-doc-check.sh`).
+//! (generated, checked by `scripts/generated-docs-check.sh`).
 
 use crate::common;
 use common::{McpClient, TestServer, signup};
@@ -46,7 +46,7 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
     let dir = common::doc_check_scratch("dryv-ac06");
     let run = |args: &[&str]| {
         Command::new("bash")
-            .arg(dir.join("scripts/sandbox-api-doc-check.sh"))
+            .arg(dir.join("scripts/generated-docs-check.sh"))
             .args(args)
             .output()
             .expect("run script")

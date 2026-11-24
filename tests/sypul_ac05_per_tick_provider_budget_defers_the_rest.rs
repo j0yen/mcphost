@@ -47,18 +47,23 @@ async fn sypul_ac05_a_free_tenant_spends_at_most_20_provider_calls_per_tick() {
         .await;
         ids.push(created["sync_id"].as_str().expect("sync_id").to_string());
     }
-    let past = mcphost::state::now_unix() - 60;
+    // Both passes run at one pinned `now`, inside one cron slot. A claimed
+    // sync moves to its next `*/15` slot, so two wall-clock ticks that
+    // straddle a slot boundary find the twenty claimed syncs due again and
+    // the second pass spends the full budget (40 calls, not 25).
+    let now = mcphost::state::now_unix();
+    let past = now - 60;
     for id in &ids {
         mcphost::sync::set_next_run_for_test(&server.state, id, past).await.expect("make due");
     }
 
-    mcphost::triggers::tick_once(&server.state).await.expect("first tick");
+    mcphost::sync::tick(&server.state, now).await.expect("first tick");
     assert_eq!(fixture.hits(), 20, "at most 20 provider calls in one tick");
     let statuses = last_statuses(&client, &ids).await;
     assert_eq!(statuses.iter().filter(|s| *s == "ok").count(), 20, "{statuses:?}");
     assert_eq!(statuses.iter().filter(|s| *s == "deferred").count(), 5, "{statuses:?}");
 
-    mcphost::triggers::tick_once(&server.state).await.expect("second tick");
+    mcphost::sync::tick(&server.state, now).await.expect("second tick");
     assert_eq!(fixture.hits(), 25, "the deferred five ran on the next tick");
     let statuses = last_statuses(&client, &ids).await;
     assert!(statuses.iter().all(|s| s == "ok"), "{statuses:?}");

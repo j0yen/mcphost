@@ -17,11 +17,13 @@ async fn large_result_logs_result_bytes_and_est_tokens() {
         .tools_call("host.table.create", json!({"name": "t", "columns": {"x": "text"}}))
         .await
         .expect("create");
-    // 1,000-char string per row; ~300 rows clears 200KB of serialized JSON
-    // once the row/column wrapping overhead is counted, and stays well
-    // under host.table.query's 1,000-row cap.
+    // 1,000-char string per row; ~220 rows clears 200KB of serialized JSON
+    // once the row/column wrapping overhead is counted, and stays under both
+    // host.table.query's 1,000-row cap and the free plan's 256 KiB response
+    // budget (a larger result would be cut at a row boundary; the log row
+    // records the whole result, so the two would differ).
     let padding = "a".repeat(1_000);
-    let rows: Vec<_> = (0..300).map(|_| json!({"x": padding})).collect();
+    let rows: Vec<_> = (0..220).map(|_| json!({"x": padding})).collect();
     client
         .tools_call("host.table.append", json!({"table": "t", "rows": rows}))
         .await

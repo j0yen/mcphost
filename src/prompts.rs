@@ -160,7 +160,7 @@ pub const PROMPTS_DOC_END: &str = "<!-- prompts:end -->";
 
 /// The whole of `docs/protocol/prompts.md`: the recipe table rendered from
 /// [`recipe_prompts`], the same list `prompts/list` answers keyless.
-/// `scripts/sandbox-api-doc-check.sh` passes only while the file equals this.
+/// `scripts/generated-docs-check.sh` passes only while the file equals this.
 pub fn render_prompts_doc() -> String {
     let mut out = String::from("# MCP prompts\n\n");
     out.push_str(PROMPTS_DOC_START);

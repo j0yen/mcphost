@@ -9,8 +9,12 @@
 mod common;
 #[path = "support/assertion.rs"]
 mod assertion;
+#[path = "support/dryspt_lint.rs"]
+mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/uprg.rs"]
+mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 #[path = "support/xlinks.rs"]
@@ -18,6 +22,104 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
+mod ttfs_ac01_onboarding_7d_reads_external_stamps;
+#[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]
+mod ttfs_ac02_whoami_activation_first_call_only;
+#[path = "ttfs_ac03_milestone_table_is_the_one_key_set.rs"]
+mod ttfs_ac03_milestone_table_is_the_one_key_set;
+#[path = "ttfs_ac04_onboarding_block_carries_no_identifiers.rs"]
+mod ttfs_ac04_onboarding_block_carries_no_identifiers;
+#[path = "ttfs_ac05_under_five_tenants_shows_n_and_nulls.rs"]
+mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
+#[path = "ttfs_ac06_admin_has_no_activation_and_unclassified_excluded.rs"]
+mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
+#[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
+mod ttfs_ac07_by_client_only_for_groups_of_five;
+#[path = "txnhelp_ac01_lint_zero.rs"]
+mod txnhelp_ac01_lint_zero;
+#[path = "txnhelp_ac02_lock_parity.rs"]
+mod txnhelp_ac02_lock_parity;
+#[path = "txnhelp_ac03_is_writable_probe.rs"]
+mod txnhelp_ac03_is_writable_probe;
+#[path = "txnhelp_ac04_migration_0116_atomic.rs"]
+mod txnhelp_ac04_migration_0116_atomic;
+#[path = "txnhelp_ac05_append_real_then_dry_run.rs"]
+mod txnhelp_ac05_append_real_then_dry_run;
+#[path = "umeta_ac01_meta_usage_matches_refusal_and_status.rs"]
+mod umeta_ac01_meta_usage_matches_refusal_and_status;
+#[path = "umeta_ac02_golden_echo_result_unchanged.rs"]
+mod umeta_ac02_golden_echo_result_unchanged;
+#[path = "umeta_ac03_host_usage_plan_block.rs"]
+mod umeta_ac03_host_usage_plan_block;
+#[path = "umeta_ac04_unlimited_plan_renders_null_limit.rs"]
+mod umeta_ac04_unlimited_plan_renders_null_limit;
+#[path = "umeta_ac05_no_extra_select_on_hot_path.rs"]
+mod umeta_ac05_no_extra_select_on_hot_path;
+#[path = "umeta_ac06_caller_limit_in_meta_usage.rs"]
+mod umeta_ac06_caller_limit_in_meta_usage;
+#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
+mod unkfield_ac04_trigger_set_unknown_argument;
+#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
+mod unkfield_ac05_tools_list_additional_properties_false;
+#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
+mod unkfield_ac07_spec_fields_doc_check_script;
+#[path = "upfam_ac01_auth_family_401_403.rs"]
+mod upfam_ac01_auth_family_401_403;
+#[path = "upfam_ac02_403_error_surface_names_secret_set.rs"]
+mod upfam_ac02_403_error_surface_names_secret_set;
+#[path = "upfam_ac02_rate_limited_retry_after.rs"]
+mod upfam_ac02_rate_limited_retry_after;
+#[path = "upfam_ac03_client_and_server_error_families.rs"]
+mod upfam_ac03_client_and_server_error_families;
+#[path = "upfam_ac04_remedy_table_total_and_single_source.rs"]
+mod upfam_ac04_remedy_table_total_and_single_source;
+#[path = "upfam_ac05_hints_name_real_tools.rs"]
+mod upfam_ac05_hints_name_real_tools;
+#[path = "upfam_ac06_host_not_allowed_names_tool_call.rs"]
+mod upfam_ac06_host_not_allowed_names_tool_call;
+#[path = "upfam_ac07_tool_test_matches_real_call.rs"]
+mod upfam_ac07_tool_test_matches_real_call;
+#[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
+mod upgrade_ac01_calls_per_day_next_checkout;
+#[path = "upgrade_ac02_billing_off_refusal_text.rs"]
+mod upgrade_ac02_billing_off_refusal_text;
+#[path = "upgrade_ac03_checkout_source_metadata.rs"]
+mod upgrade_ac03_checkout_source_metadata;
+#[path = "upgrade_ac04_webhook_stamps_paid_unix.rs"]
+mod upgrade_ac04_webhook_stamps_paid_unix;
+#[path = "upgrade_ac05_billing_status_receipt.rs"]
+mod upgrade_ac05_billing_status_receipt;
+#[path = "upgrade_ac06_admin_funnel_upgrades_by_trigger.rs"]
+mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
+#[path = "upgrade_ac07_admin_upgrades_listing.rs"]
+mod upgrade_ac07_admin_upgrades_listing;
+#[path = "uprg_ac01_one_call_creates_probe_status_schedule.rs"]
+mod uprg_ac01_one_call_creates_probe_status_schedule;
+#[path = "uprg_ac02_status_tool_returns_readable_table.rs"]
+mod uprg_ac02_status_tool_returns_readable_table;
+#[path = "uprg_ac03_bad_urls_refused_nothing_created.rs"]
+mod uprg_ac03_bad_urls_refused_nothing_created;
+#[path = "uprg_ac04_free_interval_clamped_pro_keeps_60.rs"]
+mod uprg_ac04_free_interval_clamped_pro_keeps_60;
+#[path = "uprg_ac06_llms_txt_plan_numbers_generated.rs"]
+mod uprg_ac06_llms_txt_plan_numbers_generated;
+#[path = "uprg_ac07_slow_target_is_a_timeout_row.rs"]
+mod uprg_ac07_slow_target_is_a_timeout_row;
+#[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
+mod urltenant_ac01_path_secret_whoami_auth_method_url;
+#[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]
+mod urltenant_ac02_wrong_or_rotated_secret_404;
+#[path = "urltenant_ac03_key_rotate_rotates_key_and_url.rs"]
+mod urltenant_ac03_key_rotate_rotates_key_and_url;
+#[path = "urltenant_ac04_new_url_page_and_signup_limiter.rs"]
+mod urltenant_ac04_new_url_page_and_signup_limiter;
+#[path = "urltenant_ac05_browser_get_shows_explainer_page.rs"]
+mod urltenant_ac05_browser_get_shows_explainer_page;
+#[path = "urltenant_ac06_quickstart_url_bound_no_signup_step.rs"]
+mod urltenant_ac06_quickstart_url_bound_no_signup_step;
+#[path = "urltenant_ac07_header_conflict_is_auth_conflict.rs"]
+mod urltenant_ac07_header_conflict_is_auth_conflict;
 #[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
 mod vault_ac01_connect_link_redirects_to_auth_url;
 #[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]

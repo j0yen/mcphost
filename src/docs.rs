@@ -606,15 +606,23 @@ pub async fn doc_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result
         None => state.db.documents_list_live(tenant.id, prefix, cursor, order, fetch).await?,
     };
 
-    let next = paged::split_page(&mut rows, rl.limit, |d| DocsList::cursor_at(d, order));
-    let documents: Vec<Value> = rows.iter().map(|d| document_to_json(d, true)).collect();
+    let mut next = paged::split_page(&mut rows, rl.limit, |d| DocsList::cursor_at(d, order));
+    let mut documents: Vec<Value> = rows.iter().map(|d| document_to_json(d, true)).collect();
+    if let Some(fields) = &fields {
+        paged::project_rows(&mut documents, fields);
+    }
+    let cut = crate::response_budget::cut_page(
+        &mut rows,
+        &mut documents,
+        &mut next,
+        crate::response_budget::budget_of(state, tenant),
+        |d| DocsList::cursor_at(d, order),
+    );
     let mut out = serde_json::Map::new();
     out.insert(DocsList::KEY.to_string(), json!(documents));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut value = Value::Object(out);
-    if let Some(fields) = &fields {
-        paged::project_page(&mut value, DocsList::KEY, fields);
-    }
+    crate::response_budget::note_truncated(&mut value, cut, DocsList::VERB, args);
     paged::note_clamp(&mut value, &rl);
     Ok(value)
 }

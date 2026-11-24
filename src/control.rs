@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::auth::{generate_handoff_token, generate_key, generate_namespace, hash_key};
+use crate::auth::{generate_handoff_token, generate_key, hash_key};
 use crate::db::{HandoffRedeemOutcome, LifecycleEvent, Tenant, WarnClaimToken};
 use crate::errors::AppError;
 use crate::kinds::{Kind, KindRegistry};
@@ -577,24 +577,24 @@ pub async fn signup(
 
     let is_implicit = signup_source.as_deref() == Some("implicit");
     let key = generate_key();
-    let namespace = generate_namespace();
     let key_hash = hash_key(&key);
-    let tenant = state
-        .db
-        .create_tenant_attributed_with_source(
-            display_name,
-            namespace.clone(),
-            key_hash,
-            synthetic,
+    // PRD-mcphost-synthetic-tenant-purge R6: a namespace that is taken or reserved is re-drawn.
+    let tenant = crate::auth::with_fresh_namespace(|namespace| {
+        state.db.create_tenant_attributed_with_source(
+            display_name.clone(),
+            namespace,
+            key_hash.clone(),
+            synthetic.clone(),
             Some(class.as_str().to_string()),
             attribution.client_name.map(str::to_string),
             attribution.client_version.map(str::to_string),
             origin.to_string(),
-            origin_detail,
-            signup_source,
-            funnel_origin,
+            origin_detail.clone(),
+            signup_source.clone(),
+            funnel_origin.clone(),
         )
-        .await?;
+    })
+    .await?;
 
     // PRD-mcphost-implicit-signup-mints-only-on-success R4: an implicit signup's
     // `signup_events` row carries the tenant it created (new rows only, no
@@ -711,7 +711,7 @@ pub async fn signup(
     let mut response = json!({
         "tenant": tenant.namespace,
         "key": key,
-        "namespace": namespace,
+        "namespace": tenant.namespace,
         "endpoint": format!("{}/mcp", state.public_url.trim_end_matches('/')),
         "claim_url": claim_url,
         // PRD-mcphost-session-key requirement 3 / AC4: told by the payload
@@ -917,9 +917,22 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant, session_id: Option
     Ok(json!({
         "tenant": tenant.namespace,
         "disabled": true,
-        "disabled_reason": "self_offboard",
+        "disabled_reason": crate::auth_shape::SELF_OFFBOARD_REASON,
         "billing_canceled": billing_canceled,
     }))
+}
+
+/// The runtime half of taking a tenant offline: every session, implicit-signup
+/// and tenant-key memory bound to it, and every kind's `on_tenant_removed`.
+/// No billing, no row writes -- shared by [`teardown_expired_tenant`] and
+/// `host.org.offboard` (`org_offboard.rs`).
+pub(crate) async fn release_tenant_runtime(state: &AppState, tenant_id: i64) {
+    state.session_bindings.drop_tenant(tenant_id);
+    state.implicit_signup_memory.drop_tenant(tenant_id);
+    state.tenant_key_arg_memory.drop_tenant(tenant_id);
+    for k in state.kinds.all() {
+        k.on_tenant_removed(tenant_id).await;
+    }
 }
 
 /// PRD-mcphost-synthetic-implicit-tenant-expiry: the teardown the idle
@@ -929,12 +942,7 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant, session_id: Option
 /// billing cancel (a no-op for a subject, which carries no `billing_ref`).
 /// Idempotent, so a crash between claim and teardown is safe to replay.
 pub async fn teardown_expired_tenant(state: &AppState, tenant_id: i64) {
-    state.session_bindings.drop_tenant(tenant_id);
-    state.implicit_signup_memory.drop_tenant(tenant_id);
-    state.tenant_key_arg_memory.drop_tenant(tenant_id);
-    for k in state.kinds.all() {
-        k.on_tenant_removed(tenant_id).await;
-    }
+    release_tenant_runtime(state, tenant_id).await;
     match state.db.find_tenant_by_id(tenant_id).await {
         Ok(Some(tenant)) if tenant.plan == "pro" => {
             if let Some(customer) = tenant.stripe_customer_id.as_deref()
@@ -958,6 +966,18 @@ pub fn install_tenant_teardown(state: &AppState) {
         move |id| {
             let state = state.clone();
             Box::pin(async move { teardown_expired_tenant(&state, id).await })
+        }
+    }));
+    state.db.clone().set_tenant_purge_cleanup(std::sync::Arc::new({
+        let state = state.clone();
+        move |id| {
+            let state = state.clone();
+            Box::pin(async move {
+                for k in state.kinds.all() {
+                    k.on_tenant_removed(id).await;
+                }
+                crate::admin::remove_tenant_tables(&state, id);
+            })
         }
     }));
     state.db.clone().set_external_sweep(std::sync::Arc::new({
@@ -1522,6 +1542,16 @@ fn quickstart_inner(
         let base = format!("{}/u/{}", state.public_url.trim_end_matches('/'), secret);
         map.insert("install_links".to_string(), json!(crate::install_links::for_url(&base)));
     }
+    // PRD-mcphost-kind-docs-from-registry-b-v2 R6: the page of the kind's
+    // spec fields and the names it lists, both from the same `KindDoc` the
+    // page's `kind-fields` table renders (each name once).
+    if let Value::Object(map) = &mut response {
+        if let Some(anchor) = crate::doc_anchors::DocAnchor::kind_spec_fields(&kind_name) {
+            map.insert("doc_anchor".to_string(), json!(anchor.as_str()));
+        }
+        let names: Vec<String> = kind.doc(&state.plans).spec_fields.into_iter().map(|f| f.name).collect();
+        map.insert("spec_fields".to_string(), json!(names));
+    }
     // PRD-mcphost-chain-host-steps requirement 1: `host.quickstart
     // kind=chain`'s own allowlist of step-nameable `host.*` verbs --
     // exported under this exact key so `host.tool_publish`'s
@@ -1690,6 +1720,15 @@ pub async fn whoami(
             })
         })
         .collect();
+    // PRD-mcphost-org-shared-tools-namespace-v2 R3: org tools, `via: "org"`.
+    let mut shared_tools = shared_tools;
+    for (owner, row) in crate::sharing::visible_org_tools(state, tenant).await? {
+        shared_tools.push(json!({
+            "name": crate::sharing::org_tool_name(&row.name),
+            "owner": owner.namespace,
+            "via": "org",
+        }));
+    }
     // PRD-mcphost-invite-links requirement 10 (AC9): `None` only for a
     // tenant that predates migration 0067/0068 and has never had one
     // lazily minted (out of this build's tested scope -- see

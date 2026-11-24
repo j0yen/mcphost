@@ -23,6 +23,12 @@ fn copy_pages(to: &Path) {
         let entry = entry.unwrap();
         std::fs::copy(entry.path(), dir.join(entry.file_name())).unwrap();
     }
+    // `gen-docs kinds` also renders the sandbox-API block into these files.
+    for rel in ["www/llms.txt", "plugin/skills/mcphost/SKILL.md"] {
+        let dest = to.join(rel);
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        std::fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join(rel), dest).unwrap();
+    }
 }
 
 #[test]

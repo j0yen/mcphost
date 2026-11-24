@@ -51,8 +51,7 @@ fn chain_rs_spells_the_context_keys_only_in_the_table_and_its_tests() {
         }
     }
     // The chain SPEC's own `steps` field is a different contract:
-    // scripts/spec-fields-doc-check.sh parses `known_spec_fields()`'s literal
-    // straight out of the file, so that one line stays spelled out.
+    // The `steps` literal is kept spelled out on this one line.
     offenders.retain(|o| !o.ends_with("&[\"steps\"]"));
     // The dry-run (PRD-mcphost-chain-dry-run) writes its own report entry
     // (`"result": fixture`) and its fixture-error `data` (`"steps": <count>`);

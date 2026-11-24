@@ -1,70 +1,70 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-admin-signup-pause-tool.md",
-  "intent_slug": "mcphost-admin-signup-pause-tool",
-  "root_motivation": "WHO: Joe as operator of mcphost-1 when he is not at a shell, and synthorg's mtproof probe, which only reaches the host over MCP. WHAT: the signup kill switch is a file the host already reads, but nothing over MCP can create or remove it, so the mtproof kill_switch link refuses on every chain run. WHY: PRD-mcphost-signup-kill-switch-and-source requirement 8 named the tool and never had an AC, so it was never built.",
-  "user_persona": "An operator (or the probe acting for them) holding the admin key who must pause and resume signups with one MCP call each, audited, and restore the host with one call if a sequence dies halfway.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-sql-exec-and-grammar.md",
+  "intent_slug": "mcphost-table-sql-exec-and-grammar",
+  "root_motivation": "WHO: the agent keeping a user's table current, and the owner who says 'mark order 17 shipped'. WHAT: one DML verb, one by-example verb, and refusals that name the position and the allowed grammar. WHY: the only write today is host.table.append, so correcting one row means a duplicate or a drop and recreate, and a refusal names nothing the agent may send instead.",
+  "user_persona": "An agent that already writes GROUP BY for a recipe and sends host.table.exec(sql='UPDATE orders SET status=... WHERE id=17'), or a SQL-averse persona calling host.table.find(table, where), or a python tool calling mcphost.table.exec.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a test server with the admin key, When the admin lists tools, Then `admin.signup_pause` is listed with `message` (string), `resume` (boolean), `until` (integer), its description says exactly one of `message` or `resume: true` is required, the arms-equal-descriptors drift test passes, and README.md § signup names the tool.",
-      "test": "tests/aspt_ac01_tool_listed_with_schema_and_readme.rs"
+      "description": "Given `host.table.exec` statements containing `ATTACH`, `PRAGMA`, `load_extension(...)`, `readfile(...)`, a `CREATE TRIGGER`, or an INSERT whose subquery is not a plain SELECT, When each runs, Then each is refused `table_exec_rejected` and the tenant's file, schema and pragmas are unchanged.",
+      "test": "tests/tsql_ac01_exec_refuses_escape_statements.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given no pause file, When the admin calls `admin.signup_pause` with a message, Then the pause file holds it as line 1, the result is `{paused: true, changed: true, message, retry_after_secs: 3600}`, healthz reports `signups_enabled: false` plus the message, and `signup` returns `signup_paused` with it; a hand-written file is replaced the same way.",
-      "test": "tests/aspt_ac02_pause_writes_file_and_refuses_signup.rs"
+      "description": "Given a table with 3 rows, When `host.table.exec(sql=\"UPDATE t SET a=1 WHERE id=2\")` runs, Then the response is `{changed: 1, table: \"t\"}`, a following `host.table.query` shows the change, `bump_change_counter` ran with `rewrite=true`, a `dry_run` call changes nothing, and a `host.table.append` right after succeeds (`query_only` not left on).",
+      "test": "tests/tsql_ac02_update_one_row_dry_run_and_append_after.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a pause file written by the tool or by hand, When the admin calls `admin.signup_pause` with `resume: true`, Then the file is gone, the result is `{paused: false, changed: true}`, healthz reports `signups_enabled: true` with no `signup_pause_message`, and a `signup` succeeds.",
-      "test": "tests/aspt_ac03_resume_removes_file_and_reopens_signup.rs"
+      "description": "Given `DELETE FROM t` without WHERE, When exec runs, Then it is refused `table_exec_rejected` with `data.allowed` containing `DELETE FROM <table> WHERE \u2026` and no row is deleted.",
+      "test": "tests/tsql_ac03_where_less_delete_and_update_refused.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given calls with no arguments, both `message` and `resume: true`, `resume: false` alone, an empty message, a newline in the message, a message over 512 bytes, and `until` not in the future, When the admin makes each, Then each returns `invalid_params` naming the field and the pause file is unchanged.",
-      "test": "tests/aspt_ac04_invalid_calls_refused_and_file_untouched.rs"
+      "description": "Given `SELEC * FROM t`, When `host.table.query` runs, Then the refusal carries `data.line = 1`, `data.column = 1` and `data.allowed` equal to `allowed_statement_forms()`; a test parses each `allowed` form back to a statement kind and asserts the set equals the validator's accepted set.",
+      "test": "tests/tsql_ac04_refusal_carries_position_and_generated_grammar.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a tenant key and an anonymous client, When each calls `admin.signup_pause`, Then each is refused with the same error code every other `admin.*` tool returns to that caller (`forbidden` for a tenant key), no pause file is created, and healthz still reports `signups_enabled: true`.",
-      "test": "tests/aspt_ac05_non_admin_callers_refused.rs"
+      "description": "Given a plan with `table_rows_max` reached, When exec runs an INSERT, Then `quota_exceeded` names `table_rows_max` with the same `data` keys `table_append` uses; Given two concurrent exec calls on the same row, Then both complete and `changed` sums to 2.",
+      "test": "tests/tsql_ac05_quota_and_concurrency.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given no pause file, When the admin calls `resume: true` twice, Then both return `{paused: false, changed: false}`; and Given `MCPHOST_SIGNUP_PAUSE_FILE` points into a missing directory, When the admin pauses, Then the error code is `storage`, nothing panics, and healthz answers `signups_enabled: true`.",
-      "test": "tests/aspt_ac06_resume_idempotent_and_io_failure_is_storage.rs"
+      "description": "Given `host.table.find(table=\"t\", where={\"amount\": {\">\": 500}, \"status\": \"open\"})`, When it runs, Then rows match the parameterised SELECT and `data.sql` shows it; Given an unknown operator `\"~\"`, Then the refusal lists `allowed_operators` and the table's columns.",
+      "test": "tests/tsql_ac06_find_by_example.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given 20 concurrent admin calls (10 distinct messages, 10 resumes), When all complete, Then every call succeeded, no `status()` read saw a truncated file, the final state agrees with healthz, and `admin.audit_log` holds 10 `signup_pause` and 10 `signup_resume` rows with `actor_key_id`.",
-      "test": "tests/aspt_ac07_concurrent_toggles_atomic_and_audited.rs"
+      "description": "Given a python tool calling `mcphost.table.exec(\"INSERT INTO t (id,a) VALUES (9,1)\")`, When called via `host.tool_call`, Then the row exists and `host.table.query_log` shows `statement_kind: insert, changed: 1`.",
+      "test": "tests/tsql_ac07_python_exec.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given `message: \"window\"` and `until` 600 s ahead, When paused, Then the file's line 2 is `until=<ts>`, the result and `signup`'s error carry `retry_after_secs` within 2 s of 600, and alerts `signup.paused` and `signup.resumed` are raised within `PAUSE_POLL_INTERVAL_SECS` + 2 s.",
-      "test": "tests/aspt_ac08_until_bounds_retry_and_alerts_fire.rs"
+      "description": "Given prod after deploy, When the joe-test tenant runs `host.table.exec` with a one-row UPDATE through the MCP endpoint, Then `changed` is 1 and `host.table.query_log(limit=1)` returns that statement (Live; evidence: `examples/database-in-a-minute/proof.sh --exec-check`, a mode this PRD's builder adds, key read from the tenant env file, never printed) [deferred: Live, operator-provisioned prod run]",
+      "test": "examples/database-in-a-minute/proof.sh"
     }
   ],
   "scope": [
-    "src/handler.rs: the `admin.signup_pause` descriptor in `admin_tools_raw` and its `dispatch_admin_tool` arm; src/admin.rs: `signup_pause`, argument validation and the `admin_audit_entry` arm; src/state.rs: `SignupPause::pause` (atomic temp-file rename) and `resume` writers; README.md § signup via docs/agent-quickstart.md and the regenerated www/llms.txt."
+    "src/table/exec.rs (allowed_statement_forms, validate_exec_structure, table_exec); src/table/find.rs (by-example compile, table_find); src/tables.rs (table_exec_rejected, positioned refusals, query-log statement_kind/changed); src/handler.rs, src/handler/arms.rs, src/dispatch_table.rs, src/write_verbs.rs (host.table.exec dry run), src/kinds/python.rs (mcphost.table.exec/find); descriptors, output schemas, generated contracts, docs, SDKs, llms.txt; examples/database-in-a-minute/proof.sh --exec-check."
   ],
   "non_goals": [
-    "Any change to how `signup` decides it is paused, to healthz fields, to alert keys or to the `signup_paused` error code; a default expiry on a tool-set pause; scheduled or per-source pauses; any synthorg change; hand-editing www/llms.txt."
+    "DDL through SQL; multi-statement batches; cross-tenant joins; transactions spanning calls; the llms.txt recipe example; the AC 8 prod run (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -73,40 +73,55 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_schema_change": "No migration, schema change or new env var: the tool only writes the file `SignupPause::status` already reads."
+      "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
+      "one_grammar": "allowed_statement_forms() is the only list of exec statement forms; the validator, the refusal data.allowed and the tests read it.",
+      "query_only_restored": "QueryOnlyGuard restores PRAGMA query_only on every exit path."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the mtproof kill_switch link refuse on every chain run?",
-      "a": "Its preflight requires admin.signup_pause in the admin tools/list, and the tool does not exist."
+      "q": "Why does an agent duplicate or recreate a table to fix a row?",
+      "a": "host.table.append only inserts whole rows and refuses a duplicate key."
     },
     {
       "why": 2,
-      "q": "Why does the tool not exist?",
-      "a": "PRD-mcphost-signup-kill-switch-and-source listed it as requirement 8 (P2) with no acceptance criterion."
+      "q": "Why is there no update or delete?",
+      "a": "validate_query_structure accepts only Statement::Query, so the read guard doubled as the only write policy."
     },
     {
       "why": 3,
-      "q": "Why did a missing AC let the requirement go unbuilt?",
-      "a": "The builder derives its tests from ACs, so a requirement without one is never proven nor demanded."
+      "q": "Why not widen the query verb?",
+      "a": "query runs under query_only with read guards; DML needs its own gate, quota check and change counter."
     },
     {
       "why": 4,
-      "q": "Why can an operator not just touch the file?",
-      "a": "The probe cannot ssh and Joe off a shell has no path to the data dir; SignupPause had no writer."
-    }
-  ],
-  "created_at": "2026-11-02T00:00:00Z",
-  "ambiguities_resolved": [
-    {
-      "question": "Which error code do argument-validation failures carry?",
-      "resolution": "`invalid_params` via AppError::InvalidParams, not the descriptor precheck's `args_invalid`, so the descriptor declares types only and the handler enforces the 1..=512 byte, one-line and future-`until` rules."
+      "q": "Why do refusals not teach the agent?",
+      "a": "query_rejected carries a reason string with no position and no allowed set."
     },
     {
-      "question": "Is a resume that removed no file still audited?",
-      "resolution": "Yes: AC7 counts one `signup_resume` row per resume call, so the audit arm is unconditional on `changed`."
+      "why": 5,
+      "q": "Why generate the grammar from the allowlist?",
+      "a": "a hand-written allowed list drifts from the validator, so one function feeds both and a test parses each form back."
+    }
+  ],
+  "created_at": "2026-11-13T00:00:00Z",
+  "ambiguities_resolved": [
+    {
+      "question": "Upsert spelling: INSERT OR REPLACE as well as ON CONFLICT?",
+      "resolution": "Both are accepted, as SQLite accepts both."
+    },
+    {
+      "question": "Does find return the SQL it compiled?",
+      "resolution": "Yes: data.sql and data.params, plus total."
+    },
+    {
+      "question": "When is the table_rows_max ceiling checked for exec?",
+      "resolution": "After execution inside one BEGIN IMMEDIATE transaction, rolling back on excess."
+    },
+    {
+      "question": "Which error family does table_exec_rejected use?",
+      "resolution": "Storage, so shp_ac01 does not flag it as an unlisted Args refusal."
     }
   ]
 }

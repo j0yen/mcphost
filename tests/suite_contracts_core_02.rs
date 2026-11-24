@@ -10,6 +10,20 @@ mod common;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "spmsg_ac06_driver_compiles_plans_and_fails_closed.rs"]
+mod spmsg_ac06_driver_compiles_plans_and_fails_closed;
+#[path = "spmsg_ac07_driver_passes_on_test_server.rs"]
+mod spmsg_ac07_driver_passes_on_test_server;
+#[path = "sreg_ac01_registry_single_source.rs"]
+mod sreg_ac01_registry_single_source;
+#[path = "statusfeed_ac11_deferral_is_justified.rs"]
+mod statusfeed_ac11_deferral_is_justified;
+#[path = "suite_ac2_check_catches_unregistered_file.rs"]
+mod suite_ac2_check_catches_unregistered_file;
+#[path = "suite_ac4_archived_prd_pointers_resolve.rs"]
+mod suite_ac4_archived_prd_pointers_resolve;
+#[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
+mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
 #[path = "sylp_ac01_awaits_tick_validator.rs"]
 mod sylp_ac01_awaits_tick_validator;
 #[path = "sylp_ac02_first_get_pins_the_receipt.rs"]
@@ -28,12 +42,16 @@ mod syreg_ac02_source_kinds_render_once_everywhere;
 mod tblurlp_ac03_driver_on_loopback;
 #[path = "tcse_ac07_registry_is_the_only_spelling.rs"]
 mod tcse_ac07_registry_is_the_only_spelling;
+#[path = "tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned.rs"]
+mod tenp_ac03_fk_columns_indexed_and_namespaces_tombstoned;
 #[path = "thand_ac02_status_enum_source_of_truth.rs"]
 mod thand_ac02_status_enum_source_of_truth;
 #[path = "toolname_ac03_tools_list_alias_entries.rs"]
 mod toolname_ac03_tools_list_alias_entries;
 #[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
 mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
+#[path = "tsql_ac04_refusal_carries_position_and_generated_grammar.rs"]
+mod tsql_ac04_refusal_carries_position_and_generated_grammar;
 #[path = "vaultst_ac09_deferral_is_justified.rs"]
 mod vaultst_ac09_deferral_is_justified;
 #[path = "vbd_ac01_validated_by_default_coverage.rs"]

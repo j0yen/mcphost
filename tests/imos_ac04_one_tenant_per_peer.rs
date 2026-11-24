@@ -6,6 +6,10 @@
 //! `data.session_header` "Mcp-Session-Id" and the PeerRecent hint,
 //! the tenant count stays 1, and `host.quickstart` and
 //! explicit `signup` from that peer still succeed.
+//!
+//! PRD-mcphost-implicit-signup-key-in-hand R2: a sessionless peer is served up
+//! to `MCPHOST_IMPLICIT_PEER_MINT_CAP` mints, so this test runs the host with
+//! a cap of 1, the setting under which a peer gets exactly one tenant.
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured};
@@ -14,6 +18,7 @@ use serde_json::json;
 #[tokio::test]
 async fn a_header_ignoring_client_gets_one_tenant_per_peer_and_the_refusal_names_the_header() {
     let server = TestServer::start().await;
+    server.state.redeemed_peers.set_cap(1);
     let first = McpClient::new(&server.base_url).with_user_agent("imos-ac04/agent-sdk");
     let minted = first
         .tools_call("host.state.set", json!({"key": "k", "value": 1}))

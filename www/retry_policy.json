@@ -740,6 +740,15 @@
       "backoff": {
         "kind": "none"
       },
+      "code": "namespace_reserved",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
       "code": "requirement_not_allowed",
       "max_attempts": 1,
       "policy": "do-not-retry",
@@ -851,6 +860,15 @@
         "kind": "none"
       },
       "code": "table_column_not_found",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "table_exec_rejected",
       "max_attempts": 1,
       "policy": "fix-and-resend",
       "retryable": false

@@ -13,6 +13,12 @@ pub fn copy_pages(to: &Path) {
         let entry = entry.unwrap();
         std::fs::copy(entry.path(), dir.join(entry.file_name())).unwrap();
     }
+    // `gen-docs kinds` also renders the sandbox-API block into these files.
+    for rel in ["www/llms.txt", "plugin/skills/mcphost/SKILL.md"] {
+        let dest = to.join(rel);
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        std::fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join(rel), dest).unwrap();
+    }
 }
 
 fn block<'a>(page: &'a str, name: &str) -> &'a str {
@@ -41,6 +47,7 @@ fn kdr_ac02_python_page_tables_generated() {
     let mut expected: Vec<String> = python.known_spec_fields().iter().map(|f| f.to_string()).collect();
     expected.extend(mcphost::kinds::UNIVERSAL_SPEC_FIELDS.iter().map(|f| f.to_string()));
     expected.sort();
+    expected.dedup();
 
     let mut listed = Vec::new();
     for row in block(&page, "kind-fields").lines().filter(|l| l.starts_with('|')).skip(2) {

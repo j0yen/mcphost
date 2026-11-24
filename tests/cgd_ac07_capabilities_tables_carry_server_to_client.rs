@@ -1,7 +1,7 @@
-//! contract: reads scripts/sandbox-api-doc-check.sh
+//! contract: reads scripts/generated-docs-check.sh
 //! PRD-mcphost-capabilities-generated-from-dispatch
 //! AC7 (P1) -- Given `www/llms.txt` and `docs/protocol/capabilities.md`, When
-//! `scripts/sandbox-api-doc-check.sh` runs, Then it exits 0 only if both
+//! `scripts/generated-docs-check.sh` runs, Then it exits 0 only if both
 //! `## Capabilities` tables carry the `server_to_client` column byte-for-byte
 //! from `render_capabilities_section()`; `clive_ac03` asserts
 //! `data.code == "capability_unsupported"` for the `{}` body (its own file).
@@ -21,7 +21,7 @@ fn cgd_ac07_both_tables_carry_the_server_to_client_column_byte_for_byte() {
     assert!(rendered.contains("| server_to_client |"), "renderer lost the column:\n{rendered}");
     assert!(rendered.contains("`elicitation/create` |"), "elicitation row lacks its server_to_client cell:\n{rendered}");
     for rel in ["www/llms.txt", "docs/protocol/capabilities.md"] {
-        assert_eq!(block_of(rel), rendered, "{rel} drifted from render_capabilities_section(); run scripts/sandbox-api-doc-check.sh --write");
+        assert_eq!(block_of(rel), rendered, "{rel} drifted from render_capabilities_section(); run scripts/generated-docs-check.sh --write");
     }
 }
 
@@ -29,7 +29,7 @@ fn cgd_ac07_both_tables_carry_the_server_to_client_column_byte_for_byte() {
 fn cgd_ac07_doc_check_script_exits_0_on_the_in_sync_tree() {
     let _guard = crate::common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let out = std::process::Command::new("bash")
-        .arg("scripts/sandbox-api-doc-check.sh")
+        .arg("scripts/generated-docs-check.sh")
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("run doc check");

@@ -321,3 +321,24 @@ fn a_suite_made_only_of_new_files_is_seeded_provisional_and_the_refresh_clears_i
     assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
     assert!(out.contains("13 passed, 0 failed"), "{out}");
 }
+
+#[test]
+fn the_refresh_records_each_suite_at_its_max_over_the_green_main_window() {
+    // scripts/ci-refresh-window-selftest.sh (stub `gh`, no network, the real readouts of CI runs 44757115005,
+    // 45034667949 and 45038989292) proves: (w1) the auto refresh measures every green main push run from the previous
+    // refresh's source through its own, (w2) the source alone with no refresh subject in history, (w3) an unreadable
+    // run list fails closed, (m1) each suite recorded at its max over the runs, (m2) a run whose suite held a file
+    // since moved out is not counted for it, (m3) a subset is, (m4) an unknown head commit fails closed, (s1) weights
+    // from 45034667949 alone pack suite_core_11 + suite_core_12 into a core shard run 45038989292 takes past the fail
+    // line, and the window's weights keep every core shard of that run at or under it; (w4) a red previous source
+    // is still read. 9 cases in all.
+    let o = Command::new("bash")
+        .arg(root().join("scripts/ci-refresh-window-selftest.sh"))
+        .env_remove("WINDOW_SELFTEST_SCRIPTS")
+        .current_dir(root())
+        .output()
+        .unwrap();
+    let out = String::from_utf8_lossy(&o.stdout).into_owned();
+    assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
+    assert!(out.contains("9 passed, 0 failed"), "{out}");
+}
