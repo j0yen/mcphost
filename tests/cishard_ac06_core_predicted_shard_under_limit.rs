@@ -85,7 +85,8 @@ fn the_prediction_matches_an_independent_sum_of_the_weights() {
 }
 
 /// `check` with the first core suite weighted `weight` (scratch weights file); with
-/// `others`, every other core suite is weighted that instead of its recorded seconds.
+/// `others`, every other core suite is weighted (and, in a scratch measured file, measured)
+/// that instead of its recorded seconds, so the stale-weight guard reads the same numbers.
 fn check_with_first_core_weight(tag: &str, weight: u32, others: Option<u32>) -> Output {
     let dir = std::env::temp_dir().join(format!("cishard-core-ac06-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -93,20 +94,23 @@ fn check_with_first_core_weight(tag: &str, weight: u32, others: Option<u32>) -> 
     let mut w: serde_json::Value = serde_json::from_str(&text).unwrap();
     let core = out(&["list", "core"]);
     let first = core.lines().next().unwrap().to_string();
+    let mut cmd = Command::new(root().join("scripts/ci-test-partition.sh"));
     if let Some(o) = others {
+        let text = std::fs::read_to_string(root().join("scripts/ci-suite-measured.json")).unwrap();
+        let mut m: serde_json::Value = serde_json::from_str(&text).unwrap();
         for name in core.lines() {
             w[name] = serde_json::json!(o);
+            m[name] = serde_json::json!(o);
         }
+        m[first.as_str()] = serde_json::json!(weight);
+        let measured = dir.join("measured.json");
+        std::fs::write(&measured, m.to_string()).unwrap();
+        cmd.env("CI_SUITE_MEASURED_FILE", &measured);
     }
     w[first.as_str()] = serde_json::json!(weight);
     let file = dir.join("weights.json");
     std::fs::write(&file, w.to_string()).unwrap();
-    let o = Command::new(root().join("scripts/ci-test-partition.sh"))
-        .arg("check")
-        .env("CI_SUITE_WEIGHTS_FILE", &file)
-        .current_dir(root())
-        .output()
-        .unwrap();
+    let o = cmd.arg("check").env("CI_SUITE_WEIGHTS_FILE", &file).current_dir(root()).output().unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     o
 }
