@@ -18,7 +18,7 @@ tests/cishard_ac03_run_wall_budget_and_readout.rs | let o = Command::new(root().
 tests/cishard_ac04_core_shard_report_names_failed_test.rs | let out = Command::new(root().join("scripts/ci-shard-report.sh")) | committed repo script run from the checkout, not written by the test
 tests/cishard_ac06_core_predicted_shard_under_limit.rs | let o = Command::new(root().join("scripts/ci-test-partition.sh")) | committed repo script run from the checkout, not written by the test
 tests/cishard_ac06_core_predicted_shard_under_limit.rs | Command::new(root().join("scripts/ci-test-partition.sh")) | committed repo script run from the checkout, not written by the test
-tests/cishard_ac06_core_predicted_shard_under_limit.rs | let o = Command::new(root().join("scripts/ci-test-partition.sh")) | committed repo script run from the checkout, not written by the test
+tests/cishard_ac06_core_predicted_shard_under_limit.rs | let mut cmd = Command::new(root().join("scripts/ci-test-partition.sh")); | committed repo script run from the checkout, not written by the test
 tests/cishard_ac07_stale_weight_fails_check.rs | let o = Command::new(root().join("scripts/ci-test-partition.sh")) | committed repo script run from the checkout, not written by the test
 tests/cishard_ac07_stale_weight_fails_check.rs | Command::new(root().join("scripts/ci-test-partition.sh")) | committed repo script run from the checkout, not written by the test
 tests/cishard_ac07_stale_weight_fails_check.rs | let o = Command::new(root().join("scripts/ci-test-partition.sh")) | committed repo script run from the checkout, not written by the test
