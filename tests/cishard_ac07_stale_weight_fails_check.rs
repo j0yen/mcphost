@@ -330,7 +330,8 @@ fn the_refresh_records_each_suite_at_its_max_over_the_green_main_window() {
     // run list fails closed, (m1) each suite recorded at its max over the runs, (m2) a run whose suite held a file
     // since moved out is not counted for it, (m3) a subset is, (m4) an unknown head commit fails closed, (s1) weights
     // from 45034667949 alone pack suite_core_11 + suite_core_12 into a core shard run 45038989292 takes past the fail
-    // line, and the window's weights keep every core shard of that run at or under it. 8 cases in all.
+    // line, and the window's weights keep every core shard of that run at or under it; (w4) a red previous source
+    // is still read. 9 cases in all.
     let o = Command::new("bash")
         .arg(root().join("scripts/ci-refresh-window-selftest.sh"))
         .env_remove("WINDOW_SELFTEST_SCRIPTS")
@@ -339,5 +340,5 @@ fn the_refresh_records_each_suite_at_its_max_over_the_green_main_window() {
         .unwrap();
     let out = String::from_utf8_lossy(&o.stdout).into_owned();
     assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
-    assert!(out.contains("8 passed, 0 failed"), "{out}");
+    assert!(out.contains("9 passed, 0 failed"), "{out}");
 }

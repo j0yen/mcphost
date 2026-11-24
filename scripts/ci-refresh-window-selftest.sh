@@ -24,6 +24,7 @@
 #        (a later run and a failed run the list returns are not passed); the list query names branch, event, status
 #   (w2) no refresh subject in history: the source run alone
 #   (w3) the run list cannot be read: non-zero exit, no result line, the refresh never runs
+#   (w4) the previous refresh named a RED run (45038989292, absent from the green-only list): it is still measured
 #   (m1) two run ids at the same membership: each suite is recorded at its MAX (suite_core_12 600.56 -> 601)
 #   (m2) a run whose suite held a file since moved out of it is not counted for that suite (and says so)
 #   (m3) a run whose suite held a SUBSET of today's files is counted
@@ -32,7 +33,7 @@
 #        one core shard that run 45038989292's measurements take over the core fail line (the 909 s class); weights
 #        from the window keep every core shard of run 45038989292 at or under it
 # Env: WINDOW_SELFTEST_SCRIPTS=<dir> runs the scripts from <dir> instead of this checkout's scripts/ (red-at-base: point
-#   it at 74263ea8's scripts and (w1), (w3), (m2) and (m4) must FAIL).
+#   it at 74263ea8's scripts and (w1), (w3), (w4), (m2) and (m4) must FAIL).
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="${WINDOW_SELFTEST_SCRIPTS:-$HERE/scripts}"
@@ -136,6 +137,26 @@ if [ "$rc" != 0 ] && [ -z "$out" ] && [ ! -s "$WORK/inner.calls" ]; then
   ok "(w3) an unreadable run list fails closed: rc $rc, no result line, no refresh"
 else
   bad "(w3) fail closed" "rc=$rc out='$out' inner calls: $(tr '\n' ';' < "$WORK/inner.calls")"
+fi
+
+# (w4) a hand refresh named the red run 45038989292; the next refresh (source: a later green run) must still read it
+W4="$WORK/w4"; WF4="$WORK/wfix4"; mkdir -p "$W4/scripts"; cp "$SRC/ci-refresh-weights-auto.sh" "$W4/scripts/"
+g "$W4" init -q && g "$W4" add -A && g "$W4" commit -q -m "loop: base"
+g "$W4" commit -q --allow-empty -m "ci: refresh suite weights from run 45038989292 over the window from run 45034667949"
+g "$W4" commit -q --allow-empty -m "loop: next feature"
+fix_run "$WF4" 45038989292 74263ea80621e0a978d0d935f43e7ac8f5cf3d97 2026-11-22T15:33:38Z
+fix_run "$WF4" 45099999999 0000000000000000000000000000000000000001 2026-11-24T08:00:00Z
+cat > "$WF4/list.json" <<'JSON'
+{"total_count": 1, "workflow_runs": [
+ {"id": 45099999999, "head_branch": "main", "event": "push", "conclusion": "success", "created_at": "2026-11-24T08:00:00Z"}]}
+JSON
+: > "$WORK/inner.calls"
+out="$(GH_FIX="$WF4" CI_REFRESH_AUTO_BIN_DIR="$WB" CI_REFRESH_AUTO_ROOT="$W4" "$W4/scripts/ci-refresh-weights-auto.sh" 45099999999 2>/dev/null)"; rc=$?
+got="$(refresh_args | tr ' ' '\n' | sed '/^$/d' | sort -n | tr '\n' ' ')"
+if [ "$rc" = 0 ] && [ "$out" = "changed=0 skip=none" ] && [ "$got" = "45038989292 45099999999 " ]; then
+  ok "(w4) a red previous source (45038989292) is still in the window"
+else
+  bad "(w4) red previous source" "rc=$rc out='$out' refresh args='$got'"
 fi
 
 # ---- (m) ci-refresh-weights.sh over run ids: MAX, and the membership rule -----------------------------------------

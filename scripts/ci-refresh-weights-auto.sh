@@ -20,8 +20,10 @@
 # sample of a suite that swings: suite_core_12 (tlint_ac06's nested `cargo test` retries its strict run up to three
 # times) measured 600.56 s on 44757115005 and 326.72 s on 45034667949; the refresh of the second alone recorded 327,
 # packed it with suite_core_11, and main run 45038989292 ran that core shard 909 s against 900. The window also
-# reads the refresh commit's own run, which skip=self never measures. No refresh subject in history: the source alone.
-# The run list (gh api) failing fails the script (fail-closed, no result line). Needs fetch-depth 0.
+# reads the refresh commit's own run, which skip=self never measures. The previous source itself is always in the
+# window, green or not (a hand refresh may name a red run). No refresh subject in history: the source alone.
+# The run list (gh api) failing fails the script (fail-closed, no result line). Needs fetch-depth 0. A window run whose
+# log ZIP has expired (GitHub keeps run logs about 90 days) fails the refresh; `prev` moves only when a refresh merges.
 #
 # Usage:
 #   ci-refresh-weights-auto.sh <run-id>
@@ -85,7 +87,8 @@ if [ -n "$prev" ] && [ "$prev" != "$RUN_ID" ]; then
            '.workflow_runs[] | select(.conclusion == "success" and .event == "push" and .head_branch == $b
                                      and .created_at >= $lo and .created_at <= $hi) | .id' <<<"$listed")" \
     || { echo "ci-refresh-weights-auto: cannot read the run list" >&2; exit 1; }
-  runs="$(printf '%s\n%s\n' "$RUN_ID" "$ids" | grep -E '^[0-9]+$' | sort -n -u | tr '\n' ' ')"
+  # $prev itself always: a hand refresh may name a red run (45038989292), which the green-only list omits
+  runs="$(printf '%s\n%s\n%s\n' "$RUN_ID" "$prev" "$ids" | grep -E '^[0-9]+$' | sort -n -u | tr '\n' ' ')"
   echo "ci-refresh-weights-auto: window = runs ${runs}(green $branch push runs from $prev, the previous refresh's source, through $RUN_ID)" >&2
 else
   echo "ci-refresh-weights-auto: no \`${SELF_PREFIX} from run <id>\` subject on HEAD's history; window = run $RUN_ID" >&2
