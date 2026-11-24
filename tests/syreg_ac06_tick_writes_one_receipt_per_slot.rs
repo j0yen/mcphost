@@ -25,13 +25,20 @@ async fn syreg_ac06_due_sync_gets_one_receipt_and_moves_to_the_next_slot() {
     .await;
     let sync_id = created["sync_id"].as_str().expect("sync_id").to_string();
 
-    // Not due yet: a tick writes nothing.
-    mcphost::triggers::tick_once(&server.state).await.expect("tick before due");
+    // Every pass below calls `sync::tick` (the pass `tick_once` ends with) at a
+    // pinned `now`. A claimed sync moves to its next `*/15` slot, so a pass
+    // that reads the wall clock and lands past that slot finds the sync due
+    // again and writes a second receipt. A create-to-tick gap that straddles
+    // the first slot does the same to the "not due yet" pass.
+    //
+    // Not due yet: a pass one second before the first slot writes nothing.
+    let first_slot = created["next_run_unix"].as_i64().expect("created next_run_unix");
+    mcphost::sync::tick(&server.state, first_slot - 1).await.expect("tick before due");
     assert_eq!(mcphost::sync::receipt_count_for_test(&server.state, &sync_id).await.expect("count"), 0);
 
     let now = mcphost::state::now_unix();
     mcphost::sync::set_next_run_for_test(&server.state, &sync_id, now - 120).await.expect("move into the past");
-    mcphost::triggers::tick_once(&server.state).await.expect("first tick");
+    mcphost::sync::tick(&server.state, now).await.expect("first tick");
     assert_eq!(mcphost::sync::receipt_count_for_test(&server.state, &sync_id).await.expect("count"), 1);
 
     let got = call(&client, "host.sync.get", json!({"sync_id": sync_id})).await;
@@ -40,8 +47,8 @@ async fn syreg_ac06_due_sync_gets_one_receipt_and_moves_to_the_next_slot() {
     assert!(next > now && next <= now + 15 * 60 + 60, "next_run_unix {next} is the next */15 slot after {now}: {got}");
     assert_eq!(next % (15 * 60), 0, "a */15 slot sits on a quarter hour: {got}");
 
-    // Same slot: nothing is due, so no second receipt.
-    mcphost::triggers::tick_once(&server.state).await.expect("second tick");
+    // Same slot (same pinned `now`): nothing is due, so no second receipt.
+    mcphost::sync::tick(&server.state, now).await.expect("second tick");
     assert_eq!(mcphost::sync::receipt_count_for_test(&server.state, &sync_id).await.expect("count"), 1);
 
     // `host.sync.run_now` makes the sync due again; this call also feeds the
