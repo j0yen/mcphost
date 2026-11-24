@@ -28,10 +28,12 @@ async fn regone_ac02() {
     // Product contract (PRD R2): each `--live` probe times out after 10 s.
     // Pinned as a literal so raising LIVE_TIMEOUT_SECS fails here instead of
     // silently widening the test bound with it.
-    assert!(
-        LIVE_TIMEOUT_SECS <= PRODUCT_TIMEOUT_SECS,
-        "production --live timeout {LIVE_TIMEOUT_SECS}s exceeds the R2 contract of {PRODUCT_TIMEOUT_SECS}s"
-    );
+    const {
+        assert!(
+            LIVE_TIMEOUT_SECS <= PRODUCT_TIMEOUT_SECS,
+            "production --live timeout exceeds the R2 contract of 10s"
+        )
+    };
 
     // Harness bound: the product timeout plus slack for process spawn and host
     // io load. It is a fixed literal, not derived from the constant, and stays
