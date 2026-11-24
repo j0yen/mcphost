@@ -30,29 +30,44 @@
 # scripts/ci-suite-weights.json except `lib` and `bin:*`: core AND sandbox suites) must have a
 # `suite=<name> measured=` line in the input; otherwise this exits 1 naming the missing suites and
 # writes NOTHING.
+# Membership: a run id's measurement of a suite counts only when the suite's member files at that run's head commit
+# (`gh api .../actions/runs/<id>` head_sha, read with `git show`) are a subset of its members now; a run that ran a
+# file since moved out of the suite is not counted for that suite (a line names it), and a head commit missing from
+# this checkout exits 1, nothing written (fetch-depth 0). ci-refresh-weights-auto.sh passes a WINDOW of green main
+# runs, so a suite whose time swings run to run (suite_core_12: 600.56 s on 44757115005, 326.72 s on 45034667949)
+# is recorded at its max over them, not at whichever sample came last.
 # Env: CI_REFRESH_REPO (default j0yen/mcphost); CI_REFRESH_ROOT (default this checkout; tests use a scratch root);
 #   CI_REFRESH_ALLOW_LOCAL=1 to accept a local <log-file> (a coder's local timing must never become the
 #   recorded measurement: without it only a CI run id is accepted and a file argument writes NOTHING).
 set -uo pipefail
 SELF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${CI_REFRESH_ROOT:-$SELF_ROOT}" || exit 2
-[ "$#" -ge 1 ] || { sed -n '2,35p' "$0" >&2; exit 2; }
+[ "$#" -ge 1 ] || { sed -n '2,41p' "$0" >&2; exit 2; }
 if [ "${CI_REFRESH_ALLOW_LOCAL:-}" != 1 ]; then
   for arg in "$@"; do
     [ -f "$arg" ] && { echo "ci-refresh-weights: $arg is a local log file; only a CI run id is a measurement (set CI_REFRESH_ALLOW_LOCAL=1 to override); nothing written" >&2; exit 2; }
   done
 fi
 
-tmp="$(mktemp)"; zip="$(mktemp)"; trap 'rm -f "$tmp" "$zip"' EXIT
+# One log file per input, listed in $inputs as "<log file>\t<label>\t<head commit>" (no commit for a local file).
+logs="$(mktemp -d)"; zip="$(mktemp)"; trap 'rm -rf "$logs" "$zip"' EXIT
+inputs="$logs/inputs"; : > "$inputs"
+i=0
 for arg in "$@"; do
+  i=$((i + 1))
   if [ -f "$arg" ]; then
-    sed -E $'s/\\x1b\\[[0-9;]*m//g' "$arg" >> "$tmp"
+    sed -E $'s/\\x1b\\[[0-9;]*m//g' "$arg" > "$logs/$i"
+    printf '%s\tfile %s\t\n' "$logs/$i" "$arg" >> "$inputs"
   else
     command -v unzip >/dev/null 2>&1 \
       || { echo "ci-refresh-weights: unzip is required to read a run id's log ZIP (install unzip); not falling back to the truncating \`gh run view --log\`" >&2; exit 1; }
     gh api "repos/${CI_REFRESH_REPO:-j0yen/mcphost}/actions/runs/$arg/logs" > "$zip" 2>/dev/null \
-      && unzip -p "$zip" | sed -E $'s/\\x1b\\[[0-9;]*m//g' >> "$tmp" \
+      && unzip -p "$zip" | sed -E $'s/\\x1b\\[[0-9;]*m//g' > "$logs/$i" \
       || { echo "ci-refresh-weights: cannot fetch the log ZIP of run $arg" >&2; exit 1; }
+    sha="$(gh api "repos/${CI_REFRESH_REPO:-j0yen/mcphost}/actions/runs/$arg" 2>/dev/null \
+             | python3 -I -c 'import json, sys; print(json.load(sys.stdin).get("head_sha") or "")' 2>/dev/null)"
+    [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "ci-refresh-weights: cannot read the head commit of run $arg" >&2; exit 1; }
+    printf '%s\trun %s\t%s\n' "$logs/$i" "$arg" "$sha" >> "$inputs"
   fi
 done
 
@@ -60,16 +75,59 @@ done
 required="$(CI_SUITE_WEIGHTS_FILE="$PWD/scripts/ci-suite-weights.json" "$SELF_ROOT/scripts/ci-test-partition.sh" list measured-required)" \
   || { echo "ci-refresh-weights: cannot read the required suite list from ci-test-partition.sh" >&2; exit 2; }
 
-python3 - "$tmp" "$required" <<'PY'
-import glob, json, os, re, sys
+python3 - "$inputs" "$required" <<'PY'
+import glob, json, os, re, subprocess, sys
 
 LINE = re.compile(r'\bsuite=(\S+) measured=([0-9.]+)s\b')
 SOLO = re.compile(r'^//!\s*solo-suite:\s*([0-9]+)\b')
+MEMBER = re.compile(r'#\[path\s*=\s*"([^"]+\.rs)"\]')
+
+
+def members(text):
+    """The test files a generated suite includes (support modules, `support/...`, are not members)."""
+    return {m for m in MEMBER.findall(text) if "/" not in m}
+
+
+# MEMBERSHIP: a run's measurement belongs to the member set CI ran. It counts for a suite only when the suite's
+# members at the run's head commit are a SUBSET of its members now (a suite that only gained files since ran less,
+# never more); a run that ran files since moved out of the suite would carry their seconds into a suite that no
+# longer runs them, so that one measurement is dropped (and named). A local file has no commit and always counts.
+at_commit = {}
+verdict = {}
+def counts(label, sha, name):
+    if not sha or not os.path.exists(f"tests/{name}.rs"):
+        return True
+    if (sha, name) not in verdict:
+        verdict[(sha, name)] = judge(label, sha, name)
+    return verdict[(sha, name)]
+
+
+def judge(label, sha, name):
+    if sha not in at_commit:
+        if subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"], capture_output=True).returncode != 0:
+            sys.exit(f"ci-refresh-weights: {label}: head commit {sha} is not in this checkout (fetch-depth 0 needed); nothing written")
+        at_commit[sha] = {}
+    if name not in at_commit[sha]:
+        r = subprocess.run(["git", "show", f"{sha}:tests/{name}.rs"], capture_output=True, text=True)
+        at_commit[sha][name] = members(r.stdout) if r.returncode == 0 else None
+    then = at_commit[sha][name]
+    if then is None:
+        print(f"ci-refresh-weights: {name}: {label} ({sha[:10]}) had no tests/{name}.rs; that measurement is not counted")
+        return False
+    gone = sorted(then - members(open(f"tests/{name}.rs", encoding="utf-8").read()))
+    if gone:
+        print(f"ci-refresh-weights: {name}: {label} ({sha[:10]}) ran {len(gone)} file(s) no longer in it ({', '.join(gone[:3])}); that measurement is not counted")
+        return False
+    return True
+
+
 measured = {}
-for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
-    for name, secs in LINE.findall(line):
-        measured[name] = max(measured.get(name, 0.0), float(secs))
-measured = {k: v for k, v in measured.items() if not k.startswith("bin:")}
+for row in open(sys.argv[1], encoding="utf-8"):
+    path, label, sha = row.rstrip("\n").split("\t")
+    for line in open(path, encoding="utf-8", errors="replace"):
+        for name, secs in LINE.findall(line):
+            if not name.startswith("bin:") and counts(label, sha, name):
+                measured[name] = max(measured.get(name, 0.0), float(secs))
 if not measured:
     sys.exit("ci-refresh-weights: no `suite=<name> measured=<s>s` lines in the input")
 
