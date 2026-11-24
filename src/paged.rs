@@ -696,6 +696,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.sync.list", UNPAGED_BOUNDED),
     ("host.state.query", UNPAGED_WINDOW),
     ("host.table.charts", UNPAGED_BOUNDED),
+    ("host.table.find", UNPAGED_WINDOW),
     ("host.table.graph", UNPAGED_BOUNDED),
     ("host.table.handles", UNPAGED_BOUNDED),
     ("host.table.list", UNPAGED_BOUNDED),

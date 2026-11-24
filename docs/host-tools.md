@@ -11,6 +11,7 @@ Regenerate with `scripts/generated-docs-check.sh --write`.
 |---|---|---|---|
 | `host.table.create` | write | supported | |
 | `host.table.append` | write | supported | |
+| `host.table.exec` | write | supported | |
 | `host.table.drop` | drop | supported | |
 | `host.table.handle_drop` | drop | supported | |
 | `host.table.model_set` | write | supported | |

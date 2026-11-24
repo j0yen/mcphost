@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-plugin-skill-generated-from-registry.md",
-  "intent_slug": "mcphost-plugin-skill-generated-from-registry",
-  "root_motivation": "WHO: the coding agent in Claude Code reading the plugin skill first, and the maintainer who ships a verb and forgets the skill. WHAT: a skill whose verbs, plan ceilings, error remedies and local-loop commands are rendered from the host's own registries. WHY: the skill is hand-written, names six of 535 tool entries, states no ceiling and no error code, so an agent sends a call the host refuses.",
-  "user_persona": "A coding agent that reads plugin/skills/mcphost/SKILL.md, finds the family a verb lives in, reads the free ceilings before it calls, and looks up the remedy for an error code it hit; and the maintainer whose cargo test fails until `mcphost skill-gen --write` is run.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-sql-exec-and-grammar.md",
+  "intent_slug": "mcphost-table-sql-exec-and-grammar",
+  "root_motivation": "WHO: the agent keeping a user's table current, and the owner who says 'mark order 17 shipped'. WHAT: one DML verb, one by-example verb, and refusals that name the position and the allowed grammar. WHY: the only write today is host.table.append, so correcting one row means a duplicate or a drop and recreate, and a refusal names nothing the agent may send instead.",
+  "user_persona": "An agent that already writes GROUP BY for a recipe and sends host.table.exec(sql='UPDATE orders SET status=... WHERE id=17'), or a SQL-averse persona calling host.table.find(table, where), or a python tool calling mcphost.table.exec.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,57 +14,57 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the registry, When `mcphost skill-gen --section verbs` renders, Then every dotted family has exactly one line with its count and verb names, the 11 anonymous starter verbs are named, no per-verb description appears, and the section is at most 60 lines.",
-      "test": "tests/skgn_ac01_verbs_one_line_per_family.rs"
+      "description": "Given `host.table.exec` statements containing `ATTACH`, `PRAGMA`, `load_extension(...)`, `readfile(...)`, a `CREATE TRIGGER`, or an INSERT whose subquery is not a plain SELECT, When each runs, Then each is refused `table_exec_rejected` and the tenant's file, schema and pragmas are unchanged.",
+      "test": "tests/tsql_ac01_exec_refuses_escape_statements.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the checked-in files, When `mcphost skill-gen` runs without `--write`, Then it exits 0; Given one line edited by hand inside a marked section, Then it exits 1 and names the line.",
-      "test": "tests/skgn_ac02_check_names_hand_edited_line.rs"
+      "description": "Given a table with 3 rows, When `host.table.exec(sql=\"UPDATE t SET a=1 WHERE id=2\")` runs, Then the response is `{changed: 1, table: \"t\"}`, a following `host.table.query` shows the change, `bump_change_counter` ran with `rewrite=true`, a `dry_run` call changes nothing, and a `host.table.append` right after succeeds (`query_only` not left on).",
+      "test": "tests/tsql_ac02_update_one_row_dry_run_and_append_after.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a new `Tool::new(\"host.example\")` added to `host_tools`, When `cargo test` runs, Then the drift test fails until `skill-gen --write` regenerates and the new verb appears under its family.",
-      "test": "tests/skgn_ac03_drift_test_fails_on_new_verb.rs"
+      "description": "Given `DELETE FROM t` without WHERE, When exec runs, Then it is refused `table_exec_rejected` with `data.allowed` containing `DELETE FROM <table> WHERE \u2026` and no row is deleted.",
+      "test": "tests/tsql_ac03_where_less_delete_and_update_refused.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `ERROR_CODES` gains an entry, When `cargo test` runs, Then the drift test fails until the skill is regenerated, and a remedy that names a verb absent from `host_tools` fails the remedy test naming the code.",
-      "test": "tests/skgn_ac04_errors_from_registry_and_remedy_verbs.rs"
+      "description": "Given `SELEC * FROM t`, When `host.table.query` runs, Then the refusal carries `data.line = 1`, `data.column = 1` and `data.allowed` equal to `allowed_statement_forms()`; a test parses each `allowed` form back to a statement kind and asserts the set equals the validator's accepted set.",
+      "test": "tests/tsql_ac04_refusal_carries_position_and_generated_grammar.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the `limits` section, When rendered, Then every key of `plan.ceilings_json()` for `free` appears with its value and no number in the section is typed outside the generator (test: the section's numbers equal the JSON's).",
-      "test": "tests/skgn_ac05_limits_equal_plan_ceilings.rs"
+      "description": "Given a plan with `table_rows_max` reached, When exec runs an INSERT, Then `quota_exceeded` names `table_rows_max` with the same `data` keys `table_append` uses; Given two concurrent exec calls on the same row, Then both complete and `changed` sums to 2.",
+      "test": "tests/tsql_ac05_quota_and_concurrency.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a binary built without the `dev` or `push` subcommands, When `skill-gen` renders `devloop`, Then the section says `no local verbs in this build` for the absent verbs and names none of them.",
-      "test": "tests/skgn_ac06_devloop_omits_absent_verbs.rs"
+      "description": "Given `host.table.find(table=\"t\", where={\"amount\": {\">\": 500}, \"status\": \"open\"})`, When it runs, Then rows match the parameterised SELECT and `data.sql` shows it; Given an unknown operator `\"~\"`, Then the refusal lists `allowed_operators` and the table's columns.",
+      "test": "tests/tsql_ac06_find_by_example.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given `--url <the mcp url of a running host> --section verbs` against a local test host, When rendered, Then the output is derived from that host's `tools/list` and differs from the registry render only by verbs not yet deployed.",
-      "test": "tests/skgn_ac07_url_renders_from_tools_list.rs"
+      "description": "Given a python tool calling `mcphost.table.exec(\"INSERT INTO t (id,a) VALUES (9,1)\")`, When called via `host.tool_call`, Then the row exists and `host.table.query_log` shows `statement_kind: insert, changed: 1`.",
+      "test": "tests/tsql_ac07_python_exec.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod, When `diff <(curl -s https://mcphost.dev/skill.md | sed -n '/mcphost-verbs:start/,/mcphost-verbs:end/p') <(mcphost skill-gen --section verbs --url https://mcphost.dev/mcp | sed -n '/mcphost-verbs:start/,/mcphost-verbs:end/p')` runs, Then it prints nothing and exits 0 (Live; evidence: that command's exit code and empty stdout)",
-      "test": "deferred: Live (prod; evidence: that command's exit code and empty stdout)"
+      "description": "Given prod after deploy, When the joe-test tenant runs `host.table.exec` with a one-row UPDATE through the MCP endpoint, Then `changed` is 1 and `host.table.query_log(limit=1)` returns that statement (Live; evidence: `examples/database-in-a-minute/proof.sh --exec-check`, a mode this PRD's builder adds, key read from the tenant env file, never printed) [deferred: Live, operator-provisioned prod run]",
+      "test": "examples/database-in-a-minute/proof.sh"
     }
   ],
   "scope": [
-    "src/skill_gen.rs (renderers for verbs, limits, errors, devloop; splice, check, tools/list fetch); src/main.rs (SkillGen subcommand); src/handler.rs (starter_tool_names); plugin/skills/mcphost/SKILL.md and www/skill.md (four marked sections); scripts/skill-gen-check.sh; remedy texts in src/org.rs, src/errors.rs, src/subkeys.rs, src/notify.rs, src/email_send.rs, src/drift/review.rs that named a verb the host does not serve."
+    "src/table/exec.rs (allowed_statement_forms, validate_exec_structure, table_exec); src/table/find.rs (by-example compile, table_find); src/tables.rs (table_exec_rejected, positioned refusals, query-log statement_kind/changed); src/handler.rs, src/handler/arms.rs, src/dispatch_table.rs, src/write_verbs.rs (host.table.exec dry run), src/kinds/python.rs (mcphost.table.exec/find); descriptors, output schemas, generated contracts, docs, SDKs, llms.txt; examples/database-in-a-minute/proof.sh --exec-check."
   ],
   "non_goals": [
-    "Rewriting the hand-written narrative; generating README.md or llms.txt; per-client skills; a second remedy table; the plugin.json version bump (R8, P1, wm-build land bumps); the Recipes section (R9, P2); the AC 8 prod diff (operator-provisioned, deferred)."
+    "DDL through SQL; multi-statement batches; cross-tenant joins; transactions spanning calls; the llms.txt recipe example; the AC 8 prod run (operator-provisioned, deferred)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -74,45 +74,54 @@
     "msrv": null,
     "additional": {
       "no_version_bump": "No version file is bumped; wm-build land bumps and tags.",
-      "one_render_path": "Every section is rendered by src/skill_gen.rs; no number, verb or code is typed in the skill outside a marked block."
+      "one_grammar": "allowed_statement_forms() is the only list of exec statement forms; the validator, the refusal data.allowed and the tests read it.",
+      "query_only_restored": "QueryOnlyGuard restores PRAGMA query_only on every exit path."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does an agent send calls the host refuses?",
-      "a": "The skill it reads first states no ceiling, no error code and names six verbs."
+      "q": "Why does an agent duplicate or recreate a table to fix a row?",
+      "a": "host.table.append only inserts whole rows and refuses a duplicate key."
     },
     {
       "why": 2,
-      "q": "Why does the skill omit them?",
-      "a": "It is hand-written; only two blocks are generated."
+      "q": "Why is there no update or delete?",
+      "a": "validate_query_structure accepts only Statement::Query, so the read guard doubled as the only write policy."
     },
     {
       "why": 3,
-      "q": "Why were the other facts never generated?",
-      "a": "No generator reads the verb, plan and error registries into the skill."
+      "q": "Why not widen the query verb?",
+      "a": "query runs under query_only with read guards; DML needs its own gate, quota check and change counter."
     },
     {
       "why": 4,
-      "q": "Why does that stay unfixed?",
-      "a": "Nothing fails when a verb ships and the skill is not updated."
+      "q": "Why do refusals not teach the agent?",
+      "a": "query_rejected carries a reason string with no position and no allowed set."
     },
     {
       "why": 5,
-      "q": "Why does nothing fail?",
-      "a": "There was no drift test over the skill; skill-gen plus the skgn drift test add one."
+      "q": "Why generate the grammar from the allowlist?",
+      "a": "a hand-written allowed list drifts from the validator, so one function feeds both and a test parses each form back."
     }
   ],
   "created_at": "2026-11-13T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "The PRD says 11 anonymous starter verbs; which set is named?",
-      "resolution": "The registry's own anonymous starter listing (starter_tools: signup plus 17 host.*/billing.* names), read through handler::starter_tool_names; the count in the PRD is the stale comment above STARTER_TOOL_NAMES."
+      "question": "Upsert spelling: INSERT OR REPLACE as well as ON CONFLICT?",
+      "resolution": "Both are accepted, as SQLite accepts both."
     },
     {
-      "question": "Does --url need a key?",
-      "resolution": "An anonymous tools/list is only the starter set, so --url takes --key or MCPHOST_TENANT_KEY and refuses an anonymous starter-only listing."
+      "question": "Does find return the SQL it compiled?",
+      "resolution": "Yes: data.sql and data.params, plus total."
+    },
+    {
+      "question": "When is the table_rows_max ceiling checked for exec?",
+      "resolution": "After execution inside one BEGIN IMMEDIATE transaction, rolling back on excess."
+    },
+    {
+      "question": "Which error family does table_exec_rejected use?",
+      "resolution": "Storage, so shp_ac01 does not flag it as an unlisted Args refusal."
     }
   ]
 }

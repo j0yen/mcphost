@@ -687,6 +687,15 @@ pub fn write_hint(tool: &str, args: &Value) -> Option<WriteHint> {
     let arg = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
     Some(match tool {
         "host.table.append" => WriteHint { updated: arg("table").map(|t| (ResourceKind::Table, t)), ..Default::default() },
+        // `host.table.exec` names its table only inside the statement.
+        "host.table.exec" => WriteHint {
+            updated: args
+                .get("sql")
+                .and_then(Value::as_str)
+                .and_then(|sql| crate::table::exec::validate_exec_structure(sql).ok())
+                .map(|statement| (ResourceKind::Table, statement.table)),
+            ..Default::default()
+        },
         "host.table.create" => WriteHint { list_changed: true, ..Default::default() },
         "host.table.drop" => WriteHint {
             updated: arg("table").or_else(|| arg("name")).map(|t| (ResourceKind::Table, t)),

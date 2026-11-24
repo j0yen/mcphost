@@ -11419,6 +11419,51 @@
     "required": [],
     "type": "object"
   },
+  "host.table.exec": {
+    "properties": {
+      "changed": {
+        "type": "integer"
+      },
+      "table": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "changed",
+      "table"
+    ],
+    "type": "object"
+  },
+  "host.table.find": {
+    "properties": {
+      "data": {
+        "properties": {
+          "params": {
+            "type": "object"
+          },
+          "sql": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "params",
+          "sql"
+        ],
+        "type": "object"
+      },
+      "rows": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "data",
+      "rows"
+    ],
+    "type": "object"
+  },
   "host.table.graph": {
     "properties": {
       "computed_at": {
@@ -12121,6 +12166,12 @@
       "rows": {
         "items": {
           "properties": {
+            "changed": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "created_unix": {
               "type": "integer"
             },
@@ -12182,6 +12233,12 @@
             },
             "sql": {
               "type": "string"
+            },
+            "statement_kind": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "truncated": {
               "type": "boolean"

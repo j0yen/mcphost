@@ -31378,6 +31378,227 @@
       "since": "0.58.0"
     },
     {
+      "description": "Run one INSERT, UPDATE or DELETE on a declared table and return {changed, table}. UPDATE and DELETE need a WHERE clause; an upsert is INSERT … ON CONFLICT(<column>) DO UPDATE. Anything else (ATTACH, PRAGMA, DDL, triggers, file functions, a SELECT) is refused table_exec_rejected with data.reason, data.line, data.column and data.allowed. Accepted forms: SELECT … FROM <table> … | WITH <name> AS (SELECT …) SELECT … | INSERT INTO <table> (<columns>) VALUES (…) | INSERT OR REPLACE INTO <table> (<columns>) VALUES (…) | INSERT INTO <table> (<columns>) VALUES (…) ON CONFLICT(<column>) DO UPDATE SET … | UPDATE <table> SET <column> = … WHERE … | DELETE FROM <table> WHERE …. Past the plan's table_rows_max or table_bytes_max the call is refused quota_exceeded and nothing is written. To read rows use host.table.query.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "sql": {
+            "description": "One INSERT, UPDATE (with WHERE) or DELETE (with WHERE) statement over this tenant's own declared tables.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.table.exec",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "changed",
+              "table"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "changed": {
+            "type": "integer"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.12"
+    },
+    {
+      "description": "Find rows of a declared table by example, without writing SQL: where is {\"column\": value} for equality or {\"column\": {\"<operator>\": value}} with operator one of =, !=, <, <=, >, >=, like, in; an array value means in. Compiled to one parameterised SELECT, returned under data.sql with data.params, and run like host.table.query (row policies, query log, total). limit defaults to 100 (max 1000); order is a column name, \"column desc\", or an array of those. An unknown operator, column or order is refused table_query_rejected with data.allowed_operators and data.columns.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Return at most this many rows; default 100.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "order": {
+            "description": "A column name, \"column desc\", or an array of those.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "string",
+              "array"
+            ]
+          },
+          "table": {
+            "description": "Name of the declared table to search.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "where": {
+            "description": "Column to value (equality), column to an array (in), or column to {operator: value}; entries are ANDed. Omit to match every row.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "table"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.table.find",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "data": {
+            "properties": {
+              "params": {
+                "type": "object"
+              },
+              "sql": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "params",
+              "sql"
+            ],
+            "type": "object"
+          },
+          "rows": {
+            "items": {},
+            "type": "array"
+          }
+        },
+        "required": [
+          "data",
+          "rows"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.130.12",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
+    },
+    {
       "description": "Return this tenant's table concept graph: nodes are tables and columns, edges are column_of/foreign_key/same_name with evidence. Omit table for the whole graph, or give one to get the k_hop_neighbors subgraph around it (hops 1-3, default 1). stale is true between a write and the next tick's rebuild.",
       "input_schema": {
         "additionalProperties": false,
@@ -32489,7 +32710,7 @@
       "unpaged_reason": "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies"
     },
     {
-      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit. handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool. A table the tenant never declared answers table_not_found and an unknown column table_column_not_found (-32602), each with data.candidates and data.hint.",
+      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit; a refused statement also carries data.line and data.column (where the parser stopped, null when it has no position) and data.allowed (the statement forms; to write rows use host.table.exec). handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool. A table the tenant never declared answers table_not_found and an unknown column table_column_not_found (-32602), each with data.candidates and data.hint.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -33048,7 +33269,7 @@
       "since": "0.84.0"
     },
     {
-      "description": "List this tenant's own host.table.query call history, newest first: sql (as submitted, truncated to 4096 bytes with truncated: true past that), row_count (null on refusal), duration_ms, error_code and error_message (null on success). Keeps the newest 1,000 calls.",
+      "description": "List this tenant's own host.table.query call history, newest first: sql (as submitted, truncated to 4096 bytes with truncated: true past that), statement_kind (select, insert, update or delete), row_count (null on refusal and on host.table.exec rows), changed (the rows a host.table.exec call changed; null otherwise), duration_ms, error_code and error_message (null on success). Lists host.table.exec calls beside host.table.query calls. Keeps the newest 1,000 calls.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -33107,6 +33328,12 @@
           "rows": {
             "items": {
               "properties": {
+                "changed": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "created_unix": {
                   "type": [
                     "integer",
@@ -33182,6 +33409,12 @@
                   ]
                 },
                 "sql": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "statement_kind": {
                   "type": [
                     "string",
                     "null"
@@ -47944,6 +48177,78 @@
       "since": "0.103.1"
     },
     {
+      "alias_of": "host.table.exec",
+      "description": "Run one INSERT, UPDATE or DELETE on a declared table and return {changed, table}. UPDATE and DELETE need a WHERE clause; an upsert is INSERT … ON CONFLICT(<column>) DO UPDATE. Anything else (ATTACH, PRAGMA, DDL, triggers, file functions, a SELECT) is refused table_exec_rejected with data.reason, data.line, data.column and data.allowed. Accepted forms: SELECT … FROM <table> … | WITH <name> AS (SELECT …) SELECT … | INSERT INTO <table> (<columns>) VALUES (…) | INSERT OR REPLACE INTO <table> (<columns>) VALUES (…) | INSERT INTO <table> (<columns>) VALUES (…) ON CONFLICT(<column>) DO UPDATE SET … | UPDATE <table> SET <column> = … WHERE … | DELETE FROM <table> WHERE …. Past the plan's table_rows_max or table_bytes_max the call is refused quota_exceeded and nothing is written. To read rows use host.table.query.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "sql": {
+            "description": "One INSERT, UPDATE (with WHERE) or DELETE (with WHERE) statement over this tenant's own declared tables.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_table_exec",
+      "since": "0.130.12"
+    },
+    {
+      "alias_of": "host.table.find",
+      "description": "Find rows of a declared table by example, without writing SQL: where is {\"column\": value} for equality or {\"column\": {\"<operator>\": value}} with operator one of =, !=, <, <=, >, >=, like, in; an array value means in. Compiled to one parameterised SELECT, returned under data.sql with data.params, and run like host.table.query (row policies, query log, total). limit defaults to 100 (max 1000); order is a column name, \"column desc\", or an array of those. An unknown operator, column or order is refused table_query_rejected with data.allowed_operators and data.columns.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Return at most this many rows; default 100.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "order": {
+            "description": "A column name, \"column desc\", or an array of those.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "string",
+              "array"
+            ]
+          },
+          "table": {
+            "description": "Name of the declared table to search.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "where": {
+            "description": "Column to value (equality), column to an array (in), or column to {operator: value}; entries are ANDed. Omit to match every row.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "table"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_table_find",
+      "since": "0.130.12"
+    },
+    {
       "alias_of": "host.table.graph",
       "description": "Return this tenant's table concept graph: nodes are tables and columns, edges are column_of/foreign_key/same_name with evidence. Omit table for the whole graph, or give one to get the k_hop_neighbors subgraph around it (hops 1-3, default 1). stale is true between a write and the next tick's rebuild.",
       "input_schema": {
@@ -48197,7 +48502,7 @@
     },
     {
       "alias_of": "host.table.query",
-      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit. handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool. A table the tenant never declared answers table_not_found and an unknown column table_column_not_found (-32602), each with data.candidates and data.hint.",
+      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit; a refused statement also carries data.line and data.column (where the parser stopped, null when it has no position) and data.allowed (the statement forms; to write rows use host.table.exec). handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool. A table the tenant never declared answers table_not_found and an unknown column table_column_not_found (-32602), each with data.candidates and data.hint.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -48263,7 +48568,7 @@
     },
     {
       "alias_of": "host.table.query_log",
-      "description": "List this tenant's own host.table.query call history, newest first: sql (as submitted, truncated to 4096 bytes with truncated: true past that), row_count (null on refusal), duration_ms, error_code and error_message (null on success). Keeps the newest 1,000 calls.",
+      "description": "List this tenant's own host.table.query call history, newest first: sql (as submitted, truncated to 4096 bytes with truncated: true past that), statement_kind (select, insert, update or delete), row_count (null on refusal and on host.table.exec rows), changed (the rows a host.table.exec call changed; null otherwise), duration_ms, error_code and error_message (null on success). Lists host.table.exec calls beside host.table.query calls. Keeps the newest 1,000 calls.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

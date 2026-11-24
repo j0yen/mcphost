@@ -182,7 +182,7 @@ fn dependent_queries_sync(
 ) -> Result<Vec<LoggedQuery>, AppError> {
     let mut stmt = conn.prepare(&format!(
         "SELECT id, sql, row_count, error_code, sample_hash FROM {} \
-         WHERE created_unix >= ?1 ORDER BY id DESC",
+         WHERE created_unix >= ?1 AND verb IS NULL ORDER BY id DESC",
         tables::QUERY_LOG_TABLE
     ))?;
     let rows = stmt
