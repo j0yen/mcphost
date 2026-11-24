@@ -1,9 +1,12 @@
 //! PRD-mcphost-synthetic-implicit-tenant-expiry
-//! AC1 (P0) — Given subject fixture A and seven variants (claimed, origin
-//! external, idle 1 hour, paid, `synthetic` NULL, billing_ref set, before the
-//! floor), When `prune_once` runs with the default window, Then only A ends
+//! AC1 (P0) — Given subject fixture A and six variants (claimed, origin
+//! external, idle 1 hour, paid, `synthetic` NULL, billing_ref set), When
+//! `prune_once` runs with the default window, Then only A ends
 //! `disabled = 1, disabled_reason = 'idle_expired'`, its session released,
 //! every kind's `on_tenant_removed` run; the variants are unchanged.
+//! PRD-mcphost-synthetic-tenant-purge R2: a row minted before the floor is a
+//! subject too, its idle clock starting at the floor, so it expires with A and
+//! carries an `invalidated` lifecycle event.
 
 use crate::common::tenx::{self, DAY, Fx};
 use crate::common::{EnvGuard, TestServer};
@@ -73,7 +76,8 @@ async fn tenx_ac01_only_the_idle_synthetic_implicit_unclaimed_tenant_expires() {
     add("paid", &|f| f.paid_unix = Some(now - DAY));
     add("synthetic-null", &|f| f.synthetic = None);
     add("billing-ref", &|f| f.billing_ref = Some("cus_test"));
-    add("before-floor", &|f| f.created_unix = now - 11 * DAY);
+    // Minted before the floor, idle since: a subject, its clock starting at the floor.
+    let pre_floor = tenx::insert(&conn, &Fx::subject("tenx-before-floor", now, 11, idle));
 
     let sid = server.state.session_bindings.issue();
     assert!(server.state.session_bindings.bind(&sid, a, now));
@@ -82,9 +86,21 @@ async fn tenx_ac01_only_the_idle_synthetic_implicit_unclaimed_tenant_expires() {
     server.state.db.prune_once().await.expect("prune_once");
 
     assert_eq!(tenx::state(&conn, a), (true, Some("idle_expired".to_string())));
+    assert_eq!(tenx::state(&conn, pre_floor), (true, Some("idle_expired".to_string())), "a pre-floor row expires too");
+    let events: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM tenant_lifecycle_events WHERE policy = 'synthetic_implicit_tenants' \
+             AND stage = 'invalidated' AND tenant_id IN (?1, ?2)",
+            rusqlite::params![a, pre_floor],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(events, 2, "each disable writes one lifecycle event");
     for (label, id) in &variants {
         assert_eq!(tenx::state(&conn, *id), (false, None), "variant {label} must be unchanged");
     }
     assert_eq!(server.state.session_bindings.lookup(&sid, now), None, "A's session is released");
-    assert_eq!(*removed.lock().unwrap(), vec![a], "on_tenant_removed ran once, for A only");
+    let mut torn_down = removed.lock().unwrap().clone();
+    torn_down.sort_unstable();
+    assert_eq!(torn_down, vec![a, pre_floor], "on_tenant_removed ran once for each expired tenant");
 }

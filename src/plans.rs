@@ -415,6 +415,14 @@ pub struct Plan {
     /// R1: process/thread ceiling (RLIMIT_NPROC) inside one sandbox.
     /// "free 16, pro 64".
     pub sandbox_pids_max: i64,
+    /// PRD-mcphost-response-size-budget-explicit-v2 R1: the most bytes of
+    /// serialized rows one page of a paged verb carries; a page over it is
+    /// cut at a row boundary and says so in `_meta.mcphost.truncated`
+    /// ("free 262 144, pro 1 048 576"). Not the kinds' 1 MiB wall
+    /// (`limits.output_bytes_max`). Defaults to the plan's own built-in value
+    /// (`free` for an unknown name) when a hand-edited `plans.toml` predates
+    /// this key.
+    pub response_budget_bytes: i64,
 }
 
 impl Plan {
@@ -445,6 +453,8 @@ const TOUCHED_PREFIX_BY_VERB: &[(&str, &str)] = &[
     ("host.table.", "table_"),
     ("host.docs.", "docs_"),
     ("host.export", "export_"),
+    // PRD-mcphost-org-export-and-offboard-v2 R7: an org export answers as `host.export` does.
+    ("host.org.export", "export_"),
     // PRD-mcphost-blob-retention-and-quota R4: `blobs_max`, `blob_bytes_max`
     // and `blob_max_bytes` all begin `blob`.
     ("host.blob.", "blob"),
@@ -766,6 +776,8 @@ impl PlanCatalog {
                     sandbox_memory_mb_max: 256,
                     sandbox_wall_s_max: 32,
                     sandbox_pids_max: 16,
+                    // PRD-mcphost-response-size-budget-explicit-v2 R1.
+                    response_budget_bytes: 256 * 1024,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -904,6 +916,7 @@ impl PlanCatalog {
                     sandbox_memory_mb_max: 1024,
                     sandbox_wall_s_max: 62,
                     sandbox_pids_max: 64,
+                    response_budget_bytes: 1024 * 1024,
                 },
             ],
         }
@@ -1093,6 +1106,7 @@ impl PlanCatalog {
             out.push_str(&format!("sandbox_memory_mb_max = {}\n", p.sandbox_memory_mb_max));
             out.push_str(&format!("sandbox_wall_s_max = {}\n", p.sandbox_wall_s_max));
             out.push_str(&format!("sandbox_pids_max = {}\n", p.sandbox_pids_max));
+            out.push_str(&format!("response_budget_bytes = {}\n", p.response_budget_bytes));
             out.push('\n');
         }
         out
@@ -1221,6 +1235,7 @@ impl PlanCatalog {
                 "sandbox_memory_mb_max" => builder.sandbox_memory_mb_max = Some(int_value()),
                 "sandbox_wall_s_max" => builder.sandbox_wall_s_max = Some(int_value()),
                 "sandbox_pids_max" => builder.sandbox_pids_max = Some(int_value()),
+                "response_budget_bytes" => builder.response_budget_bytes = Some(int_value()),
                 _ => {}
             }
         }
@@ -1338,6 +1353,7 @@ struct PlanBuilder {
     sandbox_memory_mb_max: Option<i64>,
     sandbox_wall_s_max: Option<i64>,
     sandbox_pids_max: Option<i64>,
+    response_budget_bytes: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -1442,6 +1458,7 @@ impl PlanBuilder {
             sandbox_memory_mb_max: quota!(sandbox_memory_mb_max),
             sandbox_wall_s_max: quota!(sandbox_wall_s_max),
             sandbox_pids_max: quota!(sandbox_pids_max),
+            response_budget_bytes: quota!(response_budget_bytes),
         };
         Ok((plan, defaulted))
     }

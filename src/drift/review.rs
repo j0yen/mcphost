@@ -78,6 +78,6 @@ pub async fn resolve(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
 crate::err_code! {
     pub DRIFT_REVIEW_NOT_FOUND,
     code: "drift_review_not_found", family: Storage, class: AgentFault, retryable: false,
-    remedy: "List reviews with host.drift.list and use an item id that exists.",
+    remedy: "List reviews with host.drift.reviews and use an item id that exists.",
 }
 

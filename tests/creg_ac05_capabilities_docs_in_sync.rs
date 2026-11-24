@@ -1,8 +1,8 @@
-//! contract: reads scripts/sandbox-api-doc-check.sh
+//! contract: reads scripts/generated-docs-check.sh
 //! AC5 (P0) -- PRD-mcphost-server-capabilities-from-registry. `www/llms.txt`
 //! and `docs/protocol/capabilities.md` each carry a `## Capabilities`
 //! section equal byte-for-byte to `render_capabilities_section()`;
-//! `scripts/sandbox-api-doc-check.sh` exits 0 only then, and exits 1 naming
+//! `scripts/generated-docs-check.sh` exits 0 only then, and exits 1 naming
 //! the file when one row is edited. `--write` never empties a doc: a bad
 //! render (empty, cargo output, or a failing `--doc` call) exits non-zero and
 //! leaves every target byte-identical (runs 847/830, 2026-10-15: the old
@@ -24,11 +24,11 @@ fn block_of(text: &str) -> &str {
 
 fn run_check(dir: &Path) -> Output {
     Command::new("bash")
-        .arg(dir.join("scripts/sandbox-api-doc-check.sh"))
+        .arg(dir.join("scripts/generated-docs-check.sh"))
         .current_dir(dir)
         .env("MCPHOST_BIN", env!("CARGO_BIN_EXE_mcphost"))
         .output()
-        .expect("run sandbox-api-doc-check.sh")
+        .expect("run generated-docs-check.sh")
 }
 
 #[test]
@@ -101,13 +101,13 @@ fn fake_bin(dir: &Path) -> std::path::PathBuf {
 
 fn run_write(dir: &Path, mode: &str) -> Output {
     Command::new("bash")
-        .arg(dir.join("scripts/sandbox-api-doc-check.sh"))
+        .arg(dir.join("scripts/generated-docs-check.sh"))
         .arg("--write")
         .current_dir(dir)
         .env("MCPHOST_BIN", fake_bin(dir))
         .env("FAKE_MODE", mode)
         .output()
-        .expect("run sandbox-api-doc-check.sh --write")
+        .expect("run generated-docs-check.sh --write")
 }
 
 #[test]

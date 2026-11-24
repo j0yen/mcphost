@@ -18,7 +18,9 @@ use std::collections::BTreeSet;
 fn dispatcher_source(src: &str) -> &str {
     let start = src.find("async fn dispatch_admin_tool(").expect("dispatch_admin_tool in handler.rs");
     let rest = &src[start..];
-    let end = rest.find("other => Err(AppError::ToolNotFound").expect("the ToolNotFound fallthrough arm");
+    // PRD-mcphost-refusals-name-the-nearest-move: the fallthrough arm now builds its
+    // not-found through `tool_not_found_near` (it was `AppError::ToolNotFound(..)`).
+    let end = rest.find("other => Err(self.tool_not_found_near(").expect("the tool_not_found fallthrough arm");
     &rest[..end]
 }
 
@@ -43,7 +45,7 @@ fn drift(arms: &BTreeSet<String>, descriptors: &BTreeSet<String>) -> Vec<String>
         out.push(format!("dispatch arm with no descriptor (tools/list never shows it): {n}"));
     }
     for n in descriptors.difference(arms) {
-        out.push(format!("descriptor with no dispatch arm (a call reaches ToolNotFound): {n}"));
+        out.push(format!("descriptor with no dispatch arm (a call reaches tool_not_found): {n}"));
     }
     out
 }
@@ -60,7 +62,7 @@ fn adisp_ac01_admin_dispatch_arms_equal_admin_tool_descriptors() {
 
 #[test]
 fn adisp_ac01_a_planted_arm_without_a_descriptor_is_named() {
-    let fixture = "async fn dispatch_admin_tool(&self) {\n    match name {\n        // a comment\n        \"admin.a\" => x().await,\n        \"admin.b.c\" => {\n            y()\n        }\n        \"admin.ghost\" => z().await,\n        other => Err(AppError::ToolNotFound(other.to_string())),\n    }\n}\n";
+    let fixture = "async fn dispatch_admin_tool(&self) {\n    match name {\n        // a comment\n        \"admin.a\" => x().await,\n        \"admin.b.c\" => {\n            y()\n        }\n        \"admin.ghost\" => z().await,\n        other => Err(self.tool_not_found_near(None, other, Some(&args)).await),\n    }\n}\n";
     let arms = arm_names(dispatcher_source(fixture));
     assert_eq!(arms.iter().map(String::as_str).collect::<Vec<_>>(), ["admin.a", "admin.b.c", "admin.ghost"]);
     let descriptors: BTreeSet<String> = ["admin.a", "admin.b.c", "admin.orphan"].into_iter().map(String::from).collect();

@@ -9,8 +9,6 @@
 mod common;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
-#[path = "support/dryspt_lint.rs"]
-mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
@@ -29,11 +27,39 @@ mod tcpn;
 mod timp;
 #[path = "support/tssdk.rs"]
 mod tssdk;
-#[path = "support/uprg.rs"]
-mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "qsbc_ac01_detection_keys_on_known_names.rs"]
+mod qsbc_ac01_detection_keys_on_known_names;
+#[path = "qsbc_ac02_quickstart_client_cursor.rs"]
+mod qsbc_ac02_quickstart_client_cursor;
+#[path = "qsbc_ac03_quickstart_client_user_agent.rs"]
+mod qsbc_ac03_quickstart_client_user_agent;
+#[path = "qsbc_ac04_quickstart_client_unknown.rs"]
+mod qsbc_ac04_quickstart_client_unknown;
+#[path = "qsbc_ac05_quickstart_client_chatgpt.rs"]
+mod qsbc_ac05_quickstart_client_chatgpt;
+#[path = "qsbc_ac06_connect_go_json_matches_quickstart.rs"]
+mod qsbc_ac06_connect_go_json_matches_quickstart;
+#[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
+mod qsbc_ac07_quickstart_writes_client_name;
+#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
+mod refrow_ac01_args_invalid_writes_refused_row;
+#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
+mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
+#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
+mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
+#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
+mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
+#[path = "refrow_ac05_host_usage_reports_refused.rs"]
+mod refrow_ac05_host_usage_reports_refused;
+#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
+mod refrow_ac06_unwritable_db_refusal_still_returned;
+#[path = "refst_ac01_unimplemented_method_status_by_revision.rs"]
+mod refst_ac01_unimplemented_method_status_by_revision;
+#[path = "refst_ac03_refusal_status_rule_and_batch.rs"]
+mod refst_ac03_refusal_status_rule_and_batch;
 #[path = "refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs"]
 mod refusals_ac01_oversize_body_is_a_413_json_rpc_error;
 #[path = "refusals_ac02_tool_not_found_names_the_implicit_tenant.rs"]
@@ -144,6 +170,14 @@ mod rsm_ac05_anonymous_resume_creates_no_tenant;
 mod rsm_ac06_welcome_back_points_at_resume;
 #[path = "rsm_ac07_usage_reports_the_resume_first_call_rate.rs"]
 mod rsm_ac07_usage_reports_the_resume_first_call_rate;
+#[path = "rszb_ac01_one_truncation_struct.rs"]
+mod rszb_ac01_one_truncation_struct;
+#[path = "rszb_ac02_every_paged_verb_walks_within_budget.rs"]
+mod rszb_ac02_every_paged_verb_walks_within_budget;
+#[path = "rszb_ac03_plan_field_in_quickstart_and_docs.rs"]
+mod rszb_ac03_plan_field_in_quickstart_and_docs;
+#[path = "rszb_ac05_table_query_offset_walk.rs"]
+mod rszb_ac05_table_query_offset_walk;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
@@ -382,6 +416,14 @@ mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
 mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
 #[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
 mod sjrc_ac07_limit_ceiling_and_empty_tool;
+#[path = "skgn_ac04_errors_from_registry_and_remedy_verbs.rs"]
+mod skgn_ac04_errors_from_registry_and_remedy_verbs;
+#[path = "skgn_ac05_limits_equal_plan_ceilings.rs"]
+mod skgn_ac05_limits_equal_plan_ceilings;
+#[path = "skgn_ac06_devloop_omits_absent_verbs.rs"]
+mod skgn_ac06_devloop_omits_absent_verbs;
+#[path = "skgn_ac07_url_renders_from_tools_list.rs"]
+mod skgn_ac07_url_renders_from_tools_list;
 #[path = "skillsrc_ac01_gen_docs_writes_skill_md_byte_equal.rs"]
 mod skillsrc_ac01_gen_docs_writes_skill_md_byte_equal;
 #[path = "skillsrc_ac02_gen_docs_check_names_stale_skill_md.rs"]
@@ -392,6 +434,20 @@ mod skillsrc_ac03_missing_skill_md_is_stale_and_recreated;
 mod skillsrc_ac04_gen_docs_idempotent;
 #[path = "skillsrc_ac05_output_list_and_drift_test_kept.rs"]
 mod skillsrc_ac05_output_list_and_drift_test_kept;
+#[path = "slopg_ac01_slo_block_measured_against_target.rs"]
+mod slopg_ac01_slo_block_measured_against_target;
+#[path = "slopg_ac02_under_twenty_samples_is_null.rs"]
+mod slopg_ac02_under_twenty_samples_is_null;
+#[path = "slopg_ac03_availability_from_status_daily.rs"]
+mod slopg_ac03_availability_from_status_daily;
+#[path = "slopg_ac04_slo_keys_drift_status_html_and_llms_txt.rs"]
+mod slopg_ac04_slo_keys_drift_status_html_and_llms_txt;
+#[path = "slopg_ac05_error_rate_counts_host_faults_only.rs"]
+mod slopg_ac05_error_rate_counts_host_faults_only;
+#[path = "slopg_ac06_slo_daily_rows_by_key.rs"]
+mod slopg_ac06_slo_daily_rows_by_key;
+#[path = "slopg_ac07_slo_block_under_50ms_at_100k_calls.rs"]
+mod slopg_ac07_slo_block_under_50ms_at_100k_calls;
 #[path = "snp_ac01_url_to_unbound_host_is_blocked.rs"]
 mod snp_ac01_url_to_unbound_host_is_blocked;
 #[path = "snp_ac02_echoed_secret_in_result_is_blocked.rs"]
@@ -532,6 +588,18 @@ mod statusfeed_ac07_prune_keeps_rollup;
 mod statusfeed_ac08_status_html_renders;
 #[path = "statusfeed_ac10_component_days_query.rs"]
 mod statusfeed_ac10_component_days_query;
+#[path = "stclp_ac01_selftest_passes.rs"]
+mod stclp_ac01_selftest_passes;
+#[path = "stclp_ac02_usage_and_missing_tool.rs"]
+mod stclp_ac02_usage_and_missing_tool;
+#[path = "stclp_ac03_key_hygiene_through_the_shim.rs"]
+mod stclp_ac03_key_hygiene_through_the_shim;
+#[path = "stclp_ac04_warning_in_json_and_sse.rs"]
+mod stclp_ac04_warning_in_json_and_sse;
+#[path = "stclp_ac05_unreachable_signup.rs"]
+mod stclp_ac05_unreachable_signup;
+#[path = "stclp_ac07_no_warning_is_an_error_with_receipt.rs"]
+mod stclp_ac07_no_warning_is_an_error_with_receipt;
 #[path = "stgl_ac01_grantee_list_names_group_share.rs"]
 mod stgl_ac01_grantee_list_names_group_share;
 #[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]
@@ -762,6 +830,10 @@ mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
 mod tenantprm_ac07_key_and_oauth_suites_unchanged;
 #[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
 mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
+#[path = "tenp_ac02_cascade_complete_and_entangled_subject_held.rs"]
+mod tenp_ac02_cascade_complete_and_entangled_subject_held;
+#[path = "tenp_ac05_grace_clock_report_first_and_bounded_vacuum.rs"]
+mod tenp_ac05_grace_clock_report_first_and_bounded_vacuum;
 #[path = "testtruth_ac01_chain_prev_will_fail.rs"]
 mod testtruth_ac01_chain_prev_will_fail;
 #[path = "testtruth_ac02_chain_prev_result_pass.rs"]
@@ -930,6 +1002,16 @@ mod trigidem_ac05_verbs_accept_name;
 mod trigidem_ac06_migration_backfills_duplicate_names;
 #[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
 mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
+#[path = "tsql_ac01_exec_refuses_escape_statements.rs"]
+mod tsql_ac01_exec_refuses_escape_statements;
+#[path = "tsql_ac02_update_one_row_dry_run_and_append_after.rs"]
+mod tsql_ac02_update_one_row_dry_run_and_append_after;
+#[path = "tsql_ac03_where_less_delete_and_update_refused.rs"]
+mod tsql_ac03_where_less_delete_and_update_refused;
+#[path = "tsql_ac05_quota_and_concurrency.rs"]
+mod tsql_ac05_quota_and_concurrency;
+#[path = "tsql_ac06_find_by_example.rs"]
+mod tsql_ac06_find_by_example;
 #[path = "tssdk_ac01_no_override_table.rs"]
 mod tssdk_ac01_no_override_table;
 #[path = "tssdk_ac02_build_test_tsc_and_header.rs"]
@@ -950,87 +1032,3 @@ mod tssdk_ac08_tool_that_is_a_family_prefix;
 mod tsvr_ac01_unknown_column_names_declared;
 #[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
 mod tsvr_ac02_type_mismatch_names_accepted_shape;
-#[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
-mod ttfs_ac01_onboarding_7d_reads_external_stamps;
-#[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]
-mod ttfs_ac02_whoami_activation_first_call_only;
-#[path = "ttfs_ac03_milestone_table_is_the_one_key_set.rs"]
-mod ttfs_ac03_milestone_table_is_the_one_key_set;
-#[path = "ttfs_ac04_onboarding_block_carries_no_identifiers.rs"]
-mod ttfs_ac04_onboarding_block_carries_no_identifiers;
-#[path = "ttfs_ac05_under_five_tenants_shows_n_and_nulls.rs"]
-mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
-#[path = "ttfs_ac06_admin_has_no_activation_and_unclassified_excluded.rs"]
-mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
-#[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
-mod ttfs_ac07_by_client_only_for_groups_of_five;
-#[path = "txnhelp_ac01_lint_zero.rs"]
-mod txnhelp_ac01_lint_zero;
-#[path = "txnhelp_ac02_lock_parity.rs"]
-mod txnhelp_ac02_lock_parity;
-#[path = "txnhelp_ac03_is_writable_probe.rs"]
-mod txnhelp_ac03_is_writable_probe;
-#[path = "txnhelp_ac04_migration_0116_atomic.rs"]
-mod txnhelp_ac04_migration_0116_atomic;
-#[path = "txnhelp_ac05_append_real_then_dry_run.rs"]
-mod txnhelp_ac05_append_real_then_dry_run;
-#[path = "umeta_ac01_meta_usage_matches_refusal_and_status.rs"]
-mod umeta_ac01_meta_usage_matches_refusal_and_status;
-#[path = "umeta_ac02_golden_echo_result_unchanged.rs"]
-mod umeta_ac02_golden_echo_result_unchanged;
-#[path = "umeta_ac03_host_usage_plan_block.rs"]
-mod umeta_ac03_host_usage_plan_block;
-#[path = "umeta_ac04_unlimited_plan_renders_null_limit.rs"]
-mod umeta_ac04_unlimited_plan_renders_null_limit;
-#[path = "umeta_ac05_no_extra_select_on_hot_path.rs"]
-mod umeta_ac05_no_extra_select_on_hot_path;
-#[path = "umeta_ac06_caller_limit_in_meta_usage.rs"]
-mod umeta_ac06_caller_limit_in_meta_usage;
-#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
-mod unkfield_ac04_trigger_set_unknown_argument;
-#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
-mod unkfield_ac05_tools_list_additional_properties_false;
-#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
-mod unkfield_ac07_spec_fields_doc_check_script;
-#[path = "upfam_ac01_auth_family_401_403.rs"]
-mod upfam_ac01_auth_family_401_403;
-#[path = "upfam_ac02_403_error_surface_names_secret_set.rs"]
-mod upfam_ac02_403_error_surface_names_secret_set;
-#[path = "upfam_ac02_rate_limited_retry_after.rs"]
-mod upfam_ac02_rate_limited_retry_after;
-#[path = "upfam_ac03_client_and_server_error_families.rs"]
-mod upfam_ac03_client_and_server_error_families;
-#[path = "upfam_ac04_remedy_table_total_and_single_source.rs"]
-mod upfam_ac04_remedy_table_total_and_single_source;
-#[path = "upfam_ac05_hints_name_real_tools.rs"]
-mod upfam_ac05_hints_name_real_tools;
-#[path = "upfam_ac06_host_not_allowed_names_tool_call.rs"]
-mod upfam_ac06_host_not_allowed_names_tool_call;
-#[path = "upfam_ac07_tool_test_matches_real_call.rs"]
-mod upfam_ac07_tool_test_matches_real_call;
-#[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
-mod upgrade_ac01_calls_per_day_next_checkout;
-#[path = "upgrade_ac02_billing_off_refusal_text.rs"]
-mod upgrade_ac02_billing_off_refusal_text;
-#[path = "upgrade_ac03_checkout_source_metadata.rs"]
-mod upgrade_ac03_checkout_source_metadata;
-#[path = "upgrade_ac04_webhook_stamps_paid_unix.rs"]
-mod upgrade_ac04_webhook_stamps_paid_unix;
-#[path = "upgrade_ac05_billing_status_receipt.rs"]
-mod upgrade_ac05_billing_status_receipt;
-#[path = "upgrade_ac06_admin_funnel_upgrades_by_trigger.rs"]
-mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
-#[path = "upgrade_ac07_admin_upgrades_listing.rs"]
-mod upgrade_ac07_admin_upgrades_listing;
-#[path = "uprg_ac01_one_call_creates_probe_status_schedule.rs"]
-mod uprg_ac01_one_call_creates_probe_status_schedule;
-#[path = "uprg_ac02_status_tool_returns_readable_table.rs"]
-mod uprg_ac02_status_tool_returns_readable_table;
-#[path = "uprg_ac03_bad_urls_refused_nothing_created.rs"]
-mod uprg_ac03_bad_urls_refused_nothing_created;
-#[path = "uprg_ac04_free_interval_clamped_pro_keeps_60.rs"]
-mod uprg_ac04_free_interval_clamped_pro_keeps_60;
-#[path = "uprg_ac06_llms_txt_plan_numbers_generated.rs"]
-mod uprg_ac06_llms_txt_plan_numbers_generated;
-#[path = "uprg_ac07_slow_target_is_a_timeout_row.rs"]
-mod uprg_ac07_slow_target_is_a_timeout_row;

@@ -69,6 +69,20 @@ struct CancelState {
     cancel_requested: bool,
     /// A cancel actually killed a process group.
     killed: bool,
+    /// A sandbox pool restart (`CancelReason::HealRestart`) killed this
+    /// call's live process group. Unlike `cancel_requested` it is not
+    /// sticky: it is read once, by the call it killed.
+    heal_killed: bool,
+}
+
+/// Why a [`CancelSlot`] is being asked to kill its live sandbox.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CancelReason {
+    /// `host.runs.cancel`: the run is cancelled for good.
+    Operator,
+    /// The host's own sandbox pool restart: only the live child dies, the
+    /// slot stays usable and the call answers `tool_timeout`.
+    HealRestart,
 }
 
 /// One run's cancel-pid slot -- `pid` is `None` when queued, between
@@ -128,7 +142,24 @@ impl CancelSlot {
     /// and returns `true`; otherwise leaves the request for
     /// [`CancelSlot::set_live`] to honour and returns `false`.
     fn request_cancel(&self) -> bool {
+        self.request_cancel_for(CancelReason::Operator)
+    }
+
+    /// [`CancelSlot::request_cancel`] with a reason. `HealRestart` kills the
+    /// live child only: nothing is left pending for a child that does not
+    /// exist yet, and `host.runs.cancel`'s `killed` stays untouched.
+    pub(crate) fn request_cancel_for(&self, reason: CancelReason) -> bool {
         let mut st = self.lock();
+        if reason == CancelReason::HealRestart {
+            return match st.pid {
+                Some(pid) => {
+                    killpg_sigkill(pid);
+                    st.heal_killed = true;
+                    true
+                }
+                None => false,
+            };
+        }
         st.cancel_requested = true;
         match st.pid {
             Some(pid) => {
@@ -142,6 +173,12 @@ impl CancelSlot {
 
     fn killed(&self) -> bool {
         self.lock().killed
+    }
+
+    /// Whether a sandbox pool restart killed this call's child; reading it
+    /// clears it.
+    pub fn take_heal_killed(&self) -> bool {
+        std::mem::take(&mut self.lock().heal_killed)
     }
 }
 
@@ -677,8 +714,8 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     };
     let count = state.db.count_runs_page(tenant.id, query.clone()).await?;
     let mut page = state.db.list_runs_page(tenant.id, query, after, order, limit + 1).await?;
-    let next = crate::paged::split_page(&mut page, limit, |r| RunsList::cursor_at(r, order));
-    let rows: Vec<RunRow> = page.into_iter().map(|r| r.run).collect();
+    let mut next = crate::paged::split_page(&mut page, limit, |r| RunsList::cursor_at(r, order));
+    let rows: Vec<&RunRow> = page.iter().map(|r| &r.run).collect();
     // One query for the whole page's children, not one per row.
     let parent_ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
     let children = if wants_children {
@@ -706,14 +743,22 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         };
         runs.push(value);
     }
+    if let Some(fields) = &fields {
+        crate::paged::project_rows(&mut runs, fields);
+    }
+    let cut = crate::response_budget::cut_page(
+        &mut page,
+        &mut runs,
+        &mut next,
+        crate::response_budget::budget_of(state, tenant),
+        |r| RunsList::cursor_at(r, order),
+    );
     let mut page_out = serde_json::Map::new();
     page_out.insert(RunsList::KEY.to_string(), Value::Array(runs));
     crate::paged::finish_page(&mut page_out, next.as_ref(), &state.session_bindings, tenant.id);
     count.insert_into(&mut page_out);
     let mut out = Value::Object(page_out);
-    if let Some(fields) = &fields {
-        crate::paged::project_page(&mut out, "runs", fields);
-    }
+    crate::response_budget::note_truncated(&mut out, cut, RunsList::VERB, args);
     if include_result_arg {
         crate::paged::note_deprecated_arg(
             &mut out,

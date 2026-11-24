@@ -6,7 +6,7 @@
 //! `confirm` and `_meta.scratch`) is validated against the verb's `tools/list`
 //! `outputSchema`, Then all 44 validate, the branch is one fn in
 //! `src/write_verbs.rs`, the contract file has no `"would"`, and
-//! `scripts/sandbox-api-doc-check.sh` parses the `sv(`/`nd(` rows unchanged.
+//! `scripts/generated-docs-check.sh` parses the `sv(`/`nd(` rows unchanged.
 
 use std::path::Path;
 use std::process::Command;
@@ -31,7 +31,7 @@ fn dry_run_verbs() -> Vec<&'static mcphost::write_verbs::WriteVerb> {
 #[test]
 fn every_generic_dry_run_preview_validates_against_the_advertised_output_schema() {
     let verbs = dry_run_verbs();
-    assert_eq!(verbs.len(), 45, "46 `sv(` rows minus the Publish one");
+    assert_eq!(verbs.len(), 46, "47 `sv(` rows minus the Publish one");
     let tools = host_tool_descriptors(&KindRegistry::with_builtin());
     let mut problems = Vec::new();
     for verb in verbs {
@@ -76,7 +76,7 @@ fn the_doc_check_script_still_parses_the_sv_and_nd_rows() {
     );
     let dir = common::doc_check_scratch("osmatch-ac01");
     let out = Command::new("bash")
-        .arg(dir.join("scripts/sandbox-api-doc-check.sh"))
+        .arg(dir.join("scripts/generated-docs-check.sh"))
         .output()
         .expect("run script");
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));

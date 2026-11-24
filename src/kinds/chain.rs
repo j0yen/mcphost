@@ -41,7 +41,7 @@
 use serde_json::{Map, Value, json};
 
 use super::contract::{
-    CASE_BUDGET_EXCEEDED, CASE_CALL, CaseSkip, COMPOSE_FAMILY, ConformanceFixtures, KindContract, SourcePosition, TOOL_STATE_FAMILY, codes,
+    CASE_BUDGET_EXCEEDED, CASE_CALL, CaseSkip, COMPOSE_FAMILY, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, TOOL_STATE_FAMILY, codes, family,
 };
 use super::{
     CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, OutputDecl, Path, ToolDescriptor,
@@ -1984,8 +1984,20 @@ fn conformance_erroring_spec() -> Value {
     conformance_good_spec()
 }
 
+/// The codes a chain's own spec and dry-run fixtures answer with.
+const CHAIN_SPEC_FAMILY: ErrorFamily = ErrorFamily {
+    name: family::CHAIN_SPEC,
+    codes: &[
+        STEP_TOOL_NOT_ALLOWED,
+        STEP_TOOL_NOT_FOUND,
+        FIXTURE_SHAPE_MISMATCH,
+        FIXTURE_STEP_AMBIGUOUS,
+        FIXTURE_STEP_UNKNOWN,
+    ],
+};
+
 static CONTRACT: KindContract = KindContract {
-    error_families: &[COMPOSE_FAMILY, TOOL_STATE_FAMILY],
+    error_families: &[COMPOSE_FAMILY, TOOL_STATE_FAMILY, CHAIN_SPEC_FAMILY],
     budgets: &[],
     source_position: SourcePosition::Field("failed_step"),
     bridges: &[],
@@ -2044,8 +2056,8 @@ impl Kind for ChainKind {
     /// the only top-level field [`parse_steps`] reads today -- per-step key
     /// checking (`tool`/`args`/`on_error`, requirement 7) is a deferred P1
     /// follow-up, not this field list's concern. Kept a plain literal:
-    /// `scripts/spec-fields-doc-check.sh` parses it straight out of this
-    /// file (the chain SPEC's field, not a context key).
+    /// the context-key lint skips this one line (the chain SPEC's field, not
+    /// a context key).
     fn minimal_specs(&self) -> Vec<Value> {
         vec![json!({ (CONTEXT_KEYS.steps): [{"tool": "step_one", "args": {}}] })]
     }

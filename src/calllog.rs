@@ -351,7 +351,14 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         _ => None,
     };
     let mut rows = state.db.list_call_rows(tenant.id, filter.clone(), cursor, rl.limit + 1).await?;
-    let next = paged::split_page(&mut rows, rl.limit, |r| CallsList::cursor_at(r, order));
+    let mut next = paged::split_page(&mut rows, rl.limit, |r| CallsList::cursor_at(r, order));
+    let mut page_json: Vec<Value> = rows.iter().map(CallRow::to_json).collect();
+    if let Some(fields) = &fields {
+        paged::project_rows(&mut page_json, fields);
+    }
+    let cut = crate::response_budget::cut_page(&mut rows, &mut page_json, &mut next, crate::response_budget::budget_of(state, tenant), |r| {
+        CallsList::cursor_at(r, order)
+    });
     let mut out = serde_json::Map::new();
     // R4: a window reaching past the plan's retention names the cutoff.
     if let Some(plan) = state.plans.get(&tenant.plan) {
@@ -360,12 +367,10 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             out.insert("truncated_before".to_string(), json!(rfc3339_from_unix(cutoff)));
         }
     }
-    out.insert(CallsList::KEY.to_string(), json!(rows.iter().map(CallRow::to_json).collect::<Vec<_>>()));
+    out.insert(CallsList::KEY.to_string(), json!(page_json));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut value = Value::Object(out);
-    if let Some(fields) = &fields {
-        paged::project_page(&mut value, CallsList::KEY, fields);
-    }
+    crate::response_budget::note_truncated(&mut value, cut, CallsList::VERB, args);
     paged::note_clamp(&mut value, &rl);
     Ok(value)
 }

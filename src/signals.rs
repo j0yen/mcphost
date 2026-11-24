@@ -83,6 +83,10 @@ pub struct Threshold {
     pub unit: String,
     #[serde(default)]
     pub wedge_factor: Option<f64>,
+    /// PRD-mcphost-sandbox-pool-self-restart-v2 R3: how long healthy calls
+    /// may keep running while a pool restart drains the pool (seconds).
+    #[serde(default)]
+    pub drain_budget_s: Option<u64>,
 }
 
 #[derive(Deserialize)]

@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use mcphost::db::Db;
 use mcphost::kinds::KindRegistry;
 use mcphost::kinds::python::PythonKind;
@@ -191,7 +191,7 @@ enum Command {
     },
     /// PRD-mcphost-server-capabilities-from-registry requirement 4: print
     /// the generated `## Capabilities` section (`--doc`: the whole
-    /// `docs/protocol/capabilities.md`) for `scripts/sandbox-api-doc-check.sh`.
+    /// `docs/protocol/capabilities.md`) for `scripts/generated-docs-check.sh`.
     CapabilitiesSection {
         #[arg(long)]
         doc: bool,
@@ -201,7 +201,7 @@ enum Command {
     ResourcesDoc,
     /// PRD-mcphost-delegation-recipes-and-quickstart requirement 5: print the
     /// README's `<!-- quickstart-recipe:sub_agent_key -->` block for
-    /// `scripts/sandbox-api-doc-check.sh`.
+    /// `scripts/generated-docs-check.sh`.
     RecipeSection,
     /// PRD-mcphost-prompts-from-published-tools requirement 5: print
     /// `docs/protocol/prompts.md`, rendered from `recipe_prompts()`.
@@ -209,13 +209,38 @@ enum Command {
     /// PRD-mcphost-sampling-from-tools R1/AC7 (seed SDB): print the marked
     /// `<!-- mcphost-bridge-modules:start/end -->` block `docs/sandbox-api.md`
     /// carries (`kinds::python::render_bridge_docs_block`, markers included)
-    /// for `scripts/sandbox-api-doc-check.sh`.
+    /// for `scripts/generated-docs-check.sh`.
     BridgeDocsBlock,
     /// Print the marked `<!-- mcphost-signup-args:start/end -->` block
     /// `plugin/skills/mcphost/SKILL.md` and `www/skill.md` carry
     /// (`control::render_signup_args_block`, markers included) for
     /// `scripts/signup-args-doc-check.sh`.
     SignupArgsBlock,
+    /// PRD-mcphost-plugin-skill-generated-from-registry: render the marked
+    /// sections of `plugin/skills/mcphost/SKILL.md` from the host's own
+    /// registries. Needs no DB and no sandbox.
+    SkillGen {
+        /// Render one section only: `verbs`, `limits`, `errors` or `devloop`.
+        #[arg(long)]
+        section: Option<String>,
+        /// Write the plugin skill (and `www/skill.md`, byte-equal) instead of
+        /// checking them: without it, exit 1 naming the first stale line.
+        #[arg(long)]
+        write: bool,
+        /// The skill file. Defaults to `plugin/skills/mcphost/SKILL.md`.
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// The published copy. Defaults to `www/skill.md` (none when `--file` is given).
+        #[arg(long)]
+        www: Option<PathBuf>,
+        /// Render `verbs` from this host's own `tools/list` (its MCP url)
+        /// instead of the registry, to diff a deployed skill against it.
+        #[arg(long)]
+        url: Option<String>,
+        /// Tenant key for `--url`, so `tools/list` shows every verb.
+        #[arg(long, env = "MCPHOST_TENANT_KEY", hide_env_values = true)]
+        key: Option<String>,
+    },
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
     /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
@@ -1441,6 +1466,70 @@ async fn main() -> anyhow::Result<()> {
             println!("{}", mcphost::kinds::python::render_bridge_docs_block());
             Ok(())
         }
+        Command::SkillGen { section, write, file, www, url, key } => {
+            // No `init_tracing()`: plain stdout/exit-code contract, like `LlmsTxt`.
+            let kinds = KindRegistry::with_builtin();
+            let fail = |msg: String| -> ! {
+                eprintln!("skill-gen: {msg}");
+                std::process::exit(2);
+            };
+            if let Some(url) = url {
+                if write || section.as_deref().is_some_and(|s| s != "verbs") {
+                    fail("--url renders only `--section verbs` and never writes".to_string());
+                }
+                match mcphost::skill_gen::render_verbs_from_url(&url, key.as_deref()).await {
+                    Ok(block) => println!("{block}"),
+                    Err(e) => fail(e),
+                }
+                return Ok(());
+            }
+            if let Some(section) = section.filter(|_| !write) {
+                match mcphost::skill_gen::render_section(&section, &kinds, Some(&Cli::command())) {
+                    Ok(block) => println!("{block}"),
+                    Err(e) => fail(e),
+                }
+                return Ok(());
+            }
+            let www = match (&file, www) {
+                (_, Some(w)) => Some(w),
+                (None, None) => Some(PathBuf::from(mcphost::skill_gen::WWW_SKILL_PATH)),
+                (Some(_), None) => None,
+            };
+            let file = file.unwrap_or_else(|| PathBuf::from(mcphost::skill_gen::PLUGIN_SKILL_PATH));
+            let existing = std::fs::read_to_string(&file).unwrap_or_else(|e| fail(format!("failed to read {}: {e}", file.display())));
+            let cli = Cli::command();
+            let rendered = mcphost::skill_gen::render_file(&existing, mcphost::skill_gen::SECTIONS, &|s| {
+                mcphost::skill_gen::render_section(s, &kinds, Some(&cli))
+            })
+            .unwrap_or_else(|e| fail(format!("{}: {e}", file.display())));
+            if write {
+                let mut targets = vec![file.clone()];
+                targets.extend(www);
+                for t in targets {
+                    std::fs::write(&t, &rendered).unwrap_or_else(|e| fail(format!("failed to write {}: {e}", t.display())));
+                }
+                println!("skill-gen: wrote {}", file.display());
+                return Ok(());
+            }
+            print!("{rendered}");
+            let mut stale = false;
+            if let Some((line, text)) = mcphost::skill_gen::first_difference(&existing, &rendered) {
+                eprintln!("skill-gen: {} line {line} differs from the generated section: {text}", file.display());
+                stale = true;
+            }
+            if let Some(w) = www {
+                let published = std::fs::read_to_string(&w).unwrap_or_default();
+                if let Some((line, text)) = mcphost::skill_gen::first_difference(&published, &rendered) {
+                    eprintln!("skill-gen: {} line {line} differs from the rendered skill: {text}", w.display());
+                    stale = true;
+                }
+            }
+            if stale {
+                eprintln!("skill-gen: run `mcphost skill-gen --write`");
+                std::process::exit(1);
+            }
+            Ok(())
+        }
         Command::SignupArgsBlock => {
             println!("{}", mcphost::control::render_signup_args_block());
             Ok(())
@@ -2226,7 +2315,7 @@ async fn main() -> anyhow::Result<()> {
                 url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
                 implicit_signup_memory,
                 tenant_key_arg_memory,
-                redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
+                redeemed_peers: mcphost::peer_recent::PeerRecents::from_env(),
                 reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
                     mcphost::state::reuse_session_tenant_from_env(),
                 )),
@@ -2325,6 +2414,9 @@ async fn main() -> anyhow::Result<()> {
             // self-sampler and the daily rollup+prune tick, started once
             // here alongside the other background tasks.
             mcphost::statusfeed::spawn_tick((*state).clone());
+            // PRD-mcphost-sandbox-pool-self-restart-v2 R2: the one consumer
+            // of the signals breach events.
+            mcphost::pool_restart::spawn_subscriber((*state).clone());
             mcphost::statusfeed::spawn_daily_tick((*state).clone());
             mcphost::perf::set_self_url(format!("http://{bind}"));
             for plan in mcphost::perf::PLANS {

@@ -14,7 +14,6 @@
 
 use crate::common;
 use common::{McpClient, TestServer};
-use rmcp::model::ProtocolVersion;
 use serde_json::Value;
 
 #[tokio::test]
@@ -35,15 +34,15 @@ async fn unauthenticated_tools_list_is_signup_only() {
         }))
         .await;
     // PRD-mcphost-protocol-compat requirement 6: mcphost advertises the
-    // version it actually negotiates (`rmcp::model::ProtocolVersion::LATEST`),
-    // not the `2026-07-28` literal this assertion used to hardcode -- that
+    // version it actually negotiates (`mcphost::http::ADVERTISED_PROTOCOL_VERSION`,
+    // rmcp's `LATEST_WITH_INITIALIZE`), not the `2026-07-28` literal this assertion used to hardcode -- that
     // literal *was* defect B (see AC9/AC10 in compat_ac08_ac09_ac10_advertised_version.rs).
     assert_eq!(
         init_resp
             .headers()
             .get("MCP-Protocol-Version")
             .and_then(|v| v.to_str().ok()),
-        Some(ProtocolVersion::LATEST.as_str()),
+        Some(mcphost::http::ADVERTISED_PROTOCOL_VERSION.as_str()),
         "every response must carry MCP-Protocol-Version"
     );
     let init_body: Value = init_resp.json().await.expect("parse initialize");

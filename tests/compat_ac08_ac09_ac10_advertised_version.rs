@@ -2,9 +2,15 @@
 //! Then the response carries `MCP-Protocol-Version: 2025-11-25`, matching
 //! the `protocolVersion` in the `initialize` result body.
 //! AC9 — Given the source tree, When a test compares the advertised header
-//! value against `rmcp::model::ProtocolVersion::LATEST.as_str()`, Then
-//! they are equal, and no string literal `"2026-07-28"` remains as the
-//! advertised version in `src/http.rs`.
+//! value against `rmcp::model::ProtocolVersion::LATEST_WITH_INITIALIZE.as_str()`
+//! (the newest version below `STANDARD_HEADERS` that still has an `initialize`
+//! handshake), Then they are equal, the `initialize` result's
+//! `protocolVersion` is that same value (one constant,
+//! `mcphost::http::ADVERTISED_PROTOCOL_VERSION`, feeds the header and the
+//! result), and no string literal `"2026-07-28"` remains as the advertised
+//! version in `src/http.rs`. (Amended for rmcp 3.9: `ProtocolVersion::LATEST`
+//! moved to `STANDARD_HEADERS`, so it can no longer be the advertised value
+//! and still satisfy AC10; adopting 2026-07-28 is its own change.)
 //! AC10 — Given the advertised version, When a test compares it against
 //! `rmcp::model::ProtocolVersion::STANDARD_HEADERS.as_str()`, Then the
 //! advertised version is strictly lower, so SEP-2243 header validation is
@@ -60,7 +66,7 @@ async fn ac8_initialize_header_matches_negotiated_protocol_version() {
 }
 
 #[tokio::test]
-async fn ac9_advertised_version_equals_rmcp_latest_and_no_literal_remains() {
+async fn ac9_advertised_version_is_the_one_constant_and_no_literal_remains() {
     let server = TestServer::start().await;
     let http = reqwest::Client::new();
 
@@ -78,8 +84,13 @@ async fn ac9_advertised_version_equals_rmcp_latest_and_no_literal_remains() {
 
     assert_eq!(
         advertised,
-        ProtocolVersion::LATEST.as_str(),
-        "the advertised version must be derived from rmcp::model::ProtocolVersion::LATEST"
+        ProtocolVersion::LATEST_WITH_INITIALIZE.as_str(),
+        "the advertised version must be derived from rmcp::model::ProtocolVersion::LATEST_WITH_INITIALIZE"
+    );
+    assert_eq!(
+        mcphost::http::ADVERTISED_PROTOCOL_VERSION,
+        ProtocolVersion::LATEST_WITH_INITIALIZE,
+        "the one advertised-version constant is rmcp's LATEST_WITH_INITIALIZE"
     );
 
     // The other half of AC9: no `"2026-07-28"` string literal remains as

@@ -943,9 +943,8 @@ pub struct PersistentSandbox {
     stdout: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
     stderr_tail: Arc<Mutex<Vec<u8>>>,
     _stderr_task: tokio::task::JoinHandle<()>,
-    /// Cumulative CPU ms as of the last call (or spawn, for the first one) --
-    /// each [`PersistentSandbox::call`] reports only the delta since this,
-    /// since `RLIMIT_CPU`-style accounting is itself cumulative for the
+    /// Cumulative CPU ms as of the start of the current call -- each
+    /// [`PersistentSandbox::call`] reports only the delta since this, since `RLIMIT_CPU`-style accounting is itself cumulative for the
     /// process's whole life, not per call.
     baseline_cpu_ms: i64,
     /// The most workload processes [`count_sandbox_pids`] saw alive during
@@ -1083,6 +1082,10 @@ impl PersistentSandbox {
         timeout: Duration,
         bridge: &dyn SidecarBridge,
     ) -> std::io::Result<PersistentCallOutcome> {
+        // Baseline at the start of this call, so the sandbox's own startup
+        // CPU (interpreter boot, imports, time spent idle in the pool) is
+        // never billed to the first call's `cpu_ms`.
+        self.baseline_cpu_ms = sample_usage(self.pid).cpu_ms;
         if self.stdin.write_all(payload).await.is_err()
             || self.stdin.write_all(b"\n").await.is_err()
         {

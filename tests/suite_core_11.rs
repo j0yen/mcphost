@@ -574,6 +574,16 @@ mod nk401_ac04_oauth_paths_and_anonymous_keep_401;
 mod nk401_ac05_every_raise_site_has_a_reason_row;
 #[path = "nk401_ac06_request_log_records_wire_status.rs"]
 mod nk401_ac06_request_log_records_wire_status;
+#[path = "nmove_ac01_candidates_and_next_call.rs"]
+mod nmove_ac01_candidates_and_next_call;
+#[path = "nmove_ac02_fresh_tenant_names_publish.rs"]
+mod nmove_ac02_fresh_tenant_names_publish;
+#[path = "nmove_ac03_verbs_and_shares_are_named.rs"]
+mod nmove_ac03_verbs_and_shares_are_named;
+#[path = "nmove_ac04_one_builder_five_sites.rs"]
+mod nmove_ac04_one_builder_five_sites;
+#[path = "nmove_ac06_tenant_key_invalid_names_handoff.rs"]
+mod nmove_ac06_tenant_key_invalid_names_handoff;
 #[path = "ntfy_ac03_webhook_send_receipt.rs"]
 mod ntfy_ac03_webhook_send_receipt;
 #[path = "ntfy_ac04_email_channel_owner_only.rs"]
@@ -752,6 +762,28 @@ mod orgmb_ac01_owner_removes_member;
 mod orgmb_ac02_concurrent_create_one_winner;
 #[path = "orgmb_ac03_llms_txt_and_quickstart_name_org_verbs.rs"]
 mod orgmb_ac03_llms_txt_and_quickstart_name_org_verbs;
+#[path = "orgs_ac01_org_tool_runs_under_owner_caller_recorded.rs"]
+mod orgs_ac01_org_tool_runs_under_owner_caller_recorded;
+#[path = "orgs_ac03_member_tools_list_holds_org_names.rs"]
+mod orgs_ac03_member_tools_list_holds_org_names;
+#[path = "orgs_ac04_share_as_org_outside_any_org_needs_an_org.rs"]
+mod orgs_ac04_share_as_org_outside_any_org_needs_an_org;
+#[path = "orgs_ac05_removed_member_loses_org_tools_at_once.rs"]
+mod orgs_ac05_removed_member_loses_org_tools_at_once;
+#[path = "orgs_ac06_org_share_counts_against_shared_tools_max.rs"]
+mod orgs_ac06_org_share_counts_against_shared_tools_max;
+#[path = "orgs_ac07_org_tool_name_taken.rs"]
+mod orgs_ac07_org_tool_name_taken;
+#[path = "orgx_ac01_one_bundle_holds_every_members_own_archive.rs"]
+mod orgx_ac01_one_bundle_holds_every_members_own_archive;
+#[path = "orgx_ac03_member_gets_not_owner_and_nothing_is_written.rs"]
+mod orgx_ac03_member_gets_not_owner_and_nothing_is_written;
+#[path = "orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key.rs"]
+mod orgx_ac04_offboard_needs_the_org_name_and_darkens_every_key;
+#[path = "orgx_ac06_exported_tools_republish_to_the_same_hashes.rs"]
+mod orgx_ac06_exported_tools_republish_to_the_same_hashes;
+#[path = "orgx_ac07_duplicate_org_export_answers_like_host_export.rs"]
+mod orgx_ac07_duplicate_org_export_answers_like_host_export;
 #[path = "oschv_ac01_opaque_pointers_resolve.rs"]
 mod oschv_ac01_opaque_pointers_resolve;
 #[path = "oschv_ac02_chain_step_array_result_validates.rs"]
@@ -998,33 +1030,3 @@ mod qdiag_ac07_description_annotation_offers_candidate;
 mod qdiag_ac08_footprint_columns_est_tokens;
 #[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
 mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
-#[path = "qsbc_ac01_detection_keys_on_known_names.rs"]
-mod qsbc_ac01_detection_keys_on_known_names;
-#[path = "qsbc_ac02_quickstart_client_cursor.rs"]
-mod qsbc_ac02_quickstart_client_cursor;
-#[path = "qsbc_ac03_quickstart_client_user_agent.rs"]
-mod qsbc_ac03_quickstart_client_user_agent;
-#[path = "qsbc_ac04_quickstart_client_unknown.rs"]
-mod qsbc_ac04_quickstart_client_unknown;
-#[path = "qsbc_ac05_quickstart_client_chatgpt.rs"]
-mod qsbc_ac05_quickstart_client_chatgpt;
-#[path = "qsbc_ac06_connect_go_json_matches_quickstart.rs"]
-mod qsbc_ac06_connect_go_json_matches_quickstart;
-#[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
-mod qsbc_ac07_quickstart_writes_client_name;
-#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
-mod refrow_ac01_args_invalid_writes_refused_row;
-#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
-mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
-#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
-mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
-#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
-mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
-#[path = "refrow_ac05_host_usage_reports_refused.rs"]
-mod refrow_ac05_host_usage_reports_refused;
-#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
-mod refrow_ac06_unwritable_db_refusal_still_returned;
-#[path = "refst_ac01_unimplemented_method_status_by_revision.rs"]
-mod refst_ac01_unimplemented_method_status_by_revision;
-#[path = "refst_ac03_refusal_status_rule_and_batch.rs"]
-mod refst_ac03_refusal_status_rule_and_batch;

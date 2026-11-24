@@ -11,6 +11,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use crate::common::{McpClient, TestServer, signup};
@@ -182,6 +183,15 @@ fn is_create_kind(canonical: &str) -> bool {
         .any(|v| v.name == canonical && matches!(v.kind, Kind::Write | Kind::Publish) && matches!(v.dry_run, DryRun::Supported))
 }
 
+/// The org-create verb's `name` has a charset its schema states only in prose, so
+/// no schema-derived placeholder is valid: give it a unique valid org name.
+fn org_name(canonical: &str, args: &mut Value) {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    if canonical == mcphost::org::CREATE_TOOL && args.get("name").is_some() {
+        args["name"] = json!(format!("osreach-org-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
+    }
+}
+
 fn fill(args: &mut Value, harvested: &BTreeMap<String, Value>) {
     if let Some(obj) = args.as_object_mut() {
         for (k, v) in obj.iter_mut() {
@@ -296,11 +306,12 @@ pub async fn run_sweep() -> Sweep {
     let creators: Vec<&Served> = served.iter().filter(|s| is_create_kind(&canonical_of(&s.name))).collect();
     // A populated tenant shared by every read-only name: each create-kind verb
     // called once, ids passed on by argument name.
-    let (shared, shared_ids) = populate(&server, &creators).await;
+    let (shared, shared_ids) = populate(&server, &creators, &served).await;
     for s in &served {
         let canonical = canonical_of(&s.name);
         let mut row = ToolRow::default();
-        let args = crate::vbd_calls::call_for(s.input.as_object().unwrap_or(&Map::new()));
+        let mut args = crate::vbd_calls::call_for(s.input.as_object().unwrap_or(&Map::new()));
+        org_name(&canonical, &mut args);
         // state 1: fresh tenant
         let client = fresh_client(&server).await;
         record(&mut row, s, STATE_FRESH, call(&client, &s.name, args.clone()).await);
@@ -315,7 +326,7 @@ pub async fn run_sweep() -> Sweep {
         let mut a = args.clone();
         let destructive = mcphost::write_verbs::lookup(&canonical).is_some() || canonical.starts_with("host.tenant");
         if destructive {
-            let (client, ids) = populate(&server, &creators).await;
+            let (client, ids) = populate(&server, &creators, &served).await;
             fill(&mut a, &ids);
             record(&mut row, s, STATE_AFTER_CREATE, call(&client, &s.name, a).await);
         } else {
@@ -327,12 +338,20 @@ pub async fn run_sweep() -> Sweep {
     sweep
 }
 
-async fn populate(server: &TestServer, creators: &[&Served]) -> (McpClient, BTreeMap<String, Value>) {
+async fn populate(server: &TestServer, creators: &[&Served], served: &[Served]) -> (McpClient, BTreeMap<String, Value>) {
     let client = fresh_client(server).await;
     let mut ids = BTreeMap::new();
     for s in creators {
         let mut a = crate::vbd_calls::call_for(s.input.as_object().unwrap_or(&Map::new()));
         fill(&mut a, &ids);
+        if let Outcome::Success(structured) = call(&client, &s.name, a).await {
+            harvest(&structured, &mut ids);
+        }
+    }
+    // The tenant also owns an org, so the org verbs have an org to act on.
+    if let Some(s) = served.iter().find(|s| canonical_of(&s.name) == mcphost::org::CREATE_TOOL) {
+        let mut a = crate::vbd_calls::call_for(s.input.as_object().unwrap_or(&Map::new()));
+        org_name(mcphost::org::CREATE_TOOL, &mut a);
         if let Outcome::Success(structured) = call(&client, &s.name, a).await {
             harvest(&structured, &mut ids);
         }

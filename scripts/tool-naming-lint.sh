@@ -21,8 +21,7 @@
 #   scripts/tool-naming-lint.sh [root]
 #     root defaults to "." -- overridable so a test can point this at a
 #     small fixture tree (`<root>/src/**/*.rs`) without touching the real
-#     repo, the same convention scripts/spec-fields-doc-check.sh's own
-#     `[repo-root]` argument uses.
+#     repo.
 set -uo pipefail
 ROOT="${1:-.}"
 

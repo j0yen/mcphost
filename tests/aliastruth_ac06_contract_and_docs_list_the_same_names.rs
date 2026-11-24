@@ -1,6 +1,6 @@
-//! contract: reads scripts/sandbox-api-doc-check.sh
+//! contract: reads scripts/generated-docs-check.sh
 //! PRD-mcphost-tools-list-alias-truth
-//! AC6 — Given the registry changes, When `sandbox-api-doc-check.sh --write`
+//! AC6 — Given the registry changes, When `generated-docs-check.sh --write`
 //! runs, Then `api_contract` and docs list the same names as tools/list.
 
 use crate::common;
@@ -28,11 +28,11 @@ async fn contract_and_docs_name_exactly_what_tools_list_advertises() {
     // is seen half-finished by every concurrently running docs test.
     let scratch = common::doc_check_scratch("aliastruth-ac06");
     let status = Command::new("bash")
-        .arg(scratch.join("scripts/sandbox-api-doc-check.sh"))
+        .arg(scratch.join("scripts/generated-docs-check.sh"))
         .arg("--write")
         .status()
-        .expect("run sandbox-api-doc-check.sh --write");
-    assert!(status.success(), "sandbox-api-doc-check.sh --write failed: {status}");
+        .expect("run generated-docs-check.sh --write");
+    assert!(status.success(), "generated-docs-check.sh --write failed: {status}");
     for rel in ["docs/kinds/python.md", "www/llms.txt", "plugin/skills/mcphost/SKILL.md", "docs/host-tools.md"] {
         assert_eq!(
             std::fs::read_to_string(scratch.join(rel)).expect("read regenerated"),

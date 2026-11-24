@@ -84,29 +84,40 @@ fn the_prediction_matches_an_independent_sum_of_the_weights() {
     );
 }
 
-/// `check` with the first core suite weighted `weight` (scratch weights file).
-fn check_with_first_core_weight(tag: &str, weight: u32) -> Output {
+/// `check` with the first core suite weighted `weight` (scratch weights file); with
+/// `others`, every other core suite is weighted (and, in a scratch measured file, measured)
+/// that instead of its recorded seconds, so the stale-weight guard reads the same numbers.
+fn check_with_first_core_weight(tag: &str, weight: u32, others: Option<u32>) -> Output {
     let dir = std::env::temp_dir().join(format!("cishard-core-ac06-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let text = std::fs::read_to_string(root().join("scripts/ci-suite-weights.json")).unwrap();
     let mut w: serde_json::Value = serde_json::from_str(&text).unwrap();
-    let first = out(&["list", "core"]).lines().next().unwrap().to_string();
+    let core = out(&["list", "core"]);
+    let first = core.lines().next().unwrap().to_string();
+    let mut cmd = Command::new(root().join("scripts/ci-test-partition.sh"));
+    if let Some(o) = others {
+        let text = std::fs::read_to_string(root().join("scripts/ci-suite-measured.json")).unwrap();
+        let mut m: serde_json::Value = serde_json::from_str(&text).unwrap();
+        for name in core.lines() {
+            w[name] = serde_json::json!(o);
+            m[name] = serde_json::json!(o);
+        }
+        m[first.as_str()] = serde_json::json!(weight);
+        let measured = dir.join("measured.json");
+        std::fs::write(&measured, m.to_string()).unwrap();
+        cmd.env("CI_SUITE_MEASURED_FILE", &measured);
+    }
     w[first.as_str()] = serde_json::json!(weight);
     let file = dir.join("weights.json");
     std::fs::write(&file, w.to_string()).unwrap();
-    let o = Command::new(root().join("scripts/ci-test-partition.sh"))
-        .arg("check")
-        .env("CI_SUITE_WEIGHTS_FILE", &file)
-        .current_dir(root())
-        .output()
-        .unwrap();
+    let o = cmd.arg("check").env("CI_SUITE_WEIGHTS_FILE", &file).current_dir(root()).output().unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     o
 }
 
 #[test]
 fn a_weight_over_the_limit_fails_check_naming_the_figure() {
-    let o = check_with_first_core_weight("999", 999);
+    let o = check_with_first_core_weight("999", 999, None);
     assert!(!o.status.success());
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains("predicted heaviest core shard is 999s"), "{err}");
@@ -119,7 +130,10 @@ fn a_prediction_between_the_warn_and_fail_lines_warns_and_passes() {
     let (warn, fail) = (limit("CORE_WARN_AT"), limit("CORE_FAIL_ABOVE"));
     let w = warn as u32 + 1;
     assert!((w as f64) < fail, "{w} must sit between {warn} and {fail}");
-    let o = check_with_first_core_weight("midband", w);
+    // The other core suites weigh 1 s here: at their recorded seconds (real CI maxima that move with every
+    // refresh) a 721 s suite packed to 898 s on 6f9485aa's weights and 901 s on the window refresh of runs
+    // 45034667949 + 45038989292, so the case failed on the data, never on the warn band it pins.
+    let o = check_with_first_core_weight("midband", w, Some(1));
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(o.status.success(), "a {w} s prediction must pass: {err}");
     // The packer may place another core suite in the same shard, so the figure is
@@ -140,7 +154,7 @@ fn a_prediction_between_the_warn_and_fail_lines_warns_and_passes() {
 fn a_prediction_above_the_fail_line_fails() {
     // Ten seconds over the fail line from `limits core`, never a restated number.
     let w = limit("CORE_FAIL_ABOVE") as u32 + 10;
-    let o = check_with_first_core_weight("overfail", w);
+    let o = check_with_first_core_weight("overfail", w, None);
     assert!(!o.status.success(), "a {w} s prediction must fail");
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains(&format!("predicted heaviest core shard is {w}s")), "{err}");

@@ -64,6 +64,11 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 | `tool_building` | the tool's dependencies are still building |
 | `tool_not_found` | a named tool does not exist for this tenant |
 | `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+| `step_tool_not_allowed` | a step names a `host.*` verb that is not on `host_steps_allowed` |
+| `step_tool_not_found` | a step names a tool that does not exist for this tenant |
+| `fixture_shape_mismatch` | a dry-run fixture is not one of its step's declared outputs |
+| `fixture_step_ambiguous` | a dry-run fixture is keyed by a tool that several steps use |
+| `fixture_step_unknown` | a dry-run fixture is keyed by a step the chain does not have |
 <!-- kind-errors:end -->
 
 ## Canonical example
@@ -104,6 +109,7 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 |---|---|
 | family `compose` | compose_self_call, compose_depth_exceeded, compose_children_exceeded, compose_item_outside_for_each, compose_mapping_type, compose_mapping_missing, compose_fanout_exceeded, compose_fanout_item_failed, compose_input_missing |
 | family `tool_state` | tool_building, tool_not_found, tool_run_unsupported |
+| family `chain_spec` | step_tool_not_allowed, step_tool_not_found, fixture_shape_mismatch, fixture_step_ambiguous, fixture_step_unknown |
 | source_line | field `failed_step` |
 | bridges | none |
 | secret redaction | no |

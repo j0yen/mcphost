@@ -73,7 +73,10 @@ impl ErrorCtx {
     /// no call-site help.
     pub fn from_error(err: &AppError) -> Self {
         let mut ctx = Self::default();
-        if let AppError::ToolNotFound(name) | AppError::ToolNotFoundOnImplicitTenant { name, .. } = err {
+        if let AppError::ToolNotFound(name)
+        | AppError::ToolNotFoundOnImplicitTenant { name, .. }
+        | AppError::ToolNotFoundNear { name, .. } = err
+        {
             ctx.tool = Some(name.clone());
         }
         if let AppError::UnknownKind { registered, .. } = err {
@@ -200,12 +203,16 @@ impl AppError {
         match self {
             AppError::Unauthorized
             | AppError::TenantKeyMissing(_)
-            | AppError::TenantKeyInvalid
             | AppError::TenantNotFound(_)
             | AppError::InvalidParams(_)
             | AppError::InvalidToolName(_)
             | AppError::SpecTooLarge(_)
             | AppError::RegistryDisabled => quickstart(ctx),
+            // PRD-mcphost-refusals-name-the-nearest-move R4: a key matching no
+            // tenant is answered with the handoff path, not the generic quickstart.
+            AppError::TenantKeyInvalid | AppError::TenantKeyIsHandoffToken => {
+                NextCall::new("signup", json!({"handoff": true}))
+            }
             AppError::UnknownKind { registered, .. } => {
                 let first = ctx.kind.clone().or_else(|| registered.first().map(|k| k.to_string()));
                 quickstart(&ErrorCtx { kind: first, ..ctx.clone() })
@@ -222,7 +229,10 @@ impl AppError {
             | AppError::InsufficientScope
             | AppError::AuthConflict => NextCall::new("host.whoami", json!({})),
             AppError::RateLimited => NextCall::wait("host.whoami", ctx.retry_after_s.unwrap_or(5)),
-            AppError::ToolNotFound(_) | AppError::ToolNotFoundOnImplicitTenant { .. } | AppError::TooManyTools(_) => {
+            AppError::ToolNotFound(_)
+            | AppError::ToolNotFoundOnImplicitTenant { .. }
+            | AppError::ToolNotFoundNear { .. }
+            | AppError::TooManyTools(_) => {
                 NextCall::new("host.tool.list", json!({}))
             }
             AppError::InvalidSpec(_) | AppError::CallTimeout(_) | AppError::RegistryRejected(_) => {

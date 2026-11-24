@@ -20,6 +20,8 @@ mod dryspt_ac05_sweep;
 mod emsnd_ac07_send_status_and_bridge_module_cannot_drift;
 #[path = "kdr_ac01_kind_doc_from_data.rs"]
 mod kdr_ac01_kind_doc_from_data;
+#[path = "kdrb_ac01_sandbox_api_block_from_registry.rs"]
+mod kdrb_ac01_sandbox_api_block_from_registry;
 #[path = "kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs"]
 mod kindroute_ac05_startup_aliases_and_recipe_tools_are_registered;
 #[path = "lanecov_ac04_existing_lanes_unchanged.rs"]

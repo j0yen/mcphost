@@ -32,7 +32,7 @@ use std::path::Path;
 
 use crate::help;
 use crate::kinds::KindRegistry;
-use crate::kinds::kinddoc::KindDoc;
+use crate::kinds::kinddoc::{BridgeDoc, KindDoc};
 use crate::plans::{Plan, PlanCatalog};
 use crate::tool_aliases;
 
@@ -1131,25 +1131,74 @@ impl std::fmt::Display for StaleBlock {
     }
 }
 
+/// The marker pair around the sandbox-API module list in every file that
+/// carries it.
+pub const SANDBOX_API_START: &str = "<!-- mcphost-sandbox-api:start -->";
+pub const SANDBOX_API_END: &str = "<!-- mcphost-sandbox-api:end -->";
+
+/// The block's name in a [`StaleBlock`].
+pub const SANDBOX_API_BLOCK: &str = "mcphost-sandbox-api";
+
+/// The files that carry the sandbox-API block, relative to the repo root.
+pub const SANDBOX_API_TARGETS: [&str; 4] =
+    ["docs/kinds/python.md", "docs/kinds/js.md", "www/llms.txt", "plugin/skills/mcphost/SKILL.md"];
+
+/// PRD-mcphost-kind-docs-from-registry-b-v2 R2: the sandbox-API block
+/// (markers included, no trailing newline) rendered from the python kind's
+/// `KindDoc.bridge_modules`: one intro line, then a bullet per module.
+pub fn render_sandbox_api_block(modules: &[BridgeDoc]) -> String {
+    let mut out = format!(
+        "{SANDBOX_API_START}\nA python tool's own code does `import mcphost` to reach this tenant's data without a second tool call:\n\n"
+    );
+    for m in modules {
+        out.push_str(&format!("- `mcphost.{}` -- {}\n", m.name, m.purpose));
+    }
+    out.push_str(SANDBOX_API_END);
+    out
+}
+
+/// `text` with its single `start`..`end` region (markers included) set to
+/// `rendered`; `Err` names what is wrong when the pair is not exactly one.
+fn splice_sandbox_api(text: &str, rendered: &str) -> Result<String, String> {
+    let (n_start, n_end) = (text.matches(SANDBOX_API_START).count(), text.matches(SANDBOX_API_END).count());
+    if n_start != 1 || n_end != 1 {
+        return Err(format!(
+            "must have exactly one {SANDBOX_API_START} / {SANDBOX_API_END} pair (found start={n_start} end={n_end})"
+        ));
+    }
+    let s = text.find(SANDBOX_API_START).unwrap_or_default();
+    let e = text.find(SANDBOX_API_END).unwrap_or_default() + SANDBOX_API_END.len();
+    if e <= s {
+        return Err("the end marker precedes the start marker".to_string());
+    }
+    Ok(format!("{}{rendered}{}", &text[..s], &text[e..]))
+}
+
 /// Renders every registered kind's generated blocks into
-/// `<root>/docs/kinds/<kind>.md`. Under `write` the pages are rewritten;
-/// either way the stale blocks (as found, before any write) are returned.
+/// `<root>/docs/kinds/<kind>.md`, and the sandbox-API block into its four
+/// files. Under `write` the files are rewritten; either way the stale
+/// blocks (as found, before any write) are returned.
 pub fn run_kinds(
     root: &Path,
     kinds: &KindRegistry,
     plans: &PlanCatalog,
     write: bool,
 ) -> std::io::Result<Vec<StaleBlock>> {
+    let docs: Vec<KindDoc> = kinds.names().into_iter().filter_map(|n| kinds.get(n)).map(|k| k.doc(plans)).collect();
+    run_kind_docs(root, &docs, write)
+}
+
+/// [`run_kinds`] over already-assembled docs, so a caller can hand it a
+/// `KindDoc` that differs from the registry's (a test's fixture module).
+pub fn run_kind_docs(root: &Path, docs: &[KindDoc], write: bool) -> std::io::Result<Vec<StaleBlock>> {
     let mut stale = Vec::new();
-    for name in kinds.names() {
-        let Some(kind) = kinds.get(name) else { continue };
-        let doc = kind.doc(plans);
-        let page_rel = format!("{KIND_PAGES_DIR}/{name}.md");
+    for doc in docs {
+        let page_rel = format!("{KIND_PAGES_DIR}/{}.md", doc.name);
         let path = root.join(&page_rel);
         let current = std::fs::read_to_string(&path).unwrap_or_default();
         let mut next = current.clone();
         for block in KIND_BLOCKS {
-            let body = render_kind_block(&doc, block);
+            let body = render_kind_block(doc, block);
             let spliced = splice_kind_block(&next, block, &body);
             if spliced != next {
                 stale.push(StaleBlock { page: page_rel.clone(), block });
@@ -1158,6 +1207,31 @@ pub fn run_kinds(
         }
         if write && next != current {
             std::fs::write(&path, next)?;
+        }
+    }
+    if let Some(modules) = docs.iter().find(|d| d.name == "python").and_then(|d| d.bridge_modules.as_deref()) {
+        let rendered = render_sandbox_api_block(modules);
+        for rel in SANDBOX_API_TARGETS {
+            let path = root.join(rel);
+            let outcome = std::fs::read_to_string(&path)
+                .map_err(|e| format!("{rel}: cannot read the {SANDBOX_API_BLOCK} block's file: {e}"))
+                .and_then(|current| {
+                    splice_sandbox_api(&current, &rendered)
+                        .map(|next| (current, next))
+                        .map_err(|why| format!("{rel}: {SANDBOX_API_BLOCK} {why}"))
+                });
+            match outcome {
+                Ok((current, next)) if next != current => {
+                    stale.push(StaleBlock { page: rel.to_string(), block: SANDBOX_API_BLOCK });
+                    if write {
+                        std::fs::write(&path, next)?;
+                    }
+                }
+                Ok(_) => {}
+                Err(why) if write => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, why)),
+                // check mode: a missing file or a broken marker pair is drift too.
+                Err(_) => stale.push(StaleBlock { page: rel.to_string(), block: SANDBOX_API_BLOCK }),
+            }
         }
     }
     Ok(stale)
@@ -1224,6 +1298,53 @@ pub fn check_kind_page_set(root: &Path, kinds: &KindRegistry) -> Result<(), Vec<
     for page in &pages {
         if !names.contains(&page.as_str()) {
             problems.push(format!("page {KIND_PAGES_DIR}/{page}.md names no registered kind `{page}`"));
+        }
+    }
+    if problems.is_empty() { Ok(()) } else { Err(problems) }
+}
+
+/// The error-code rows one kind source defines (the form `ERROR_CODES` rows
+/// are declared in), in source order. The scanned prefix is built from two
+/// halves so this file does not spell it for the registry scan.
+fn code_rows(source: &str) -> Vec<String> {
+    let prefix = concat!("co", "de:");
+    let mut rows = Vec::new();
+    let mut from = 0;
+    while let Some(i) = source[from..].find(prefix) {
+        let at = from + i + prefix.len();
+        from = at;
+        if let Some(lit) = source[at..].trim_start().strip_prefix('"')
+            && let Some(end) = lit.find('"')
+        {
+            rows.push(lit[..end].to_string());
+        }
+    }
+    rows
+}
+
+/// PRD-mcphost-kind-docs-from-registry-b-v2 R1: every code a kind's own
+/// source (`<root>/src/kinds/<kind>.rs`) defines is in that kind's
+/// `KindDoc.error_codes` or in `KIND_PAGE_EXEMPT`. Every violation is
+/// returned, naming the code and the kind.
+pub fn check_kind_error_codes(root: &Path, docs: &[KindDoc]) -> Result<(), Vec<String>> {
+    let mut problems = Vec::new();
+    for doc in docs {
+        let rel = format!("src/kinds/{}.rs", doc.name);
+        let Ok(source) = std::fs::read_to_string(root.join(&rel)) else {
+            problems.push(format!("kind {}: cannot read {rel}", doc.name));
+            continue;
+        };
+        for code in code_rows(&source) {
+            let on_page = doc.error_codes.iter().any(|e| e.code == code);
+            let exempt = crate::kinds::contract::KIND_PAGE_EXEMPT
+                .iter()
+                .any(|(kind, c, reason)| *kind == doc.name && *c == code && !reason.is_empty());
+            if !on_page && !exempt {
+                problems.push(format!(
+                    "kind {}: code {code} ({rel}) is neither in KindDoc.error_codes nor in KIND_PAGE_EXEMPT",
+                    doc.name
+                ));
+            }
         }
     }
     if problems.is_empty() { Ok(()) } else { Err(problems) }

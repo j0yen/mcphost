@@ -15,9 +15,13 @@ mod ctrace;
 mod oauth;
 #[path = "support/rgpt.rs"]
 mod rgpt;
+#[path = "support/spsr.rs"]
+mod spsr;
 #[path = "support/whin.rs"]
 mod whin;
 
+#[path = "qdiag_ac09_python_bridge_query_stats.rs"]
+mod qdiag_ac09_python_bridge_query_stats;
 #[path = "retshape_ac03_list_access_is_a_named_will_fail.rs"]
 mod retshape_ac03_list_access_is_a_named_will_fail;
 #[path = "retshape_ac04_envelope_behaves_as_plain_dict.rs"]
@@ -36,6 +40,8 @@ mod rgpt_team_memory_golden_path;
 mod rgpt_webhook_inbox_golden_path;
 #[path = "rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"]
 mod rowpol_ac12_python_bridge_threads_end_user_through_table_query;
+#[path = "rszb_ac04_wall_refuses_and_unpaged_stays_whole.rs"]
+mod rszb_ac04_wall_refuses_and_unpaged_stays_whole;
 #[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
 mod runenvelope_ac1_call_and_tool_run_parity;
 #[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
@@ -102,6 +108,10 @@ mod sblibs_ac05_import_hints_name_preinstalled_libs;
 mod sblibs_ac06_requirements_beyond_base_build_own_env;
 #[path = "sblibs_ac07_probe_tool_via_spec_test.rs"]
 mod sblibs_ac07_probe_tool_via_spec_test;
+#[path = "spsr_ac01_wedged_flight_killed_through_its_slot.rs"]
+mod spsr_ac01_wedged_flight_killed_through_its_slot;
+#[path = "spsr_ac06_draining_pool_holds_new_calls.rs"]
+mod spsr_ac06_draining_pool_holds_new_calls;
 #[path = "srlp_ac03_publish_over_plan_refused.rs"]
 mod srlp_ac03_publish_over_plan_refused;
 #[path = "srlp_ac04_free_pids_ceiling_and_peak.rs"]
@@ -194,6 +204,8 @@ mod tooltest_ac13_publish_error_parity;
 mod tooltest_ac1_python_two_invocations;
 #[path = "tooltest_ac2_python_exception_other_still_runs.rs"]
 mod tooltest_ac2_python_exception_other_still_runs;
+#[path = "tsql_ac07_python_exec.rs"]
+mod tsql_ac07_python_exec;
 #[path = "tsvr_ac03_python_bridge_carries_payload.rs"]
 mod tsvr_ac03_python_bridge_carries_payload;
 #[path = "umeta_ac07_tool_test_and_run_carry_no_usage.rs"]

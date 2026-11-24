@@ -71,7 +71,6 @@ const SHALLOW: &[&str] = &[
     "call:host.key.mint",
     "call:host.msg.send",
     "call:host.note.delete",
-    "call:host.org.create",
     "call:host.policy.set",
     "call:host.share.caller_limit",
     "call:host.state.table_create",

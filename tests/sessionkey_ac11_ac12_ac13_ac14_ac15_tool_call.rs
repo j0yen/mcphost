@@ -116,7 +116,7 @@ async fn tool_call_rejects_invalid_args_like_the_direct_path() {
 #[tokio::test]
 async fn tool_call_on_another_tenants_name_is_not_found_without_a_leak() {
     let server = TestServer::start().await;
-    let (_ns_b, key_b) = signup(&server.base_url, "Tenant B").await;
+    let (ns_b, key_b) = signup(&server.base_url, "Tenant B").await;
     let client_b = McpClient::with_bearer(&server.base_url, &key_b);
     client_b
         .tools_call(
@@ -134,8 +134,14 @@ async fn tool_call_on_another_tenants_name_is_not_found_without_a_leak() {
         .expect_err("A never published hello");
     assert_eq!(err.error_code.as_deref(), Some("tool_not_found"));
     let dump = format!("{err:?}");
+    // PRD-mcphost-refusals-name-the-nearest-move revises the old bare
+    // "published" substring check: `tools_published` (the caller's OWN count)
+    // is now a data key, so the check names what must stay out -- the other
+    // tenant, its namespace, and any statement that someone published this name.
     assert!(
-        !dump.contains("Tenant B") && !dump.to_lowercase().contains("published"),
+        !dump.contains("Tenant B") && !dump.contains(&ns_b) && !dump.to_lowercase().contains("published by"),
         "the error must not reveal that another tenant published this name: {dump}"
     );
+    assert_eq!(err.data["tools_published"], 0, "the count is the caller's own, not B's: {dump}");
+    assert_eq!(err.data["did_you_mean"], json!([]), "B's hello is not a candidate for A: {dump}");
 }
