@@ -8,8 +8,8 @@
 use crate::common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 
-/// Queue an async run for the tenant behind `key`; the bare test server runs
-/// no executor, so it stays open. Returns `(tenant_id, run_id)`.
+/// Queue an async run for the tenant behind `key`; the server is started
+/// with `start_without_executor`, so it stays open. Returns `(tenant_id, run_id)`.
 async fn open_run(server: &TestServer, key: &str) -> (i64, String) {
     let tenant = server
         .state
@@ -33,7 +33,7 @@ async fn open_run(server: &TestServer, key: &str) -> (i64, String) {
 
 #[tokio::test]
 async fn kbind_ac02_run_bound_key_works_with_its_run_id_and_is_refused_without() {
-    let server = TestServer::start().await;
+    let server = TestServer::start_without_executor().await;
     let (_ns, key) = signup(&server.base_url, "Kbind Run Tenant").await;
     let primary = McpClient::with_bearer(&server.base_url, &key);
     let (tenant_id, run_id) = open_run(&server, &key).await;
