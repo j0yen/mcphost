@@ -199,31 +199,79 @@ pub fn outsch_capture(wire_name: &str, result: &Value) {
     }
 }
 
-/// Rows per tool: the committed corpus (`tests/fixtures/outsch/`, captured
-/// from this suite) plus whatever this run's harness already recorded under
-/// `target/outsch/`.
-pub fn outsch_rows() -> std::collections::BTreeMap<String, Vec<Value>> {
-    let mut out: std::collections::BTreeMap<String, Vec<Value>> = std::collections::BTreeMap::new();
-    for dir in ["tests/fixtures/outsch", "target/outsch"] {
-        let Ok(entries) = std::fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join(dir)) else { continue };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Some(tool) = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .and_then(|n| n.strip_suffix(".jsonl"))
-            else {
-                continue;
-            };
-            let text = std::fs::read_to_string(&path).expect("read rows");
-            for line in text.lines().filter(|l| !l.trim().is_empty()) {
-                out.entry(tool.to_string())
-                    .or_default()
-                    .push(serde_json::from_str(line).unwrap_or_else(|e| panic!("{}: {e}", path.display())));
-            }
+/// The committed corpus: `<repo>/tests/fixtures/outsch` (captured from this
+/// suite by [`outsch_capture`]).
+pub fn outsch_fixture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/outsch")
+}
+
+/// The rows this checkout's harness recorded: `<repo>/target/outsch`.
+pub fn outsch_capture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("target/outsch")
+}
+
+/// Appends the rows of every `*.jsonl` file in `dir` to `out`, keyed by the
+/// file stem. A missing `dir` adds nothing.
+fn read_outsch_dir(dir: &Path, out: &mut std::collections::BTreeMap<String, Vec<Value>>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(tool) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".jsonl")) else {
+            continue;
+        };
+        let text = std::fs::read_to_string(&path).expect("read rows");
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            out.entry(tool.to_string())
+                .or_default()
+                .push(serde_json::from_str(line).unwrap_or_else(|e| panic!("{}: {e}", path.display())));
         }
     }
+}
+
+/// Rows per tool from the committed corpus in `fixture_dir` alone. A test that
+/// counts or ratios rows reads this, so its verdict is the same in every CI
+/// shard and locally, whatever `target/outsch` holds.
+pub fn outsch_committed_rows_in(fixture_dir: &Path) -> std::collections::BTreeMap<String, Vec<Value>> {
+    let mut out = std::collections::BTreeMap::new();
+    read_outsch_dir(fixture_dir, &mut out);
     out
+}
+
+/// [`outsch_committed_rows_in`] over [`outsch_fixture_dir`].
+pub fn outsch_committed_rows() -> std::collections::BTreeMap<String, Vec<Value>> {
+    outsch_committed_rows_in(&outsch_fixture_dir())
+}
+
+/// Rows per tool: the committed corpus in `fixture_dir` plus whatever the
+/// harness recorded in `capture_dir`. For checking rows against their schema
+/// only: a count taken from it depends on which suites ran before it.
+pub fn outsch_rows_in(fixture_dir: &Path, capture_dir: &Path) -> std::collections::BTreeMap<String, Vec<Value>> {
+    let mut out = std::collections::BTreeMap::new();
+    read_outsch_dir(fixture_dir, &mut out);
+    read_outsch_dir(capture_dir, &mut out);
+    out
+}
+
+/// Rows per tool: the committed corpus (`tests/fixtures/outsch/`, captured
+/// from this suite) plus whatever this run's harness already recorded under
+/// `target/outsch/`. Validation only (see [`outsch_rows_in`]).
+pub fn outsch_rows() -> std::collections::BTreeMap<String, Vec<Value>> {
+    outsch_rows_in(&outsch_fixture_dir(), &outsch_capture_dir())
+}
+
+/// The coverage verdict of the output-schema corpus
+/// (PRD-mcphost-contract-output-schemas): `Ok(summary)` when `rows` cover at
+/// least 80 % of `tools` (`covered * 10 >= registered * 8`). Both texts start
+/// with `covered/registered` and name every uncovered tool, sorted, so a
+/// truncated CI excerpt still shows the counts and the first names.
+pub fn outsch_coverage_report(tools: &[&str], rows: &std::collections::BTreeMap<String, Vec<Value>>) -> Result<String, String> {
+    let mut uncovered: Vec<&str> = tools.iter().copied().filter(|t| rows.get(*t).is_none_or(Vec::is_empty)).collect();
+    uncovered.sort_unstable();
+    let registered = tools.len();
+    let covered = registered - uncovered.len();
+    let needed = (registered * 8).div_ceil(10);
+    let text = format!("{covered}/{registered} registered tools covered by committed fixtures (need {needed}); uncovered: {uncovered:?}");
+    if covered * 10 >= registered * 8 { Ok(text) } else { Err(format!("{text}; under 80 %")) }
 }
 
 pub const ADMIN_KEY: &str = "test-admin-key-not-for-production";

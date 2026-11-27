@@ -1,0 +1,2 @@
+{"members":[{"calls":0,"errors":0,"est_cost_usd":null,"namespace":"t_d2ee0146","removed":false,"role":"owner","seconds":0,"state_bytes":225}],"org":"osreach-org-0","tools":[],"totals":{"calls":0,"errors":0,"est_cost_usd":null,"seconds":0,"state_bytes":225},"window":"7d"}
+{"members":[{"calls":0,"errors":0,"est_cost_usd":null,"namespace":"t_072a45f8","removed":false,"role":"member","seconds":0,"state_bytes":0}],"org":"acme","totals":{"calls":4,"errors":0,"est_cost_usd":null,"seconds":0,"state_bytes":0},"window":"24h"}

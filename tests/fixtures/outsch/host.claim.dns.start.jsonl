@@ -1,0 +1,1 @@
+{"method":"dns","next":{"arguments":{"domain":"example.com"},"call":"host.claim.dns.check"},"record":"_mcphost.example.com","type":"TXT","value":"mcphost-verify=0fffc1780097f28c8bbb1d0516024a4ba79e870af0b53381afb3717575da191b"}
