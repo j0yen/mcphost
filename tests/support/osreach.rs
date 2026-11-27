@@ -202,6 +202,20 @@ fn fill(args: &mut Value, harvested: &BTreeMap<String, Value>) {
     }
 }
 
+/// [`fill`] that leaves an `enum`-constrained property at its placeholder: a
+/// harvested id (a tool's `name`) is never a member of the enum
+/// (`host.template_apply`'s template names), so passing it on would only
+/// repeat the refusal.
+fn fill_outside_enums(schema: &Value, args: &mut Value, harvested: &BTreeMap<String, Value>) {
+    let enums: BTreeSet<&str> = schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|props| props.iter().filter(|(_, p)| p.get("enum").is_some()).map(|(k, _)| k.as_str()).collect())
+        .unwrap_or_default();
+    let kept: BTreeMap<String, Value> = harvested.iter().filter(|(k, _)| !enums.contains(k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect();
+    fill(args, &kept);
+}
+
 /// `id`-like scalars of a create result, keyed by their field name.
 fn harvest(structured: &Value, into: &mut BTreeMap<String, Value>) {
     if let Some(obj) = structured.as_object() {
@@ -299,7 +313,17 @@ async fn fresh_client(server: &TestServer) -> McpClient {
 
 /// Runs the whole sweep on a throwaway server.
 pub async fn run_sweep() -> Sweep {
-    let server = TestServer::start_with_signup_rate_limit(1_000_000).await;
+    // `jq` is registered beside `echo`: `host.template_apply`'s first template publishes a jq tool.
+    let mut kinds = mcphost::kinds::KindRegistry::with_builtin();
+    kinds.register(std::sync::Arc::new(mcphost::kinds::jq::JqKind));
+    let server = TestServer::start_full_with_signup_rate_limit(
+        Some(crate::common::ADMIN_KEY.to_string()),
+        kinds,
+        mcphost::state::CALL_TIMEOUT,
+        None,
+        1_000_000,
+    )
+    .await;
     let lister = fresh_client(&server).await;
     let served: Vec<Served> = list(&lister).await.into_iter().filter(|s| s.name != "signup").collect();
     let mut sweep = Sweep { served: served.clone(), rows: BTreeMap::new() };
@@ -327,10 +351,10 @@ pub async fn run_sweep() -> Sweep {
         let destructive = mcphost::write_verbs::lookup(&canonical).is_some() || canonical.starts_with("host.tenant");
         if destructive {
             let (client, ids) = populate(&server, &creators, &served).await;
-            fill(&mut a, &ids);
+            fill_outside_enums(&s.input, &mut a, &ids);
             record(&mut row, s, STATE_AFTER_CREATE, call(&client, &s.name, a).await);
         } else {
-            fill(&mut a, &shared_ids);
+            fill_outside_enums(&s.input, &mut a, &shared_ids);
             record(&mut row, s, STATE_AFTER_CREATE, call(&shared, &s.name, a).await);
         }
         sweep.rows.insert(s.name.clone(), row);

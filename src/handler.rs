@@ -1085,7 +1085,10 @@ fn is_feedback_tool(name: &str) -> bool {
 /// `dispatch_tenant_tool_inner`, because they are reachable with no tenant.
 fn is_pre_dispatch_tool(name: &str) -> bool {
     is_feedback_tool(name)
-        || matches!(name, "host.quickstart" | "host.help.search" | "host.help.get" | "host.errors" | "billing.plans" | "host.redeem")
+        || matches!(
+            name,
+            "host.quickstart" | "host.help.search" | "host.help.get" | "host.errors" | "host.template_list" | "billing.plans" | "host.redeem"
+        )
 }
 
 /// PRD-mcphost-one-next-tool requirement 1 (AC1): the starter set an
@@ -3743,6 +3746,46 @@ fn host_tools_part_07() -> Vec<Tool> {
                 }),
                 &["name", "urls"],
             ),
+        ),
+        // PRD-mcphost-tenant-templates R2: a whole job (tools, tables, triggers)
+        // in one all-or-nothing call.
+        Tool::new(
+            "host.template_apply",
+            "Provision a whole job from a template in one call: creates its tools, tables and \
+             triggers (tagged `template: <name>`) and returns {template, created: {tools, \
+             tables, triggers}, demo: {call, expect}, next}. Run demo.call yourself and show the \
+             user its result, which holds demo.expect. Nothing is created if a plan ceiling \
+             would be exceeded (plan_limit, data.ceiling names it) and a failed create removes \
+             what was already created. Applying again updates the objects in place.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "enum": crate::templates::names(), "description": "Template name, from host.template_list."},
+                    "params": {"type": "object", "description": "The template's params (name, type and default are in host.template_list); omit for the defaults."},
+                }),
+                &["name"],
+            ),
+        ),
+        // PRD-mcphost-tenant-templates R6: undo an apply without touching what the user changed.
+        Tool::new(
+            "host.template_remove",
+            "Remove what host.template_apply created for a template: its triggers, tables and \
+             tools that are still tagged and unmodified since the apply. An object the user \
+             changed since (a tool republished, a table with rows added or removed, a trigger \
+             pointed at another tool) is kept and named under kept. Returns {template, removed: \
+             {tools, tables, triggers}, kept: {tools, tables, triggers}}.",
+            host_schema(
+                json!({"name": {"type": "string", "minLength": 1, "description": "The template name given to host.template_apply."}}),
+                &["name"],
+            ),
+        ),
+        // PRD-mcphost-tenant-templates R4: what `host.template_apply` can provision.
+        Tool::new(
+            "host.template_list",
+            "List the job templates host.template_apply provisions: each with its name, \
+             one_line, the counts of tools, tables and triggers it creates, the plan it fits \
+             (plan_fit) and its params. Public, the same list as GET /templates.json; no tenant \
+             data.",
+            host_schema(json!({}), &[]),
         ),
         // PRD-mcphost-webhook-inbox-one-call R1: a webhook inbox in one call.
         Tool::new(
@@ -13968,6 +14011,8 @@ impl McpHostHandler {
             // data -- the same object `GET /errors.json` serves, reachable
             // anonymously (never implicit-signs-up) or as a tenant.
             (_, "host.errors") => self.errors_boxed(&args).await,
+            // PRD-mcphost-tenant-templates R4: public listing, no tenant data.
+            (_, "host.template_list") => Ok(crate::templates::list_json()),
             // PRD-mcphost-feedback-tool-and-ledger requirement 3: reachable
             // anonymously (never implicit-signs-up) or as a tenant.
             (Auth::Anonymous | Auth::Tenant(..), "host.feedback.send" | "host.feedback.list" | "host.feedback.get")

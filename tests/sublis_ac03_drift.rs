@@ -26,6 +26,8 @@ const WINDOW: Duration = Duration::from_millis(1500);
 /// under the same debug write-check, so an unlisted one would fail it.
 const DRIVEN_ELSEWHERE: &[(&str, &str)] = &[
     ("host.tool_from_description", "tests/tfd_ac03_retry_then_publish_and_share.rs"),
+    ("host.template_apply", "tests/ttpl_ac01_scheduled_job_two_calls.rs"),
+    ("host.template_remove", "tests/ttpl_ac07_remove_keeps_what_the_user_changed.rs"),
     ("host.uptime.create", "tests/mcphost_uptime_probes_ac02_checks_two_rows_per_target.rs"),
     ("host.webhook_inbox.create", "tests/mcphost_webhook_inbox_ac01_set_returns_url_and_secret_get_omits_secret.rs"),
     ("host.secret.leak_test", "tests/snp_ac04_leak_test_proves_both_legs_blocked.rs"),

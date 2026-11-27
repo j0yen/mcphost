@@ -1347,6 +1347,7 @@ fn quickstart_inner(
             map.insert("kinds".to_string(), json!(state.kinds.names()));
             map.insert("aliases".to_string(), json!(crate::kinds::aliases::alias_names()));
             map.insert("recipes".to_string(), json!(crate::kinds::aliases::recipe_names()));
+            map.insert("templates".to_string(), crate::templates::quickstart_json());
             map.insert("limits".to_string(), quickstart_limits(state, "free"));
             map.insert("sandbox_api".to_string(), sandbox_api_for(state));
         }
@@ -1524,6 +1525,11 @@ fn quickstart_inner(
                 json!({"names": crate::kinds::aliases::recipe_names(), recipe.id.as_str(): recipe_json}),
             );
             map.insert("next_steps".to_string(), json!(crate::delegation_recipe::next_steps()));
+        }
+        // PRD-mcphost-tenant-templates R4: whole jobs `host.template_apply` provisions in
+        // one call, beside `recipes`; a call that names a `kind` keeps its own response.
+        if arg_str_opt(args, "kind").is_none() {
+            map.insert("templates".to_string(), crate::templates::quickstart_json());
         }
         map.insert("endpoint".to_string(), json!(endpoint));
         map.insert("install_doc_url".to_string(), json!(crate::install_links::install_doc_url()));
