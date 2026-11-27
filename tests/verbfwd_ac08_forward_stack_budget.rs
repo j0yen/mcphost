@@ -172,6 +172,11 @@ fn args_for(tool: &rmcp::model::Tool) -> Value {
     if tool.name == "host.table.append" {
         return json!({"table": PLACEHOLDER, "rows": {}});
     }
+    // `host.ts.trim` states "exactly one of keep_last, before_ts" as a `oneOf`, not as
+    // `required` (PRD-mcphost-timeseries-buckets R4): one cut is what a call needs.
+    if tool.name == "host.ts.trim" {
+        return json!({"series": PLACEHOLDER, "keep_last": 1});
+    }
     // `host.docs.put_many`'s `documents` is an array of at least one: the generic
     // sample for an array is `[]`, which its `minItems` refuses at validation.
     if tool.name == "host.docs.put_many" {
